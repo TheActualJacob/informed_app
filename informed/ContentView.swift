@@ -2,6 +2,7 @@ import SwiftUI
 internal import Combine
 import SafariServices
 
+
 // MARK: - 1. DESIGN SYSTEM & EXTENSIONS
 
 extension Color {
@@ -78,6 +79,8 @@ struct FactCheckItem: Identifiable {
     let sources: String
     let verdict: String
     let factCheck: FactCheck
+    let originalLink: String?  // Original video/post link
+    let datePosted: String?    // Date the content was posted
 
     // Detailed data for the DetailView
     var detailedAnalysis: String {
@@ -104,12 +107,20 @@ class HomeViewModel: ObservableObject {
     }
     @Published var isLoading: Bool = false
     @Published var errorMessage: String?
+    @Published var processingLink: String? // For showing processing banner
+    @Published var processingThumbnailURL: URL? // For link preview in banner
+    
+    private var debounceTask: Task<Void, Never>?
+    var userId: String = "default-user" // Will be set by HomeView
     
     init() {
         loadData()
     }
     
     private func checkIfLink(_ text: String) {
+        // Cancel any pending request
+        debounceTask?.cancel()
+        
         // Check if the text is a valid URL
         guard let url = URL(string: text),
               url.scheme != nil,
@@ -117,54 +128,99 @@ class HomeViewModel: ObservableObject {
             return
         }
         
-        // If it's a valid URL, send the fact check request
-        Task {
-            await performFactCheck(for: text)
+        // Wait 1 second before sending the request (gives user time to finish typing/pasting)
+        debounceTask = Task {
+            try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second delay
+            
+            // Check if task was cancelled
+            guard !Task.isCancelled else { return }
+            
+            // If it's a valid URL, send the fact check request
+            await performFactCheck(for: text, userId: userId)
         }
     }
     
     @MainActor
-    func performFactCheck(for link: String) async {
-        self.isLoading = true
+    func performFactCheck(for link: String, userId: String) async {
+        // Don't set isLoading - we'll use processingLink instead
+        self.processingLink = link
         self.errorMessage = nil
         
+        // Extract preview image from link if possible
+        if let url = URL(string: link) {
+            self.processingThumbnailURL = url
+        }
+        
+        print("🔍 Starting fact check for: \(link)")
+        
         do {
-            // Create the fact check request with a user ID
-            // You can replace "default-user" with an actual user ID from your app
-            let request = FactCheckRequest(link: link, userId: "default-user")
+            // Create the fact check request with the user's ID
+            let request = FactCheckRequest(link: link, userId: userId)
+            print("📤 Sending request to Flask server...")
             
-            // Send the request
-            let data = try await sendFactCheck(request)
+            // Send the request and get the structured response
+            let factCheckData = try await sendFactCheck(request)
+            print("✅ Received response from Flask server")
+            print("📊 Data: \(factCheckData.title)")
             
-            // Decode the response
-            let factCheck = try JSONDecoder().decode(FactCheck.self, from: data)
+            // Convert FactCheckData to FactCheck (the model used in the UI)
+            let factCheck = FactCheck(
+                claim: factCheckData.claim,
+                verdict: factCheckData.verdict,
+                claimAccuracyRating: factCheckData.claimAccuracyRating,
+                explanation: factCheckData.explanation,
+                summary: factCheckData.summary,
+                sources: factCheckData.sources
+            )
             
             // Create a new FactCheckItem from the response
             let newItem = FactCheckItem(
                 sourceName: "Fact Check API",
                 sourceIcon: "checkmark.seal.fill",
                 timeAgo: "Just now",
-                title: factCheck.claim,
-                summary: factCheck.summary,
-                thumbnailURL: nil,
-                credibilityScore: calculateCredibilityScore(from: factCheck.claimAccuracyRating),
-                sources: factCheck.sources.joined(separator: ", "),
-                verdict: factCheck.verdict,
-                factCheck: factCheck
+                title: factCheckData.title,
+                summary: factCheckData.summary,
+                thumbnailURL: URL(string: factCheckData.videoLink),
+                credibilityScore: calculateCredibilityScore(from: factCheckData.claimAccuracyRating),
+                sources: factCheckData.sources.joined(separator: ", "),
+                verdict: factCheckData.verdict,
+                factCheck: factCheck,
+                originalLink: link,
+                datePosted: factCheckData.date
             )
             
             // Add the new item to the top of the list
             self.items.insert(newItem, at: 0)
             
-            // Clear the search text
+            // Clear the search text and processing state
             self.searchText = ""
+            self.processingLink = nil
+            self.processingThumbnailURL = nil
             
         } catch {
-            self.errorMessage = "Failed to check fact: \(error.localizedDescription)"
-            print("Error performing fact check: \(error)")
+            // More detailed error messages
+            if let urlError = error as? URLError {
+                switch urlError.code {
+                case .cannotConnectToHost:
+                    self.errorMessage = "Cannot connect to server. Make sure Flask is running on localhost:5001"
+                case .notConnectedToInternet:
+                    self.errorMessage = "No internet connection"
+                case .badServerResponse:
+                    self.errorMessage = "Server returned an error response"
+                case .timedOut:
+                    self.errorMessage = "Request timed out. This can happen with long videos - try again or contact support"
+                default:
+                    self.errorMessage = "Connection error: \(urlError.localizedDescription)"
+                }
+            } else {
+                self.errorMessage = "Failed to check fact: \(error.localizedDescription)"
+            }
+            print("❌ Error performing fact check: \(error)")
+            
+            // Clear processing state
+            self.processingLink = nil
+            self.processingThumbnailURL = nil
         }
-        
-        self.isLoading = false
     }
     
     private func calculateCredibilityScore(from rating: String) -> Double {
@@ -205,7 +261,9 @@ class HomeViewModel: ObservableObject {
                             "https://www.nytimes.com/2025/11/04/nyregion/nyc-mayor-election-turnout.html",
                             "https://www.pbs.org/newshour/politics/democrat-zohran-mamdani-wins-new-york-city-mayors-race"
                         ]
-                    )
+                    ),
+                    originalLink: nil,
+                    datePosted: nil
                 ),
                 // AI Chip Fact Check
                 FactCheckItem(
@@ -230,7 +288,9 @@ class HomeViewModel: ObservableObject {
                             "https://www.techcrunch.com/2025/10/15/ai-chip-breakdown/",
                             "https://www.electronicnews.com/z90-architecture-review"
                         ]
-                    )
+                    ),
+                    originalLink: nil,
+                    datePosted: nil
                 ),
                 // Salt Water Health Claim
                 FactCheckItem(
@@ -255,7 +315,9 @@ class HomeViewModel: ObservableObject {
                             "https://www.aasm.org/public/resources/sleeptips",
                             "https://pubmed.ncbi.nlm.nih.gov/salt-water-health-effects"
                         ]
-                    )
+                    ),
+                    originalLink: nil,
+                    datePosted: nil
                 ),
                 // Mars Colony Timeline
                 FactCheckItem(
@@ -280,7 +342,9 @@ class HomeViewModel: ObservableObject {
                             "https://www.spacenewsjournal.org/mars-colonization-assessment",
                             "https://arxiv.org/abs/space-systems-feasibility"
                         ]
-                    )
+                    ),
+                    originalLink: nil,
+                    datePosted: nil
                 ),
                 // Vaccine Fact Check
                 FactCheckItem(
@@ -305,7 +369,9 @@ class HomeViewModel: ObservableObject {
                             "https://www.factcheck.org/2021/05/the-facts-on-covid-19-vaccine-ingredients/",
                             "https://sciencemag.org/vaccine-ingredient-transparency"
                         ]
-                    )
+                    ),
+                    originalLink: nil,
+                    datePosted: nil
                 )
             ]
             self.isLoading = false
@@ -336,6 +402,20 @@ func extractDomainName(from urlString: String) -> String {
     }
 
     return domain.capitalized
+}
+
+func formatDate(_ dateString: String) -> String {
+    // Format: "20251106" -> "Nov 6, 2025"
+    let formatter = DateFormatter()
+    formatter.dateFormat = "yyyyMMdd"
+    
+    if let date = formatter.date(from: dateString) {
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
+        return formatter.string(from: date)
+    }
+    
+    return dateString
 }
 
 struct SearchBarView: View {
@@ -369,6 +449,67 @@ struct SearchBarView: View {
             RoundedRectangle(cornerRadius: 16)
                 .stroke(isValidURL ? Color.brandGreen : Color.clear, lineWidth: 2)
         )
+    }
+}
+
+// Processing Banner Component
+struct ProcessingBanner: View {
+    let link: String
+    let thumbnailURL: URL?
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            // Thumbnail or placeholder
+            if let thumbnailURL = thumbnailURL {
+                AsyncImage(url: thumbnailURL) { phase in
+                    if let image = phase.image {
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                    } else {
+                        Rectangle()
+                            .fill(Color.brandBlue.opacity(0.1))
+                    }
+                }
+                .frame(width: 50, height: 50)
+                .cornerRadius(8)
+                .clipped()
+            } else {
+                ZStack {
+                    Rectangle()
+                        .fill(Color.brandBlue.opacity(0.1))
+                    Image(systemName: "link")
+                        .foregroundColor(.brandBlue)
+                }
+                .frame(width: 50, height: 50)
+                .cornerRadius(8)
+            }
+            
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                    Text("Processing...")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.primary)
+                }
+                
+                Text(extractDomainName(from: link))
+                    .font(.caption)
+                    .foregroundColor(.gray)
+                    .lineLimit(1)
+            }
+            
+            Spacer()
+            
+            Image(systemName: "hourglass")
+                .foregroundColor(.brandBlue)
+                .font(.title3)
+        }
+        .padding()
+        .background(Color.white)
+        .cornerRadius(16)
+        .shadow(color: Color.black.opacity(0.1), radius: 10, x: 0, y: 5)
     }
 }
 
@@ -505,21 +646,6 @@ struct FactResultCard: View {
     }
 }
 
-struct FABView: View {
-    var action: () -> Void
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: "plus")
-                .font(.title2).fontWeight(.bold).foregroundColor(.white)
-                .frame(width: 60, height: 60)
-                .background(
-                    LinearGradient(colors: [.brandTeal, .brandBlue], startPoint: .topLeading, endPoint: .bottomTrailing)
-                )
-                .clipShape(Circle())
-                .shadow(color: .brandBlue.opacity(0.4), radius: 10, x: 0, y: 5)
-        }
-    }
-}
 
 // FACT DETAIL VIEW
 struct FactDetailView: View {
@@ -597,6 +723,60 @@ struct FactDetailView: View {
                         .font(.system(size: 26, weight: .bold, design: .serif))
                         .foregroundColor(.primary)
                         .fixedSize(horizontal: false, vertical: true)
+                    
+                    // Original Content Link (if available)
+                    if let originalLink = item.originalLink {
+                        Button(action: {
+                            if let url = URL(string: originalLink) {
+                                UIApplication.shared.open(url)
+                            }
+                        }) {
+                            HStack(spacing: 12) {
+                                // Video preview thumbnail
+                                if let thumbnailURL = item.thumbnailURL {
+                                    AsyncImage(url: thumbnailURL) { phase in
+                                        if let image = phase.image {
+                                            image.resizable().aspectRatio(contentMode: .fill)
+                                        } else {
+                                            Rectangle().fill(Color.gray.opacity(0.2))
+                                        }
+                                    }
+                                    .frame(width: 60, height: 60)
+                                    .cornerRadius(8)
+                                    .clipped()
+                                }
+                                
+                                VStack(alignment: .leading, spacing: 4) {
+                                    HStack {
+                                        Image(systemName: "play.circle.fill")
+                                            .foregroundColor(.brandBlue)
+                                        Text("View Original Post")
+                                            .font(.system(size: 15, weight: .semibold))
+                                            .foregroundColor(.brandBlue)
+                                    }
+                                    
+                                    if let datePosted = item.datePosted {
+                                        Text("Posted: \(formatDate(datePosted))")
+                                            .font(.caption)
+                                            .foregroundColor(.gray)
+                                    }
+                                }
+                                
+                                Spacer()
+                                
+                                Image(systemName: "arrow.up.right")
+                                    .font(.caption)
+                                    .foregroundColor(.brandBlue.opacity(0.6))
+                            }
+                            .padding(12)
+                            .background(Color.brandBlue.opacity(0.05))
+                            .cornerRadius(12)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(Color.brandBlue.opacity(0.2), lineWidth: 1)
+                            )
+                        }
+                    }
                 }
 
                 Divider()
@@ -723,11 +903,12 @@ struct FactDetailView: View {
     
 struct HomeView: View {
     @StateObject var viewModel = HomeViewModel()
+    @EnvironmentObject var userManager: UserManager
     @State private var showPopup = false // Popup state
     
     var body: some View {
         NavigationView {
-            ZStack(alignment: .bottomTrailing) {
+            ZStack(alignment: .bottom) {
                 Color.backgroundLight.edgesIgnoringSafeArea(.all)
                 
                 VStack(spacing: 0) {
@@ -738,104 +919,76 @@ struct HomeView: View {
                     .padding(.horizontal)
                     .padding(.vertical, 10)
                     .background(Color.backgroundLight)
-                    
-                    if viewModel.isLoading {
-                        Spacer()
-                        VStack(spacing: 12) {
-                            ProgressView().scaleEffect(1.5)
-                            Text("Checking facts...")
-                                .font(.caption)
-                                .foregroundColor(.gray)
-                        }
-                        Spacer()
-                    } else {
-                        VStack(spacing: 0) {
-                            // Error message banner
-                            if let errorMessage = viewModel.errorMessage {
-                                HStack {
-                                    Image(systemName: "exclamationmark.triangle.fill")
-                                        .foregroundColor(.brandYellow)
-                                    Text(errorMessage)
-                                        .font(.caption)
-                                        .foregroundColor(.primary)
-                                    Spacer()
-                                    Button(action: { viewModel.errorMessage = nil }) {
-                                        Image(systemName: "xmark.circle.fill")
-                                            .foregroundColor(.gray)
-                                    }
-                                }
-                                .padding()
-                                .background(Color.brandYellow.opacity(0.1))
-                                .cornerRadius(12)
-                                .padding(.horizontal)
-                                .padding(.top, 8)
-                            }
-                            
-                            ScrollView {
-                                LazyVStack(spacing: 20) {
-                                    ForEach(viewModel.items) { item in
-                                        
-                                        // 👇 THE FIX IS HERE
-                                        NavigationLink(destination: FactDetailView(item: item)) {
-                                            FactResultCard(item: item)
-                                        }
-                                        .buttonStyle(PlainButtonStyle()) // Prevents blue text highlight
-                                        
-                                    }
-                                }
-                                .padding(.horizontal)
-                                .padding(.top, 10)
-                                .padding(.bottom, 100)
-                            }
-                            .refreshable { viewModel.refresh() }
+                    .onAppear {
+                        // Set the userId when view appears
+                        if let userId = userManager.currentUserId {
+                            viewModel.userId = userId
                         }
                     }
-                }
-                
-                FABView{
-                    showPopup = true
-                }
-                    .padding(.trailing, 20)
-                    .padding(.bottom, 20)
-                
-                if showPopup{
-                    Color.black.opacity(0.4)
-                        .edgesIgnoringSafeArea(.all)
-                        .onTapGesture {
-                            showPopup = false
+                    
+                    // Error message banner
+                    if let errorMessage = viewModel.errorMessage {
+                        HStack {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.brandYellow)
+                            Text(errorMessage)
+                                .font(.caption)
+                                .foregroundColor(.primary)
+                            Spacer()
+                            Button(action: { viewModel.errorMessage = nil }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundColor(.gray)
+                            }
                         }
-                    // Popup content
-               VStack(spacing: 20) {
-                   Text("This is your popup!")
-                       .font(.headline)
-                   
-                   Button("Close") {
-                       showPopup = false
-                   }
-                   .padding()
-                   .background(Color.red)
-                   .foregroundColor(.white)
-                   .cornerRadius(12)
-               }
-               .padding()
-               .background(Color.white)
-               .cornerRadius(20)
-               .shadow(radius: 10)
-               .frame(maxWidth: 300)
-               .transition(.move(edge: .bottom).combined(with: .opacity))
-           }
-       }
-       .animation(.easeInOut, value: showPopup)
-       .navigationBarHidden(true)
-}
-
+                        .padding()
+                        .background(Color.brandYellow.opacity(0.1))
+                        .cornerRadius(12)
+                        .padding(.horizontal)
+                        .padding(.top, 8)
+                    }
+                    
+                    // Main content (always scrollable)
+                    ScrollView {
+                        LazyVStack(spacing: 20) {
+                            ForEach(viewModel.items) { item in
+                                NavigationLink(destination: FactDetailView(item: item)) {
+                                    FactResultCard(item: item)
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                            }
+                        }
+                        .padding(.horizontal)
+                        .padding(.top, 10)
+                        .padding(.bottom, viewModel.processingLink != nil ? 140 : 100)
+                    }
+                    .refreshable { viewModel.refresh() }
+                }
+                
+                // Processing Banner at Bottom
+                if let processingLink = viewModel.processingLink {
+                    VStack(spacing: 0) {
+                        Spacer()
+                        ProcessingBanner(
+                            link: processingLink,
+                            thumbnailURL: viewModel.processingThumbnailURL
+                        )
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 20)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+                }
+            }
+            .animation(.spring(response: 0.4, dampingFraction: 0.8), value: viewModel.processingLink != nil)
+            .navigationBarHidden(true)
         }
-    
+    }
 }
     
     // MARK: - 7. ROOT CONTENT VIEW
     
     struct ContentView: View {
+        @EnvironmentObject var userManager: UserManager
+        
         init() {
             let appearance = UITabBarAppearance()
             appearance.configureWithTransparentBackground()
@@ -852,13 +1005,13 @@ struct HomeView: View {
                         Text("Feed")
                     }
                 
-                Text("History")
+                HistoryView()
                     .tabItem {
                         Image(systemName: "clock.arrow.circlepath")
                         Text("History")
                     }
                 
-                Text("Profile")
+                ProfileView()
                     .tabItem {
                         Image(systemName: "person.crop.circle")
                         Text("Profile")
@@ -868,9 +1021,183 @@ struct HomeView: View {
         }
     }
     
+    // MARK: - History View
+    
+    struct HistoryView: View {
+        @EnvironmentObject var userManager: UserManager
+        
+        var body: some View {
+            NavigationView {
+                VStack {
+                    Text("Your fact-check history will appear here")
+                        .foregroundColor(.gray)
+                        .padding()
+                    Spacer()
+                }
+                .navigationTitle("History")
+            }
+        }
+    }
+    
+    // MARK: - Profile View
+    
+    struct ProfileView: View {
+        @EnvironmentObject var userManager: UserManager
+        
+        var body: some View {
+            NavigationView {
+                ScrollView {
+                    VStack(spacing: 24) {
+                        
+                        // Profile Header
+                        VStack(spacing: 12) {
+                            ZStack {
+                                Circle()
+                                    .fill(
+                                        LinearGradient(
+                                            colors: [.brandTeal, .brandBlue],
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        )
+                                    )
+                                    .frame(width: 100, height: 100)
+                                
+                                Text(userManager.currentUsername?.prefix(1).uppercased() ?? "U")
+                                    .font(.system(size: 40, weight: .bold))
+                                    .foregroundColor(.white)
+                            }
+                            
+                            if let username = userManager.currentUsername {
+                                Text(username)
+                                    .font(.title2)
+                                    .fontWeight(.bold)
+                            }
+                            
+                            if let userId = userManager.currentUserId {
+                                Text("ID: \(userId)")
+                                    .font(.caption)
+                                    .foregroundColor(.gray)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
+                                    .background(Color.gray.opacity(0.1))
+                                    .cornerRadius(8)
+                            }
+                        }
+                        .padding(.top, 40)
+                        
+                        // Stats Section
+                        HStack(spacing: 20) {
+                            StatCard(title: "Checked", value: "0", icon: "checkmark.seal.fill", color: .brandGreen)
+                            StatCard(title: "Saved", value: "0", icon: "bookmark.fill", color: .brandBlue)
+                            StatCard(title: "Shared", value: "0", icon: "square.and.arrow.up", color: .brandTeal)
+                        }
+                        .padding(.horizontal)
+                        
+                        // Settings Section
+                        VStack(spacing: 12) {
+                            ProfileButton(icon: "bell.fill", title: "Notifications", color: .brandYellow) {
+                                // TODO: Notifications settings
+                            }
+                            
+                            ProfileButton(icon: "shield.fill", title: "Privacy", color: .brandBlue) {
+                                // TODO: Privacy settings
+                            }
+                            
+                            ProfileButton(icon: "info.circle.fill", title: "About", color: .gray) {
+                                // TODO: About page
+                            }
+                        }
+                        .padding(.horizontal)
+                        
+                        // Logout Button
+                        Button(action: {
+                            userManager.logout()
+                        }) {
+                            HStack {
+                                Image(systemName: "rectangle.portrait.and.arrow.right")
+                                Text("Sign Out")
+                            }
+                            .font(.headline)
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.brandRed)
+                            .cornerRadius(12)
+                        }
+                        .padding(.horizontal)
+                        .padding(.top, 20)
+                        
+                        Spacer()
+                    }
+                }
+                .background(Color.backgroundLight)
+                .navigationTitle("Profile")
+            }
+        }
+    }
+    
+    struct StatCard: View {
+        let title: String
+        let value: String
+        let icon: String
+        let color: Color
+        
+        var body: some View {
+            VStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.title2)
+                    .foregroundColor(color)
+                
+                Text(value)
+                    .font(.title2)
+                    .fontWeight(.bold)
+                
+                Text(title)
+                    .font(.caption)
+                    .foregroundColor(.gray)
+            }
+            .frame(maxWidth: .infinity)
+            .padding()
+            .background(Color.white)
+            .cornerRadius(12)
+            .shadow(color: Color.black.opacity(0.05), radius: 5, y: 2)
+        }
+    }
+    
+    struct ProfileButton: View {
+        let icon: String
+        let title: String
+        let color: Color
+        let action: () -> Void
+        
+        var body: some View {
+            Button(action: action) {
+                HStack {
+                    Image(systemName: icon)
+                        .foregroundColor(color)
+                        .frame(width: 24)
+                    
+                    Text(title)
+                        .foregroundColor(.primary)
+                    
+                    Spacer()
+                    
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                }
+                .padding()
+                .background(Color.white)
+                .cornerRadius(12)
+                .shadow(color: Color.black.opacity(0.05), radius: 5, y: 2)
+            }
+        }
+    }
+    
     struct ContentView_Previews: PreviewProvider {
         static var previews: some View {
             ContentView()
+                .environmentObject(UserManager())
         }
     }
     
@@ -884,3 +1211,4 @@ struct HomeView: View {
         }
         func updateUIViewController(_ uiViewController: SFSafariViewController, context: Context) {}
     }
+

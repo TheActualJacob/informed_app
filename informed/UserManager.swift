@@ -1,4 +1,5 @@
-import SwiftUI
+import Foundation
+internal import Combine
 
 // MARK: - User Defaults Manager (for storing userId)
 
