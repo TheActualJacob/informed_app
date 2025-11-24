@@ -74,12 +74,33 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         
         print("👆 User tapped notification: \(userInfo)")
         
-        // Handle the notification tap
-        Task { @MainActor in
-            NotificationManager.shared.handleNotification(userInfo: userInfo)
+        // Check if this is from Share Extension (local notification for Instagram reel)
+        if let action = userInfo["action"] as? String, action == "process_reel" {
+            print("🎬 Processing Instagram reel from notification tap")
             
-            // Navigate to the appropriate screen
-            if let factCheckId = userInfo["fact_check_id"] as? String {
+            // The app should automatically check for pending URLs when becoming active
+            // But we can also post a notification to trigger processing immediately
+            Task { @MainActor in
+                NotificationCenter.default.post(
+                    name: NSNotification.Name("ProcessPendingReel"),
+                    object: nil,
+                    userInfo: userInfo
+                )
+                
+                // Trigger a check for pending URLs
+                NotificationCenter.default.post(
+                    name: NSNotification.Name("CheckForPendingSharedURLs"),
+                    object: nil
+                )
+            }
+        }
+        // Handle push notification from backend (fact-check complete)
+        else if let factCheckId = userInfo["fact_check_id"] as? String {
+            print("🔍 Navigating to fact check results: \(factCheckId)")
+            
+            Task { @MainActor in
+                NotificationManager.shared.handleNotification(userInfo: userInfo)
+                
                 // Post notification to navigate to fact check results
                 NotificationCenter.default.post(
                     name: NSNotification.Name("NavigateToFactCheck"),

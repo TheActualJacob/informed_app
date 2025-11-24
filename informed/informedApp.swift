@@ -18,6 +18,8 @@ struct informedApp: App {
     @State private var showErrorAlert = false
     @State private var alertMessage = ""
     
+    @Environment(\.scenePhase) private var scenePhase
+    
     init() {
         // 🧪 TEMPORARY: Clear stored credentials to test sign-up
         // Remove this after testing!
@@ -38,6 +40,23 @@ struct informedApp: App {
                     .onAppear {
                         // Check for pending shared URLs from Share Extension
                         checkForPendingSharedURL()
+                        
+                        // Set up observer for notification-triggered checks
+                        NotificationCenter.default.addObserver(
+                            forName: NSNotification.Name("CheckForPendingSharedURLs"),
+                            object: nil,
+                            queue: .main
+                        ) { _ in
+                            print("🔔 Received notification to check for pending shared URLs")
+                            checkForPendingSharedURL()
+                        }
+                    }
+                    .onChange(of: scenePhase) { oldPhase, newPhase in
+                        // Check for shared URLs whenever app becomes active
+                        if newPhase == .active {
+                            print("🔄 App became active - checking for pending shared URLs")
+                            checkForPendingSharedURL()
+                        }
                     }
                     .task {
                         // Request notification permissions on first launch
@@ -67,7 +86,7 @@ struct informedApp: App {
     private func checkForPendingSharedURL() {
         // IMPORTANT: Replace with your actual App Group identifier
         // Same one used in ShareViewController.swift
-        let appGroupName = "group.com.yourcompany.informed"
+        let appGroupName = "group.com.jacob.informed"
         
         guard let sharedDefaults = UserDefaults(suiteName: appGroupName) else {
             print("⚠️ Could not access App Group: \(appGroupName)")
@@ -78,18 +97,40 @@ struct informedApp: App {
         if let urlString = sharedDefaults.string(forKey: "pendingSharedURL") {
             print("🔗 Found pending shared URL from Share Extension: \(urlString)")
             
+            // Optional: Check timestamp to avoid processing very old URLs
+            if let timestampObject = sharedDefaults.object(forKey: "pendingSharedURLDate") as? Double {
+                let submittedDate = Date(timeIntervalSince1970: timestampObject)
+                let age = Date().timeIntervalSince(submittedDate)
+                
+                print("⏱️ Shared URL is \(Int(age)) seconds old")
+                
+                // If URL is older than 1 hour, skip it (optional safeguard)
+                if age > 3600 {
+                    print("⏭️ Skipping old shared URL (older than 1 hour)")
+                    sharedDefaults.removeObject(forKey: "pendingSharedURL")
+                    sharedDefaults.removeObject(forKey: "pendingSharedURLDate")
+                    return
+                }
+            }
+            
             // Create a URL in the format your app expects
             if let encodedURL = urlString.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
                let deepLink = URL(string: "factcheckapp://share?url=\(encodedURL)") {
+                
+                // Clear the pending URL BEFORE processing to avoid re-processing
+                sharedDefaults.removeObject(forKey: "pendingSharedURL")
+                sharedDefaults.removeObject(forKey: "pendingSharedURLDate")
+                // Note: synchronize() is deprecated - UserDefaults saves automatically
+                
+                print("✅ Cleared pending shared URL from App Group")
+                
+                // Now process the URL
                 handleIncomingURL(deepLink)
+            } else {
+                print("❌ Failed to encode URL for processing")
             }
-            
-            // Clear the pending URL so we don't process it again
-            sharedDefaults.removeObject(forKey: "pendingSharedURL")
-            sharedDefaults.removeObject(forKey: "pendingSharedURLDate")
-            sharedDefaults.synchronize()
-            
-            print("✅ Cleared pending shared URL from App Group")
+        } else {
+            print("ℹ️ No pending shared URLs found")
         }
     }
     

@@ -223,7 +223,7 @@ class HomeViewModel: ObservableObject {
         }
     }
     
-    private func calculateCredibilityScore(from rating: String) -> Double {
+    func calculateCredibilityScore(from rating: String) -> Double {
         // Extract percentage from rating string like "100%" or "5%"
         let numericString = rating.replacingOccurrences(of: "%", with: "")
         if let percentage = Double(numericString) {
@@ -924,6 +924,9 @@ struct HomeView: View {
                         if let userId = userManager.currentUserId {
                             viewModel.userId = userId
                         }
+                        
+                        // Connect SharedReelManager to this ViewModel for integrated UI
+                        SharedReelManager.shared.homeViewModel = viewModel
                     }
                     
                     // Error message banner

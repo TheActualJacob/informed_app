@@ -8,35 +8,45 @@
 import UIKit
 import Social
 import UniformTypeIdentifiers
+import UserNotifications
 
 class ShareViewController: SLComposeServiceViewController {
     
-    private var sharedURL: String?
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        
+        // Customize the appearance
+        title = "Share to Informed"
+        placeholder = "Tap Post to queue this reel for fact-checking"
+        
+        print("📱 Share Extension loaded")
+    }
 
     override func isContentValid() -> Bool {
-        // Always return true - we'll validate the URL when processing
+        // Always allow posting
         return true
     }
 
     override func didSelectPost() {
-        // This is called after the user selects Post
         print("📤 Share Extension: User tapped Post")
         
-        // Extract the URL from the shared content
+        // Extract and process the URL
         extractSharedURL { [weak self] url in
-            guard let self = self, let url = url else {
+            guard let self = self else { return }
+            
+            if let url = url {
+                print("🔗 Share Extension: Extracted URL: \(url)")
+                
+                // Save to App Group for main app to process
+                self.saveSharedURL(url)
+                
+                // Send notification to user
+                self.sendLocalNotification(for: url)
+                
+                print("✅ URL saved and notification sent!")
+            } else {
                 print("❌ Share Extension: No URL found")
-                self?.showError("No URL found in shared content")
-                return
             }
-            
-            print("🔗 Share Extension: Extracted URL: \(url)")
-            
-            // Store the URL in shared UserDefaults (App Group)
-            self.saveSharedURL(url)
-            
-            // Open the main app to process it
-            self.openMainApp(with: url)
             
             // Complete the extension
             self.extensionContext?.completeRequest(returningItems: [], completionHandler: nil)
@@ -51,31 +61,18 @@ class ShareViewController: SLComposeServiceViewController {
     // MARK: - Extract Shared URL
     
     private func extractSharedURL(completion: @escaping (String?) -> Void) {
-        guard let extensionItem = extensionContext?.inputItems.first as? NSExtensionItem else {
+        guard let extensionItem = extensionContext?.inputItems.first as? NSExtensionItem,
+              let attachments = extensionItem.attachments else {
             completion(nil)
             return
         }
         
-        guard let attachments = extensionItem.attachments else {
-            completion(nil)
-            return
-        }
-        
-        // Look through all attachments for a URL
+        // Look for URL attachment
         for attachment in attachments {
-            // Check for URL type
             if attachment.hasItemConformingToTypeIdentifier(UTType.url.identifier) {
                 attachment.loadItem(forTypeIdentifier: UTType.url.identifier, options: nil) { (item, error) in
-                    if let error = error {
-                        print("❌ Error loading URL: \(error)")
-                        completion(nil)
-                        return
-                    }
-                    
                     if let url = item as? URL {
                         completion(url.absoluteString)
-                    } else if let data = item as? Data, let urlString = String(data: data, encoding: .utf8) {
-                        completion(urlString)
                     } else {
                         completion(nil)
                     }
@@ -83,22 +80,11 @@ class ShareViewController: SLComposeServiceViewController {
                 return
             }
             
-            // Check for plain text (sometimes Instagram shares as text)
+            // Check for plain text (Instagram sometimes shares as text)
             if attachment.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) {
                 attachment.loadItem(forTypeIdentifier: UTType.plainText.identifier, options: nil) { (item, error) in
-                    if let error = error {
-                        print("❌ Error loading text: \(error)")
-                        completion(nil)
-                        return
-                    }
-                    
                     if let text = item as? String {
-                        // Check if the text contains a URL
-                        if let url = self.extractURLFromText(text) {
-                            completion(url)
-                        } else {
-                            completion(text)
-                        }
+                        completion(text)
                     } else {
                         completion(nil)
                     }
@@ -110,97 +96,72 @@ class ShareViewController: SLComposeServiceViewController {
         completion(nil)
     }
     
-    private func extractURLFromText(_ text: String) -> String? {
-        // Try to find a URL in the text
-        let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
-        let matches = detector?.matches(in: text, options: [], range: NSRange(location: 0, length: text.utf16.count))
-        
-        if let match = matches?.first, let range = Range(match.range, in: text) {
-            return String(text[range])
-        }
-        
-        return nil
-    }
-    
     // MARK: - Save to App Group
     
     private func saveSharedURL(_ url: String) {
-        // Save to UserDefaults with App Group
-        // You need to create an App Group in your project: group.com.yourcompany.informed
-        if let sharedDefaults = UserDefaults(suiteName: "group.com.yourcompany.informed") {
-            sharedDefaults.set(url, forKey: "pendingSharedURL")
-            sharedDefaults.set(Date(), forKey: "pendingSharedURLDate")
-            sharedDefaults.synchronize()
-            print("💾 Saved URL to App Group")
+        // IMPORTANT: Replace "group.com.yourcompany.informed" with your ACTUAL App Group
+        // Check: Xcode → Target → Signing & Capabilities → App Groups
+        let appGroupName = "group.com.jacob.informed"
+        
+        guard let sharedDefaults = UserDefaults(suiteName: appGroupName) else {
+            print("⚠️ Could not access App Group: \(appGroupName)")
+            print("   Make sure App Group is configured in Xcode!")
+            return
+        }
+        
+        // Save the URL and timestamp
+        // Use TimeInterval (Double) instead of Date object for better compatibility
+        sharedDefaults.set(url, forKey: "pendingSharedURL")
+        sharedDefaults.set(Date().timeIntervalSince1970, forKey: "pendingSharedURLDate")
+        
+        // Note: synchronize() is deprecated and can cause issues with App Groups
+        // UserDefaults saves automatically to disk
+        
+        print("💾 Saved URL to App Group: \(appGroupName)")
+        
+        // Verify the save worked
+        if let savedURL = sharedDefaults.string(forKey: "pendingSharedURL") {
+            print("✅ Verified saved URL: \(savedURL)")
         } else {
-            print("⚠️ Could not access App Group")
+            print("⚠️ Warning: Could not immediately verify saved URL")
         }
     }
     
-    // MARK: - Open Main App
+    // MARK: - Send Local Notification
     
-    private func openMainApp(with url: String) {
-        // URL encode the Instagram URL
-        guard let encodedURL = url.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
-            print("❌ Failed to encode URL")
-            return
-        }
+    private func sendLocalNotification(for url: String) {
+        let center = UNUserNotificationCenter.current()
         
-        // Create deep link to main app
-        let deepLink = "factcheckapp://share?url=\(encodedURL)"
+        // Create notification content
+        let content = UNMutableNotificationContent()
+        content.title = "Instagram Reel Ready"
+        content.body = "Tap to fact-check your Instagram reel"
+        content.sound = .default
+        content.badge = 1
         
-        guard let deepLinkURL = URL(string: deepLink) else {
-            print("❌ Failed to create deep link")
-            return
-        }
+        // Add URL to notification so we can process it when tapped
+        content.userInfo = [
+            "instagram_url": url,
+            "action": "process_reel"
+        ]
         
-        // Open the main app with the deep link
-        var responder: UIResponder? = self as UIResponder
-        let selector = #selector(openURL(_:))
+        // Create trigger (immediate)
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 0.1, repeats: false)
         
-        while responder != nil {
-            if responder!.responds(to: selector) && responder != self {
-                responder!.perform(selector, with: deepLinkURL)
-                print("✅ Opened main app with URL")
-                return
-            }
-            responder = responder?.next
-        }
-        
-        print("⚠️ Could not open main app")
-    }
-    
-    @objc private func openURL(_ url: URL) {
-        // This method is called via responder chain
-    }
-    
-    // MARK: - Error Handling
-    
-    private func showError(_ message: String) {
-        let alert = UIAlertController(
-            title: "Error",
-            message: message,
-            preferredStyle: .alert
+        // Create request
+        let request = UNNotificationRequest(
+            identifier: "reel-\(UUID().uuidString)",
+            content: content,
+            trigger: trigger
         )
-        alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in
-            self.extensionContext?.completeRequest(returningItems: [], completionHandler: nil)
-        })
-        present(alert, animated: true)
-    }
-    
-    // MARK: - View Customization
-    
-    override func viewDidLoad() {
-        super.viewDidLoad()
         
-        // Customize the share sheet appearance
-        title = "Share to Informed"
-        placeholder = "Fact-checking this Instagram reel..."
-        
-        // Set initial text
-        textView.text = "Processing Instagram reel..."
-        
-        print("📱 Share Extension loaded")
+        // Schedule notification
+        center.add(request) { error in
+            if let error = error {
+                print("❌ Failed to send notification: \(error)")
+            } else {
+                print("✅ Notification scheduled!")
+            }
+        }
     }
 }
-

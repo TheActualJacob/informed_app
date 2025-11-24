@@ -4,6 +4,8 @@ internal import Combine
 // MARK: - User Defaults Manager (for storing userId)
 
 class UserManager: ObservableObject {
+    static let shared = UserManager()
+    
     @Published var isAuthenticated: Bool = false
     @Published var currentUserId: String?
     @Published var currentUsername: String?

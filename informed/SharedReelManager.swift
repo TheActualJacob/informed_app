@@ -67,6 +67,9 @@ class SharedReelManager: ObservableObject {
     
     private let reelsKey = "stored_shared_reels"
     
+    // Reference to HomeViewModel to integrate with main feed
+    weak var homeViewModel: HomeViewModel?
+    
     init() {
         loadStoredReels()
         setupNotificationObserver()
@@ -142,71 +145,86 @@ class SharedReelManager: ObservableObject {
         reels.insert(newReel, at: 0)
         saveReels()
         
-        // Get device token
-        let deviceToken = NotificationManager.shared.getDeviceToken() ?? "no_token"
+        // Get user ID
+        let userId = UserManager.shared.currentUserId ?? "anonymous"
         
-        guard let url = URL(string: "https://my-backend.com/api/fact-check") else {
-            await MainActor.run {
-                uploadError = "Invalid backend URL"
-                updateReelStatus(id: newReel.id, status: .failed, errorMessage: "Invalid backend URL")
-                isUploading = false
+        // If we have a homeViewModel reference, trigger the same UI flow as pasting a link
+        if let viewModel = homeViewModel {
+            // Set the processing state to show the loading banner
+            viewModel.processingLink = instagramURL
+            if let url = URL(string: instagramURL) {
+                viewModel.processingThumbnailURL = url
             }
-            return false
         }
         
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Bearer YOUR_AUTH_TOKEN", forHTTPHeaderField: "Authorization")
-        
-        let body: [String: Any] = [
-            "url": instagramURL,
-            "device_token": deviceToken,
-            "submission_id": newReel.id
-        ]
-        
         do {
-            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+            // Use the existing sendFactCheck function from Requests.swift
+            let request = FactCheckRequest(link: instagramURL, userId: userId)
+            print("📤 Sending fact check request for shared reel...")
             
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let factCheckData = try await sendFactCheck(request)
+            print("✅ Successfully received fact check for shared reel")
             
-            guard let httpResponse = response as? HTTPURLResponse else {
-                throw URLError(.badServerResponse)
-            }
+            // Update the reel status
+            updateReelStatus(id: newReel.id, status: .completed, resultId: factCheckData.title)
             
-            if (200...299).contains(httpResponse.statusCode) {
-                print("✅ Successfully uploaded reel to backend")
-                
-                // Parse response if needed
-                if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                   let factCheckId = json["fact_check_id"] as? String {
-                    updateReelStatus(id: newReel.id, status: .processing, resultId: factCheckId)
-                } else {
-                    updateReelStatus(id: newReel.id, status: .processing)
-                }
-                
-                await MainActor.run {
-                    lastUploadSuccess = true
-                    isUploading = false
-                }
-                
-                return true
-            } else {
-                let errorText = String(data: data, encoding: .utf8) ?? "Unknown error"
-                throw NSError(
-                    domain: "FactCheckError",
-                    code: httpResponse.statusCode,
-                    userInfo: [NSLocalizedDescriptionKey: errorText]
+            // If we have a homeViewModel, add the result to the main feed (same as paste flow)
+            if let viewModel = homeViewModel {
+                // Convert to FactCheck model
+                let factCheck = FactCheck(
+                    claim: factCheckData.claim,
+                    verdict: factCheckData.verdict,
+                    claimAccuracyRating: factCheckData.claimAccuracyRating,
+                    explanation: factCheckData.explanation,
+                    summary: factCheckData.summary,
+                    sources: factCheckData.sources
                 )
+                
+                // Create FactCheckItem
+                let newItem = FactCheckItem(
+                    sourceName: "Instagram",
+                    sourceIcon: "camera.fill",
+                    timeAgo: "Just now",
+                    title: factCheckData.title,
+                    summary: factCheckData.summary,
+                    thumbnailURL: URL(string: factCheckData.videoLink),
+                    credibilityScore: viewModel.calculateCredibilityScore(from: factCheckData.claimAccuracyRating),
+                    sources: factCheckData.sources.joined(separator: ", "),
+                    verdict: factCheckData.verdict,
+                    factCheck: factCheck,
+                    originalLink: instagramURL,
+                    datePosted: factCheckData.date
+                )
+                
+                // Add to main feed
+                viewModel.items.insert(newItem, at: 0)
+                
+                // Clear processing state
+                viewModel.processingLink = nil
+                viewModel.processingThumbnailURL = nil
             }
-            
-        } catch {
-            print("❌ Error uploading reel: \(error)")
             
             await MainActor.run {
-                uploadError = "Failed to upload: \(error.localizedDescription)"
+                lastUploadSuccess = true
+                isUploading = false
+            }
+            
+            return true
+            
+        } catch {
+            print("❌ Error fact-checking shared reel: \(error)")
+            
+            await MainActor.run {
+                uploadError = "Failed to fact-check: \(error.localizedDescription)"
                 updateReelStatus(id: newReel.id, status: .failed, errorMessage: error.localizedDescription)
                 isUploading = false
+                
+                // Clear processing state on error
+                if let viewModel = homeViewModel {
+                    viewModel.processingLink = nil
+                    viewModel.processingThumbnailURL = nil
+                    viewModel.errorMessage = error.localizedDescription
+                }
             }
             
             return false
