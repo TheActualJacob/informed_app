@@ -17,7 +17,7 @@ struct UserResponse: Codable {
 // MARK: - API Functions
 
 func createUser(_ registration: UserRegistration) async throws -> UserResponse {
-    guard let url = URL(string: "http://localhost:5001/create-user") else {
+    guard let url = URL(string: "http://192.168.1.238:5001/create-user") else {
         throw URLError(.badURL)
     }
     

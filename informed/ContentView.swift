@@ -1005,16 +1005,16 @@ struct HomeView: View {
                         Text("Feed")
                     }
                 
-                HistoryView()
+                SharedReelsView()
                     .tabItem {
-                        Image(systemName: "clock.arrow.circlepath")
-                        Text("History")
+                        Image(systemName: "square.and.arrow.down.fill")
+                        Text("Shared Reels")
                     }
                 
-                ProfileView()
+                AccountView()
                     .tabItem {
-                        Image(systemName: "person.crop.circle")
-                        Text("Profile")
+                        Image(systemName: "person.circle.fill")
+                        Text("Account")
                     }
             }
             .accentColor(.brandBlue)
@@ -1039,10 +1039,14 @@ struct HomeView: View {
         }
     }
     
-    // MARK: - Profile View
+    // MARK: - Account View (Combined Settings, Profile, History)
     
-    struct ProfileView: View {
+    struct AccountView: View {
         @EnvironmentObject var userManager: UserManager
+        @EnvironmentObject var notificationManager: NotificationManager
+        @State private var showLogoutConfirmation = false
+        @State private var showInstructions = false
+        @State private var showHistory = false
         
         var body: some View {
             NavigationView {
@@ -1074,7 +1078,7 @@ struct HomeView: View {
                             }
                             
                             if let userId = userManager.currentUserId {
-                                Text("ID: \(userId)")
+                                Text("ID: \(userId.prefix(8))")
                                     .font(.caption)
                                     .foregroundColor(.gray)
                                     .padding(.horizontal, 12)
@@ -1083,7 +1087,7 @@ struct HomeView: View {
                                     .cornerRadius(8)
                             }
                         }
-                        .padding(.top, 40)
+                        .padding(.top, 20)
                         
                         // Stats Section
                         HStack(spacing: 20) {
@@ -1093,25 +1097,74 @@ struct HomeView: View {
                         }
                         .padding(.horizontal)
                         
-                        // Settings Section
-                        VStack(spacing: 12) {
-                            ProfileButton(icon: "bell.fill", title: "Notifications", color: .brandYellow) {
-                                // TODO: Notifications settings
+                        // Main Menu Section
+                        VStack(spacing: 0) {
+                            // History
+                            NavigationLink(destination: HistoryView()) {
+                                MenuRow(icon: "clock.arrow.circlepath", title: "History", color: .brandBlue)
                             }
                             
-                            ProfileButton(icon: "shield.fill", title: "Privacy", color: .brandBlue) {
+                            Divider().padding(.leading, 60)
+                            
+                            // How to Use
+                            NavigationLink(destination: InstructionsView()) {
+                                MenuRow(icon: "info.circle.fill", title: "How to Use", color: .brandTeal)
+                            }
+                            
+                            Divider().padding(.leading, 60)
+                            
+                            // Notifications
+                            NavigationLink(destination: NotificationSettingsDetailView()) {
+                                HStack {
+                                    Image(systemName: "bell.fill")
+                                        .foregroundColor(.brandYellow)
+                                        .frame(width: 30)
+                                    
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Notifications")
+                                            .font(.body)
+                                            .foregroundColor(.primary)
+                                        
+                                        Text(notificationManager.notificationPermissionGranted ? "Enabled" : "Disabled")
+                                            .font(.caption)
+                                            .foregroundColor(notificationManager.notificationPermissionGranted ? .brandGreen : .gray)
+                                    }
+                                    
+                                    Spacer()
+                                    
+                                    Image(systemName: "chevron.right")
+                                        .font(.caption)
+                                        .foregroundColor(.gray)
+                                }
+                                .padding()
+                            }
+                            
+                            Divider().padding(.leading, 60)
+                            
+                            // Privacy
+                            Button(action: {
                                 // TODO: Privacy settings
+                            }) {
+                                MenuRow(icon: "shield.fill", title: "Privacy & Security", color: .gray)
                             }
                             
-                            ProfileButton(icon: "info.circle.fill", title: "About", color: .gray) {
+                            Divider().padding(.leading, 60)
+                            
+                            // About
+                            Button(action: {
                                 // TODO: About page
+                            }) {
+                                MenuRow(icon: "info.circle", title: "About Informed", color: .gray)
                             }
                         }
+                        .background(Color.white)
+                        .cornerRadius(12)
+                        .shadow(color: Color.black.opacity(0.05), radius: 5, y: 2)
                         .padding(.horizontal)
                         
                         // Logout Button
                         Button(action: {
-                            userManager.logout()
+                            showLogoutConfirmation = true
                         }) {
                             HStack {
                                 Image(systemName: "rectangle.portrait.and.arrow.right")
@@ -1131,7 +1184,166 @@ struct HomeView: View {
                     }
                 }
                 .background(Color.backgroundLight)
-                .navigationTitle("Profile")
+                .navigationTitle("Account")
+                .confirmationDialog("Sign Out", isPresented: $showLogoutConfirmation, titleVisibility: .visible) {
+                    Button("Sign Out", role: .destructive) {
+                        userManager.logout()
+                    }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("Are you sure you want to sign out?")
+                }
+            }
+        }
+    }
+    
+    struct MenuRow: View {
+        let icon: String
+        let title: String
+        let color: Color
+        
+        var body: some View {
+            HStack {
+                Image(systemName: icon)
+                    .foregroundColor(color)
+                    .frame(width: 30)
+                
+                Text(title)
+                    .foregroundColor(.primary)
+                
+                Spacer()
+                
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundColor(.gray)
+            }
+            .padding()
+        }
+    }
+    
+    // MARK: - Notification Settings Detail View
+    
+    struct NotificationSettingsDetailView: View {
+        @EnvironmentObject var notificationManager: NotificationManager
+        
+        var body: some View {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    
+                    // Status Card
+                    VStack(spacing: 16) {
+                        HStack {
+                            Image(systemName: notificationManager.notificationPermissionGranted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                                .font(.title)
+                                .foregroundColor(notificationManager.notificationPermissionGranted ? .brandGreen : .brandYellow)
+                            
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Notifications")
+                                    .font(.headline)
+                                
+                                Text(notificationStatusText)
+                                    .font(.caption)
+                                    .foregroundColor(.gray)
+                            }
+                            
+                            Spacer()
+                        }
+                        
+                        if notificationManager.authorizationStatus == .denied {
+                            Button(action: {
+                                notificationManager.openNotificationSettings()
+                            }) {
+                                HStack {
+                                    Image(systemName: "gear")
+                                    Text("Open Settings")
+                                }
+                                .font(.subheadline)
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color.brandBlue)
+                                .cornerRadius(12)
+                            }
+                        }
+                        
+                        if let deviceToken = notificationManager.deviceToken {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Device Registered")
+                                    .font(.caption)
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.gray)
+                                
+                                Text(String(deviceToken.prefix(16)) + "...")
+                                    .font(.caption)
+                                    .foregroundColor(.gray)
+                                    .padding(8)
+                                    .background(Color.gray.opacity(0.1))
+                                    .cornerRadius(8)
+                            }
+                        }
+                    }
+                    .padding()
+                    .background(Color.white)
+                    .cornerRadius(12)
+                    .shadow(color: Color.black.opacity(0.05), radius: 5, y: 2)
+                    
+                    // Info Section
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("About Notifications")
+                            .font(.headline)
+                        
+                        Text("You'll receive notifications when:")
+                            .font(.subheadline)
+                            .foregroundColor(.gray)
+                        
+                        InfoRow(icon: "checkmark.circle.fill", text: "Fact-check analysis is complete", color: .brandGreen)
+                        InfoRow(icon: "bell.fill", text: "Shared reels are processed", color: .brandBlue)
+                        InfoRow(icon: "exclamationmark.triangle.fill", text: "Important updates about your submissions", color: .brandYellow)
+                    }
+                    .padding()
+                    .background(Color.backgroundLight)
+                    .cornerRadius(12)
+                    
+                }
+                .padding()
+            }
+            .background(Color.backgroundLight)
+            .navigationTitle("Notifications")
+            .navigationBarTitleDisplayMode(.inline)
+        }
+        
+        private var notificationStatusText: String {
+            switch notificationManager.authorizationStatus {
+            case .authorized:
+                return "Enabled - You'll receive notifications"
+            case .denied:
+                return "Disabled - Enable in Settings"
+            case .notDetermined:
+                return "Not configured"
+            case .provisional:
+                return "Provisional"
+            case .ephemeral:
+                return "Ephemeral"
+            @unknown default:
+                return "Unknown"
+            }
+        }
+    }
+    
+    struct InfoRow: View {
+        let icon: String
+        let text: String
+        let color: Color
+        
+        var body: some View {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .foregroundColor(color)
+                    .frame(width: 20)
+                
+                Text(text)
+                    .font(.subheadline)
+                    .foregroundColor(.primary)
             }
         }
     }
@@ -1164,40 +1376,12 @@ struct HomeView: View {
         }
     }
     
-    struct ProfileButton: View {
-        let icon: String
-        let title: String
-        let color: Color
-        let action: () -> Void
-        
-        var body: some View {
-            Button(action: action) {
-                HStack {
-                    Image(systemName: icon)
-                        .foregroundColor(color)
-                        .frame(width: 24)
-                    
-                    Text(title)
-                        .foregroundColor(.primary)
-                    
-                    Spacer()
-                    
-                    Image(systemName: "chevron.right")
-                        .font(.caption)
-                        .foregroundColor(.gray)
-                }
-                .padding()
-                .background(Color.white)
-                .cornerRadius(12)
-                .shadow(color: Color.black.opacity(0.05), radius: 5, y: 2)
-            }
-        }
-    }
-    
     struct ContentView_Previews: PreviewProvider {
         static var previews: some View {
             ContentView()
                 .environmentObject(UserManager())
+                .environmentObject(NotificationManager.shared)
+                .environmentObject(SharedReelManager.shared)
         }
     }
     

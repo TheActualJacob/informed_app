@@ -2,7 +2,7 @@ import Foundation
 
 func sendFactCheck(_ info: FactCheckRequest) async throws -> FactCheckData {
     // 1. Create the URL for your local Flask server
-    guard let url = URL(string: "http://localhost:5001/fact-check") else {
+    guard let url = URL(string: "http://192.168.1.238:5001/fact-check") else {
         throw URLError(.badURL)
     }
     
