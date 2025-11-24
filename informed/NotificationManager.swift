@@ -67,6 +67,14 @@ class NotificationManager: NSObject, ObservableObject {
     func saveDeviceToken(_ token: String) {
         self.deviceToken = token
         UserDefaults.standard.set(token, forKey: deviceTokenKey)
+        
+        // Also save to App Group for Share Extension access
+        let appGroupName = "group.com.jacob.informed"
+        if let sharedDefaults = UserDefaults(suiteName: appGroupName) {
+            sharedDefaults.set(token, forKey: deviceTokenKey)
+            print("💾 Device token also saved to App Group for Share Extension")
+        }
+        
         print("💾 Device token saved: \(token)")
         
         // Send token to backend

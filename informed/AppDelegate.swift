@@ -74,43 +74,97 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         
         print("👆 User tapped notification: \(userInfo)")
         
-        // Check if this is from Share Extension (local notification for Instagram reel)
-        if let action = userInfo["action"] as? String, action == "process_reel" {
-            print("🎬 Processing Instagram reel from notification tap")
+        // Handle completion notification from Share Extension (fact-check complete)
+        if let action = userInfo["action"] as? String, action == "fact_check_complete" {
+            print("✅ User tapped fact-check completion notification")
             
-            // The app should automatically check for pending URLs when becoming active
-            // But we can also post a notification to trigger processing immediately
             Task { @MainActor in
-                NotificationCenter.default.post(
-                    name: NSNotification.Name("ProcessPendingReel"),
-                    object: nil,
-                    userInfo: userInfo
-                )
+                // Sync completed fact-checks from App Group and add to feed
+                SharedReelManager.shared.syncCompletedFactChecksFromAppGroup()
                 
-                // Trigger a check for pending URLs
+                // Also trigger the notification for informedApp to check
                 NotificationCenter.default.post(
                     name: NSNotification.Name("CheckForPendingSharedURLs"),
                     object: nil
                 )
             }
         }
-        // Handle push notification from backend (fact-check complete)
+        // Handle push notification from backend (if you implement APNs later)
         else if let factCheckId = userInfo["fact_check_id"] as? String {
-            print("🔍 Navigating to fact check results: \(factCheckId)")
+            print("🔍 Fact-check complete for ID: \(factCheckId)")
             
             Task { @MainActor in
-                NotificationManager.shared.handleNotification(userInfo: userInfo)
+                // Mark this reel as completed in SharedReelManager
+                SharedReelManager.shared.markReelAsCompleted(factCheckId: factCheckId)
                 
-                // Post notification to navigate to fact check results
-                NotificationCenter.default.post(
-                    name: NSNotification.Name("NavigateToFactCheck"),
-                    object: nil,
-                    userInfo: ["fact_check_id": factCheckId]
-                )
+                // Fetch the fact-check data from backend and add to feed
+                if let instagramURL = userInfo["instagram_url"] as? String {
+                    await fetchAndDisplayFactCheck(factCheckId: factCheckId, userInfo: userInfo)
+                }
             }
         }
         
         completionHandler()
+    }
+    
+    // MARK: - Fetch Fact-Check Data
+    
+    @MainActor
+    private func fetchAndDisplayFactCheck(factCheckId: String, userInfo: [AnyHashable: Any]) async {
+        print("📥 Fetching fact-check data for ID: \(factCheckId)")
+        
+        // Try to get the Instagram URL from the notification payload
+        guard let instagramURL = userInfo["instagram_url"] as? String else {
+            print("⚠️ No Instagram URL in notification payload")
+            return
+        }
+        
+        // Get user ID
+        let userId = UserManager.shared.currentUserId ?? "anonymous"
+        
+        do {
+            // Fetch the fact-check data from backend using the same endpoint
+            let request = FactCheckRequest(link: instagramURL, userId: userId)
+            let factCheckData = try await sendFactCheck(request)
+            
+            print("✅ Fetched fact-check data")
+            
+            // Add to HomeViewModel if it's set up
+            if let homeViewModel = SharedReelManager.shared.homeViewModel {
+                // Convert to FactCheck model
+                let factCheck = FactCheck(
+                    claim: factCheckData.claim,
+                    verdict: factCheckData.verdict,
+                    claimAccuracyRating: factCheckData.claimAccuracyRating,
+                    explanation: factCheckData.explanation,
+                    summary: factCheckData.summary,
+                    sources: factCheckData.sources
+                )
+                
+                // Create FactCheckItem
+                let newItem = FactCheckItem(
+                    sourceName: "Instagram",
+                    sourceIcon: "camera.fill",
+                    timeAgo: "Just now",
+                    title: factCheckData.title,
+                    summary: factCheckData.summary,
+                    thumbnailURL: URL(string: factCheckData.videoLink),
+                    credibilityScore: homeViewModel.calculateCredibilityScore(from: factCheckData.claimAccuracyRating),
+                    sources: factCheckData.sources.joined(separator: ", "),
+                    verdict: factCheckData.verdict,
+                    factCheck: factCheck,
+                    originalLink: instagramURL,
+                    datePosted: factCheckData.date
+                )
+                
+                // Add to main feed
+                homeViewModel.items.insert(newItem, at: 0)
+                
+                print("✅ Added fact-check to feed")
+            }
+        } catch {
+            print("❌ Error fetching fact-check: \(error)")
+        }
     }
     
     // MARK: - Handle Remote Notifications

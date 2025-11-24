@@ -85,7 +85,7 @@ class SharedReelManager: ObservableObject {
         }
     }
     
-    private func saveReels() {
+    func saveReels() {
         if let encoded = try? JSONEncoder().encode(reels) {
             UserDefaults.standard.set(encoded, forKey: reelsKey)
             print("💾 Saved \(reels.count) reels")
@@ -268,6 +268,120 @@ class SharedReelManager: ObservableObject {
                 self?.markReelAsCompleted(factCheckId: factCheckId)
             }
         }
+    }
+    
+    // MARK: - Sync Completed Fact-Checks from Share Extension
+    
+    func syncCompletedFactChecksFromAppGroup() {
+        let appGroupName = "group.com.jacob.informed"
+        
+        guard let sharedDefaults = UserDefaults(suiteName: appGroupName) else {
+            print("⚠️ Could not access App Group: \(appGroupName)")
+            return
+        }
+        
+        // Check for COMPLETED fact-checks from Share Extension
+        guard let completedFactChecks = sharedDefaults.array(forKey: "completed_fact_checks") as? [[String: Any]],
+              !completedFactChecks.isEmpty else {
+            print("📭 No completed fact-checks found in App Group")
+            return
+        }
+        
+        print("📥 Found \(completedFactChecks.count) completed fact-checks from Share Extension")
+        
+        for factCheckData in completedFactChecks {
+            guard let id = factCheckData["id"] as? String,
+                  let url = factCheckData["url"] as? String,
+                  let submittedAt = factCheckData["submitted_at"] as? TimeInterval else {
+                print("⚠️ Invalid fact-check data, skipping")
+                continue
+            }
+            
+            // Check if we already have this fact-check
+            if reels.contains(where: { $0.id == id }) {
+                print("ℹ️ Fact-check \(id) already exists, skipping")
+                continue
+            }
+            
+            // Add as completed to SharedReelManager
+            let sharedReel = SharedReel(
+                id: id,
+                url: url,
+                submittedAt: Date(timeIntervalSince1970: submittedAt),
+                status: .completed,
+                resultId: factCheckData["title"] as? String,
+                errorMessage: nil
+            )
+            
+            reels.insert(sharedReel, at: 0)
+            print("✅ Synced completed fact-check \(id) to SharedReelManager")
+            
+            // Add to HomeViewModel feed if available
+            if let homeViewModel = homeViewModel {
+                addFactCheckToFeed(factCheckData: factCheckData, homeViewModel: homeViewModel)
+            }
+        }
+        
+        saveReels()
+        
+        // Clear processed fact-checks from App Group
+        sharedDefaults.removeObject(forKey: "completed_fact_checks")
+        print("🧹 Cleared completed_fact_checks from App Group")
+    }
+    
+    // MARK: - Add Fact-Check to Feed
+    
+    private func addFactCheckToFeed(factCheckData: [String: Any], homeViewModel: HomeViewModel) {
+        // Extract fact-check data from dictionary
+        guard let title = factCheckData["title"] as? String,
+              let claim = factCheckData["claim"] as? String,
+              let verdict = factCheckData["verdict"] as? String,
+              let claimAccuracyRating = factCheckData["claim_accuracy_rating"] as? String,
+              let explanation = factCheckData["explanation"] as? String,
+              let summary = factCheckData["summary"] as? String,
+              let sources = factCheckData["sources"] as? [String],
+              let videoLink = factCheckData["videoLink"] as? String,
+              let datePosted = factCheckData["date"] as? String,
+              let url = factCheckData["url"] as? String else {
+            print("⚠️ Missing required fields in fact-check data")
+            return
+        }
+        
+        // Check if this fact-check is already in the feed
+        if homeViewModel.items.contains(where: { $0.originalLink == url }) {
+            print("ℹ️ Fact-check already in feed, skipping")
+            return
+        }
+        
+        // Convert to FactCheck model
+        let factCheck = FactCheck(
+            claim: claim,
+            verdict: verdict,
+            claimAccuracyRating: claimAccuracyRating,
+            explanation: explanation,
+            summary: summary,
+            sources: sources
+        )
+        
+        // Create FactCheckItem
+        let newItem = FactCheckItem(
+            sourceName: "Instagram",
+            sourceIcon: "camera.fill",
+            timeAgo: "Just now",
+            title: title,
+            summary: summary,
+            thumbnailURL: URL(string: videoLink),
+            credibilityScore: homeViewModel.calculateCredibilityScore(from: claimAccuracyRating),
+            sources: sources.joined(separator: ", "),
+            verdict: verdict,
+            factCheck: factCheck,
+            originalLink: url,
+            datePosted: datePosted
+        )
+        
+        // Add to main feed at the top
+        homeViewModel.items.insert(newItem, at: 0)
+        print("✅ Added completed fact-check to feed: \(title)")
     }
     
     // MARK: - Clear Data

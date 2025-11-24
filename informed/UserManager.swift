@@ -29,6 +29,15 @@ class UserManager: ObservableObject {
     func saveUser(userId: String, username: String) {
         UserDefaults.standard.set(userId, forKey: userIdKey)
         UserDefaults.standard.set(username, forKey: usernameKey)
+        
+        // Also save to App Group for Share Extension access
+        let appGroupName = "group.com.jacob.informed"
+        if let sharedDefaults = UserDefaults(suiteName: appGroupName) {
+            sharedDefaults.set(userId, forKey: userIdKey)
+            sharedDefaults.set(username, forKey: usernameKey)
+            print("💾 User info also saved to App Group for Share Extension")
+        }
+        
         self.currentUserId = userId
         self.currentUsername = username
         self.isAuthenticated = true
