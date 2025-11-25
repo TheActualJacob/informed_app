@@ -6,29 +6,55 @@
 //
 
 import UIKit
-import Social
+import SwiftUI
 import UniformTypeIdentifiers
 import UserNotifications
 
-class ShareViewController: SLComposeServiceViewController {
+class ShareViewController: UIViewController {
+    
+    private var hostingController: UIHostingController<ShareView>?
     
     override func viewDidLoad() {
         super.viewDidLoad()
         
-        // Customize the appearance
-        title = "Share to Informed"
-        placeholder = "Fact-check will start automatically after you tap Post"
-        
         print("📱 Share Extension loaded")
+        
+        // Make the view controller background transparent
+        view.backgroundColor = .clear
+        
+        // Create SwiftUI view
+        let shareView = ShareView(
+            onShare: { [weak self] in
+                self?.handleShare()
+            },
+            onCancel: { [weak self] in
+                self?.handleCancel()
+            }
+        )
+        
+        // Embed SwiftUI view
+        let hosting = UIHostingController(rootView: shareView)
+        hosting.view.backgroundColor = .clear // Make hosting controller transparent too
+        addChild(hosting)
+        view.addSubview(hosting.view)
+        hosting.view.frame = view.bounds
+        hosting.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        hosting.didMove(toParent: self)
+        hostingController = hosting
     }
-
-    override func isContentValid() -> Bool {
-        // Always allow posting
-        return true
-    }
-
-    override func didSelectPost() {
-        print("📤 Share Extension: User tapped Post")
+    
+    private func handleShare() {
+        print("📤 Share Extension: User tapped Share")
+        
+        // Show processing state
+        if let hosting = hostingController {
+            let processingView = ShareView(
+                onShare: {},
+                onCancel: {},
+                isProcessing: true
+            )
+            hosting.rootView = processingView
+        }
         
         // Extract and process the URL
         extractSharedURL { [weak self] url in
@@ -37,19 +63,28 @@ class ShareViewController: SLComposeServiceViewController {
             if let url = url {
                 print("🔗 Share Extension: Extracted URL: \(url)")
                 
-                // Start fact-check immediately in background
+                // Start fact-check in background and close IMMEDIATELY
                 self.startFactCheckInBackground(url: url)
+                
+                // Close after brief success animation (reduced from 0.5s to 0.3s)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    self.closeExtension()
+                }
                 
             } else {
                 print("❌ Share Extension: No URL found")
-                self.extensionContext?.completeRequest(returningItems: [], completionHandler: nil)
+                self.closeExtension()
             }
         }
     }
-
-    override func configurationItems() -> [Any]! {
-        // No additional configuration needed
-        return []
+    
+    private func handleCancel() {
+        print("❌ Share Extension: User cancelled")
+        closeExtension()
+    }
+    
+    private func closeExtension() {
+        extensionContext?.completeRequest(returningItems: nil, completionHandler: nil)
     }
     
     // MARK: - Extract Shared URL
@@ -65,10 +100,12 @@ class ShareViewController: SLComposeServiceViewController {
         for attachment in attachments {
             if attachment.hasItemConformingToTypeIdentifier(UTType.url.identifier) {
                 attachment.loadItem(forTypeIdentifier: UTType.url.identifier, options: nil) { (item, error) in
-                    if let url = item as? URL {
-                        completion(url.absoluteString)
-                    } else {
-                        completion(nil)
+                    DispatchQueue.main.async {
+                        if let url = item as? URL {
+                            completion(url.absoluteString)
+                        } else {
+                            completion(nil)
+                        }
                     }
                 }
                 return
@@ -77,10 +114,12 @@ class ShareViewController: SLComposeServiceViewController {
             // Check for plain text (Instagram sometimes shares as text)
             if attachment.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) {
                 attachment.loadItem(forTypeIdentifier: UTType.plainText.identifier, options: nil) { (item, error) in
-                    if let text = item as? String {
-                        completion(text)
-                    } else {
-                        completion(nil)
+                    DispatchQueue.main.async {
+                        if let text = item as? String {
+                            completion(text)
+                        } else {
+                            completion(nil)
+                        }
                     }
                 }
                 return
@@ -97,9 +136,9 @@ class ShareViewController: SLComposeServiceViewController {
         let appGroupName = "group.com.jacob.informed"
         guard let sharedDefaults = UserDefaults(suiteName: appGroupName) else {
             print("⚠️ Could not access App Group: \(appGroupName)")
-            self.extensionContext?.completeRequest(returningItems: [], completionHandler: nil)
             return
         }
+    
         
         let userId = sharedDefaults.string(forKey: "stored_user_id") ?? "anonymous"
         let deviceToken = sharedDefaults.string(forKey: "stored_device_token") ?? "no_token"
@@ -108,10 +147,12 @@ class ShareViewController: SLComposeServiceViewController {
         print("   User ID: \(userId)")
         print("   Device Token: \(deviceToken)")
         
+        // Get backend URL from shared config
+        let backendURL = sharedDefaults.string(forKey: "backend_url") ?? "http://172.20.10.2:5001"
+        
         // Create the API request
-        guard let apiURL = URL(string: "http://192.168.1.238:5001/fact-check") else {
+        guard let apiURL = URL(string: "\(backendURL)/fact-check") else {
             print("❌ Invalid API URL")
-            self.extensionContext?.completeRequest(returningItems: [], completionHandler: nil)
             return
         }
         
@@ -126,44 +167,40 @@ class ShareViewController: SLComposeServiceViewController {
             "user_id": userId,
             "device_token": deviceToken,
             "submission_id": submissionId,
-            "source": "share_extension" // Track that this came from share extension
+            "source": "share_extension"
         ]
         
         do {
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
         } catch {
             print("❌ Error encoding request: \(error)")
-            self.extensionContext?.completeRequest(returningItems: [], completionHandler: nil)
             return
         }
         
-        // Send the request and WAIT for complete response
-        let task = URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
-            guard let self = self else { return }
-            
+        // Save pending submission immediately
+        savePendingSubmission(submissionId: submissionId, url: url, sharedDefaults: sharedDefaults)
+        
+        // Send the request in background (fire and forget)
+        let task = URLSession.shared.dataTask(with: request) { data, response, error in
             if let error = error {
                 print("❌ Network error: \(error.localizedDescription)")
                 self.sendErrorNotification()
-                self.extensionContext?.completeRequest(returningItems: [], completionHandler: nil)
                 return
             }
             
             guard let httpResponse = response as? HTTPURLResponse else {
                 print("❌ Invalid response")
                 self.sendErrorNotification()
-                self.extensionContext?.completeRequest(returningItems: [], completionHandler: nil)
                 return
             }
             
             if (200...299).contains(httpResponse.statusCode), let data = data {
                 print("✅ Fact-check completed successfully!")
                 
-                // Parse the complete fact-check response
                 do {
                     if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
                         print("📦 Response data: \(json)")
                         
-                        // Save the COMPLETE fact-check result to App Group
                         self.saveCompletedFactCheck(
                             submissionId: submissionId,
                             url: url,
@@ -171,7 +208,6 @@ class ShareViewController: SLComposeServiceViewController {
                             sharedDefaults: sharedDefaults
                         )
                         
-                        // Send completion notification
                         let title = json["title"] as? String ?? "Fact-Check Complete"
                         self.sendCompletionNotification(url: url, title: title)
                         
@@ -188,42 +224,15 @@ class ShareViewController: SLComposeServiceViewController {
                 }
                 self.sendErrorNotification()
             }
-            
-            // Complete the extension
-            self.extensionContext?.completeRequest(returningItems: [], completionHandler: nil)
         }
         
         task.resume()
-        print("🚀 Fact-check request sent, waiting for response...")
+        print("🚀 Fact-check request sent in background")
     }
     
-    // MARK: - Save Completed Fact-Check
+    // MARK: - Save Pending Submission
     
-    private func saveCompletedFactCheck(submissionId: String, url: String, factCheckData: [String: Any], sharedDefaults: UserDefaults) {
-        // Get existing completed fact-checks or create new array
-        var completedFactChecks = sharedDefaults.array(forKey: "completed_fact_checks") as? [[String: Any]] ?? []
-        
-        // Create completed fact-check entry with ALL the data
-        var factCheck: [String: Any] = [
-            "id": submissionId,
-            "url": url,
-            "submitted_at": Date().timeIntervalSince1970,
-            "status": "completed"
-        ]
-        
-        // Add all the fact-check data from backend
-        factCheck.merge(factCheckData) { (_, new) in new }
-        
-        completedFactChecks.append(factCheck)
-        sharedDefaults.set(completedFactChecks, forKey: "completed_fact_checks")
-        
-        print("💾 Saved completed fact-check to App Group")
-    }
-    
-    // MARK: - Save Submission Info (DEPRECATED - keeping for compatibility)
-    
-    private func saveSubmissionInfo(submissionId: String, url: String, sharedDefaults: UserDefaults) {
-        // Save the submission so main app can track it
+    private func savePendingSubmission(submissionId: String, url: String, sharedDefaults: UserDefaults) {
         var submissions = sharedDefaults.array(forKey: "pending_submissions") as? [[String: Any]] ?? []
         
         let submission: [String: Any] = [
@@ -236,7 +245,32 @@ class ShareViewController: SLComposeServiceViewController {
         submissions.append(submission)
         sharedDefaults.set(submissions, forKey: "pending_submissions")
         
-        print("💾 Saved submission to App Group for main app tracking")
+        print("💾 Saved pending submission to App Group")
+    }
+    
+    // MARK: - Save Completed Fact-Check
+    
+    private func saveCompletedFactCheck(submissionId: String, url: String, factCheckData: [String: Any], sharedDefaults: UserDefaults) {
+        var completedFactChecks = sharedDefaults.array(forKey: "completed_fact_checks") as? [[String: Any]] ?? []
+        
+        var factCheck: [String: Any] = [
+            "id": submissionId,
+            "url": url,
+            "submitted_at": Date().timeIntervalSince1970,
+            "status": "completed"
+        ]
+        
+        factCheck.merge(factCheckData) { (_, new) in new }
+        completedFactChecks.append(factCheck)
+        sharedDefaults.set(completedFactChecks, forKey: "completed_fact_checks")
+        
+        // Remove from pending
+        if var pending = sharedDefaults.array(forKey: "pending_submissions") as? [[String: Any]] {
+            pending.removeAll { ($0["id"] as? String) == submissionId }
+            sharedDefaults.set(pending, forKey: "pending_submissions")
+        }
+        
+        print("💾 Saved completed fact-check to App Group")
     }
     
     // MARK: - Notifications
@@ -245,8 +279,8 @@ class ShareViewController: SLComposeServiceViewController {
         let center = UNUserNotificationCenter.current()
         
         let content = UNMutableNotificationContent()
-        content.title = "Fact-Check Complete"
-        content.body = "'\(title)' - Tap to view results"
+        content.title = "✅ Fact-Check Complete"
+        content.body = "Tap to view results for: \(title)"
         content.sound = .default
         content.badge = 1
         
@@ -271,17 +305,12 @@ class ShareViewController: SLComposeServiceViewController {
         }
     }
     
-    private func sendSuccessNotification(url: String) {
-        // DEPRECATED - Use sendCompletionNotification instead
-        sendCompletionNotification(url: url, title: "Your reel")
-    }
-    
     private func sendErrorNotification() {
         let center = UNUserNotificationCenter.current()
         
         let content = UNMutableNotificationContent()
-        content.title = "Fact-Check Failed"
-        content.body = "Unable to start fact-check. Please try again or paste the link in the app."
+        content.title = "❌ Fact-Check Failed"
+        content.body = "Unable to process this reel. Please try again."
         content.sound = .default
         
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 0.1, repeats: false)
@@ -297,4 +326,142 @@ class ShareViewController: SLComposeServiceViewController {
             }
         }
     }
+}
+
+// MARK: - SwiftUI Share View
+
+struct ShareView: View {
+    let onShare: () -> Void
+    let onCancel: () -> Void
+    var isProcessing: Bool = false
+    
+    @State private var scale: CGFloat = 0.95  // Start closer to full size
+    @State private var opacity: Double = 0
+    
+    var body: some View {
+        ZStack {
+            // Blur background
+            Color.black.opacity(0.4)
+                .ignoresSafeArea()
+            
+            VStack(spacing: 0) {
+                Spacer()
+                
+                // Main card
+                VStack(spacing: 24) {
+                    if isProcessing {
+                        // Processing state
+                        VStack(spacing: 16) {
+                            ProgressView()
+                                .scaleEffect(1.2)
+                                .tint(.white)
+                            
+                            Text("Starting fact-check...")
+                                .font(.system(size: 17, weight: .medium))
+                                .foregroundColor(.white)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 32)
+                        
+                    } else {
+                        // Ready state
+                        VStack(spacing: 20) {
+                            // Icon
+                            ZStack {
+                                Circle()
+                                    .fill(
+                                        LinearGradient(
+                                            colors: [
+                                                Color(red: 0, green: 0.75, blue: 0.85),
+                                                Color(red: 0.15, green: 0.35, blue: 0.95)
+                                            ],
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        )
+                                    )
+                                    .frame(width: 64, height: 64)
+                                
+                                Image(systemName: "checkmark.shield.fill")
+                                    .font(.system(size: 28))
+                                    .foregroundColor(.white)
+                            }
+                            
+                            // Title and description
+                            VStack(spacing: 8) {
+                                Text("Fact-Check This Reel")
+                                    .font(.system(size: 22, weight: .bold))
+                                    .foregroundColor(.white)
+                                
+                                Text("We'll analyze this content and notify you when it's ready")
+                                    .font(.system(size: 15))
+                                    .foregroundColor(.white.opacity(0.8))
+                                    .multilineTextAlignment(.center)
+                                    .padding(.horizontal, 8)
+                            }
+                            
+                            // Buttons
+                            VStack(spacing: 12) {
+                                Button(action: onShare) {
+                                    HStack {
+                                        Image(systemName: "paperplane.fill")
+                                        Text("Start Fact-Check")
+                                            .fontWeight(.semibold)
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 16)
+                                    .background(Color.white)
+                                    .foregroundColor(Color(red: 0.15, green: 0.35, blue: 0.95))
+                                    .cornerRadius(14)
+                                }
+                                
+                                Button(action: onCancel) {
+                                    Text("Cancel")
+                                        .fontWeight(.medium)
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 14)
+                                        .foregroundColor(.white.opacity(0.8))
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 24)
+                        .padding(.vertical, 32)
+                    }
+                }
+                .background(
+                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color(red: 0.15, green: 0.35, blue: 0.95).opacity(0.95),
+                                    Color(red: 0, green: 0.75, blue: 0.85).opacity(0.95)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .shadow(color: .black.opacity(0.3), radius: 30, x: 0, y: 15)
+                )
+                .padding(.horizontal, 20)
+                .scaleEffect(scale)
+                .opacity(opacity)
+                
+                Spacer()
+                    .frame(height: 40)
+            }
+        }
+        .onAppear {
+            // Faster, snappier entrance animation
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                scale = 1.0
+                opacity = 1.0
+            }
+        }
+    }
+}
+
+#Preview {
+    ShareView(
+        onShare: {},
+        onCancel: {}
+    )
 }

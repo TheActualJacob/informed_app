@@ -97,7 +97,7 @@ class NotificationManager: NSObject, ObservableObject {
     // MARK: - Backend Communication
     
     private func sendDeviceTokenToBackend(_ token: String) async {
-        guard let url = URL(string: "https://my-backend.com/api/register-device") else {
+        guard let url = URL(string: Config.Endpoints.registerDevice) else {
             print("❌ Invalid backend URL")
             return
         }

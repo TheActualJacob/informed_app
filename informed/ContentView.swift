@@ -6,12 +6,13 @@ import SafariServices
 // MARK: - 1. DESIGN SYSTEM & EXTENSIONS
 
 extension Color {
-    // Primary Palette
+    // Primary Palette - Adaptive colors
     static let brandTeal = Color(red: 0.0, green: 0.75, blue: 0.85)
     static let brandBlue = Color(red: 0.15, green: 0.35, blue: 0.95)
     
-    // Backgrounds
-    static let backgroundLight = Color(red: 0.97, green: 0.98, blue: 1.0) // Soft Cloud
+    // Backgrounds - Adaptive
+    static let backgroundLight = Color(UIColor.systemGroupedBackground)
+    static let cardBackground = Color(UIColor.secondarySystemGroupedBackground)
     static let cardShadow = Color.black.opacity(0.06)
     
     // Semantics
@@ -420,6 +421,7 @@ func formatDate(_ dateString: String) -> String {
 
 struct SearchBarView: View {
     @Binding var text: String
+    @Environment(\.colorScheme) var colorScheme
     
     private var isValidURL: Bool {
         guard let url = URL(string: text),
@@ -435,6 +437,7 @@ struct SearchBarView: View {
             Image(systemName: isValidURL ? "link.circle.fill" : "magnifyingglass")
                 .foregroundColor(isValidURL ? .brandGreen : .brandBlue)
             TextField("Paste a link or search...", text: $text)
+                .foregroundColor(.primary) // Adaptive text color
             if !text.isEmpty {
                 Button(action: { text = "" }) {
                     Image(systemName: "xmark.circle.fill").foregroundColor(.gray)
@@ -442,9 +445,9 @@ struct SearchBarView: View {
             }
         }
         .padding()
-        .background(Color.white)
+        .background(Color.cardBackground)
         .cornerRadius(16)
-        .shadow(color: Color.black.opacity(0.05), radius: 5, x: 0, y: 2)
+        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.3 : 0.05), radius: 5, x: 0, y: 2)
         .overlay(
             RoundedRectangle(cornerRadius: 16)
                 .stroke(isValidURL ? Color.brandGreen : Color.clear, lineWidth: 2)
@@ -456,6 +459,7 @@ struct SearchBarView: View {
 struct ProcessingBanner: View {
     let link: String
     let thumbnailURL: URL?
+    @Environment(\.colorScheme) var colorScheme
     
     var body: some View {
         HStack(spacing: 12) {
@@ -496,7 +500,7 @@ struct ProcessingBanner: View {
                 
                 Text(extractDomainName(from: link))
                     .font(.caption)
-                    .foregroundColor(.gray)
+                    .foregroundColor(.secondary)
                     .lineLimit(1)
             }
             
@@ -507,9 +511,9 @@ struct ProcessingBanner: View {
                 .font(.title3)
         }
         .padding()
-        .background(Color.white)
+        .background(Color.cardBackground)
         .cornerRadius(16)
-        .shadow(color: Color.black.opacity(0.1), radius: 10, x: 0, y: 5)
+        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.4 : 0.1), radius: 10, x: 0, y: 5)
     }
 }
 
@@ -538,7 +542,7 @@ struct DonutChart: View {
                     .foregroundColor(color)
                 Text("Truth Score")
                     .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(.gray)
+                    .foregroundColor(.secondary)
                     .textCase(.uppercase)
             }
         }
@@ -560,7 +564,7 @@ struct LinkPreviewView: View {
                 if let image = phase.image {
                     image.resizable().aspectRatio(contentMode: .fill)
                 } else {
-                    Rectangle().fill(Color.gray.opacity(0.2))
+                    Rectangle().fill(Color.secondary.opacity(0.2))
                 }
             }
             .frame(width: 90, height: 90)
@@ -574,19 +578,20 @@ struct LinkPreviewView: View {
                     // ← REMOVE .fixedSize(horizontal: false, vertical: true)
                 Text(item.sourceName)
                     .font(.caption2)
-                    .foregroundColor(.gray)
+                    .foregroundColor(.secondary)
             }
             .padding(10)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity) // ← ADD THIS
-        .background(Color.gray.opacity(0.05))
+        .background(Color.secondary.opacity(0.05))
         .cornerRadius(12)
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.1), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.secondary.opacity(0.1), lineWidth: 1))
     }
 }
 struct FactResultCard: View {
     let item: FactCheckItem
+    @Environment(\.colorScheme) var colorScheme
     // Removed the specific isHovered state that was causing conflicts
     
     var body: some View {
@@ -600,13 +605,13 @@ struct FactResultCard: View {
                 
                 VStack(alignment: .leading) {
                     Text("Verified by AI + Humans")
-                        .font(.caption2).fontWeight(.bold).foregroundColor(.gray)
-                    Text(item.timeAgo).font(.caption2).foregroundColor(.gray.opacity(0.8))
+                        .font(.caption2).fontWeight(.bold).foregroundColor(.secondary)
+                    Text(item.timeAgo).font(.caption2).foregroundColor(.secondary.opacity(0.8))
                 }
                 Spacer()
                 Image(systemName: "chevron.right")
                     .font(.caption)
-                    .foregroundColor(.gray.opacity(0.5))
+                    .foregroundColor(.secondary.opacity(0.5))
             }
             
             LinkPreviewView(item: item)
@@ -619,7 +624,7 @@ struct FactResultCard: View {
             
             HStack {
                 Text("Credibility:")
-                    .font(.caption).fontWeight(.bold).foregroundColor(.gray)
+                    .font(.caption).fontWeight(.bold).foregroundColor(.secondary)
                 Spacer()
                 HStack(spacing: 4) {
                     Image(systemName: item.credibilityLevel.icon)
@@ -632,7 +637,7 @@ struct FactResultCard: View {
             // Mini Bar
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    Capsule().fill(Color.gray.opacity(0.1))
+                    Capsule().fill(Color.secondary.opacity(0.2))
                     Capsule().fill(item.credibilityLevel.color)
                         .frame(width: geo.size.width * item.credibilityScore)
                 }
@@ -640,9 +645,9 @@ struct FactResultCard: View {
             .frame(height: 6)
         }
         .padding(20)
-        .background(Color.white)
+        .background(Color.cardBackground)
         .cornerRadius(24)
-        .shadow(color: Color.cardShadow, radius: 15, x: 0, y: 8)
+        .shadow(color: Color.cardShadow.opacity(colorScheme == .dark ? 0.3 : 1), radius: 15, x: 0, y: 8)
     }
 }
 
@@ -716,7 +721,7 @@ struct FactDetailView: View {
                             .foregroundColor(item.credibilityLevel.color)
                             .cornerRadius(8)
                         Spacer()
-                        Text(item.timeAgo).font(.caption).foregroundColor(.gray)
+                        Text(item.timeAgo).font(.caption).foregroundColor(.secondary)
                     }
 
                     Text(item.title)
@@ -758,7 +763,7 @@ struct FactDetailView: View {
                                     if let datePosted = item.datePosted {
                                         Text("Posted: \(formatDate(datePosted))")
                                             .font(.caption)
-                                            .foregroundColor(.gray)
+                                            .foregroundColor(.secondary)
                                     }
                                 }
                                 
@@ -800,20 +805,20 @@ struct FactDetailView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(12)
-                .background(Color.blue.opacity(0.05))
+                .background(Color.blue.opacity(0.08))
                 .cornerRadius(12)
 
                 // Verdict Badge
                 HStack(spacing: 12) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Verdict").font(.caption).fontWeight(.bold).foregroundColor(.gray)
+                        Text("Verdict").font(.caption).fontWeight(.bold).foregroundColor(.secondary)
                         Text(item.factCheck.verdict)
                             .font(.system(size: 18, weight: .bold, design: .default))
                             .foregroundColor(item.credibilityLevel.color)
                     }
                     Spacer()
                     VStack(alignment: .trailing, spacing: 4) {
-                        Text("Accuracy Rating").font(.caption).fontWeight(.bold).foregroundColor(.gray)
+                        Text("Accuracy Rating").font(.caption).fontWeight(.bold).foregroundColor(.secondary)
                         Text(item.factCheck.claimAccuracyRating)
                             .font(.system(size: 18, weight: .bold, design: .default))
                             .foregroundColor(item.credibilityLevel.color)
@@ -833,7 +838,7 @@ struct FactDetailView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(16)
-                .background(Color.backgroundLight)
+                .background(Color.cardBackground)
                 .cornerRadius(12)
 
                 // Summary
@@ -846,7 +851,7 @@ struct FactDetailView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(16)
-                .background(Color.green.opacity(0.05))
+                .background(Color.green.opacity(0.08))
                 .cornerRadius(12)
 
                 // Sources
@@ -885,11 +890,11 @@ struct FactDetailView: View {
                     }
                 }
                 .padding(16)
-                .background(Color.backgroundLight)
+                .background(Color.cardBackground)
                 .cornerRadius(12)
             }
             .padding(20)
-            .background(Color.white)
+            .background(Color.backgroundLight)
             .cornerRadius(30)
             .offset(y: -40)
             .padding(.bottom, 40)
@@ -940,7 +945,7 @@ struct HomeView: View {
                             Spacer()
                             Button(action: { viewModel.errorMessage = nil }) {
                                 Image(systemName: "xmark.circle.fill")
-                                    .foregroundColor(.gray)
+                                    .foregroundColor(.secondary)
                             }
                         }
                         .padding()
@@ -994,8 +999,7 @@ struct HomeView: View {
         
         init() {
             let appearance = UITabBarAppearance()
-            appearance.configureWithTransparentBackground()
-            appearance.backgroundColor = UIColor.white
+            appearance.configureWithDefaultBackground() // Changed from transparent to default
             UITabBar.appearance().standardAppearance = appearance
             UITabBar.appearance().scrollEdgeAppearance = appearance
         }
@@ -1033,7 +1037,7 @@ struct HomeView: View {
             NavigationView {
                 VStack {
                     Text("Your fact-check history will appear here")
-                        .foregroundColor(.gray)
+                        .foregroundColor(.secondary)
                         .padding()
                     Spacer()
                 }
@@ -1083,10 +1087,10 @@ struct HomeView: View {
                             if let userId = userManager.currentUserId {
                                 Text("ID: \(userId.prefix(8))")
                                     .font(.caption)
-                                    .foregroundColor(.gray)
+                                    .foregroundColor(.secondary)
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 6)
-                                    .background(Color.gray.opacity(0.1))
+                                    .background(Color.secondary.opacity(0.1))
                                     .cornerRadius(8)
                             }
                         }
@@ -1130,14 +1134,14 @@ struct HomeView: View {
                                         
                                         Text(notificationManager.notificationPermissionGranted ? "Enabled" : "Disabled")
                                             .font(.caption)
-                                            .foregroundColor(notificationManager.notificationPermissionGranted ? .brandGreen : .gray)
+                                            .foregroundColor(notificationManager.notificationPermissionGranted ? .brandGreen : .secondary)
                                     }
                                     
                                     Spacer()
                                     
                                     Image(systemName: "chevron.right")
                                         .font(.caption)
-                                        .foregroundColor(.gray)
+                                        .foregroundColor(.secondary)
                                 }
                                 .padding()
                             }
@@ -1148,7 +1152,7 @@ struct HomeView: View {
                             Button(action: {
                                 // TODO: Privacy settings
                             }) {
-                                MenuRow(icon: "shield.fill", title: "Privacy & Security", color: .gray)
+                                MenuRow(icon: "shield.fill", title: "Privacy & Security", color: .secondary)
                             }
                             
                             Divider().padding(.leading, 60)
@@ -1157,10 +1161,10 @@ struct HomeView: View {
                             Button(action: {
                                 // TODO: About page
                             }) {
-                                MenuRow(icon: "info.circle", title: "About Informed", color: .gray)
+                                MenuRow(icon: "info.circle", title: "About Informed", color: .secondary)
                             }
                         }
-                        .background(Color.white)
+                        .background(Color.cardBackground)
                         .cornerRadius(12)
                         .shadow(color: Color.black.opacity(0.05), radius: 5, y: 2)
                         .padding(.horizontal)
@@ -1218,7 +1222,7 @@ struct HomeView: View {
                 
                 Image(systemName: "chevron.right")
                     .font(.caption)
-                    .foregroundColor(.gray)
+                    .foregroundColor(.secondary)
             }
             .padding()
         }
@@ -1246,7 +1250,7 @@ struct HomeView: View {
                                 
                                 Text(notificationStatusText)
                                     .font(.caption)
-                                    .foregroundColor(.gray)
+                                    .foregroundColor(.secondary)
                             }
                             
                             Spacer()
@@ -1274,19 +1278,19 @@ struct HomeView: View {
                                 Text("Device Registered")
                                     .font(.caption)
                                     .fontWeight(.semibold)
-                                    .foregroundColor(.gray)
+                                    .foregroundColor(.secondary)
                                 
                                 Text(String(deviceToken.prefix(16)) + "...")
                                     .font(.caption)
-                                    .foregroundColor(.gray)
+                                    .foregroundColor(.secondary)
                                     .padding(8)
-                                    .background(Color.gray.opacity(0.1))
+                                    .background(Color.secondary.opacity(0.1))
                                     .cornerRadius(8)
                             }
                         }
                     }
                     .padding()
-                    .background(Color.white)
+                    .background(Color.cardBackground)
                     .cornerRadius(12)
                     .shadow(color: Color.black.opacity(0.05), radius: 5, y: 2)
                     
@@ -1297,14 +1301,14 @@ struct HomeView: View {
                         
                         Text("You'll receive notifications when:")
                             .font(.subheadline)
-                            .foregroundColor(.gray)
+                            .foregroundColor(.secondary)
                         
                         InfoRow(icon: "checkmark.circle.fill", text: "Fact-check analysis is complete", color: .brandGreen)
                         InfoRow(icon: "bell.fill", text: "Shared reels are processed", color: .brandBlue)
                         InfoRow(icon: "exclamationmark.triangle.fill", text: "Important updates about your submissions", color: .brandYellow)
                     }
                     .padding()
-                    .background(Color.backgroundLight)
+                    .background(Color.cardBackground)
                     .cornerRadius(12)
                     
                 }
@@ -1369,11 +1373,11 @@ struct HomeView: View {
                 
                 Text(title)
                     .font(.caption)
-                    .foregroundColor(.gray)
+                    .foregroundColor(.secondary)
             }
             .frame(maxWidth: .infinity)
             .padding()
-            .background(Color.white)
+            .background(Color.cardBackground)
             .cornerRadius(12)
             .shadow(color: Color.black.opacity(0.05), radius: 5, y: 2)
         }

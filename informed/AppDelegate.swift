@@ -17,6 +17,9 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         // Set the notification delegate
         UNUserNotificationCenter.current().delegate = self
         
+        // Sync backend URL to shared storage for Share Extension
+        Config.syncBackendURLToSharedStorage()
+        
         print("✅ AppDelegate initialized")
         return true
     }
