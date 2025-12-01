@@ -113,6 +113,7 @@ class HomeViewModel: ObservableObject {
     
     private var debounceTask: Task<Void, Never>?
     var userId: String = "default-user" // Will be set by HomeView
+    var sessionId: String = "" // Will be set by HomeView
     
     init() {
         loadData()
@@ -137,12 +138,12 @@ class HomeViewModel: ObservableObject {
             guard !Task.isCancelled else { return }
             
             // If it's a valid URL, send the fact check request
-            await performFactCheck(for: text, userId: userId)
+            await performFactCheck(for: text, userId: userId, sessionId: sessionId)
         }
     }
     
     @MainActor
-    func performFactCheck(for link: String, userId: String) async {
+    func performFactCheck(for link: String, userId: String, sessionId: String) async {
         // Don't set isLoading - we'll use processingLink instead
         self.processingLink = link
         self.errorMessage = nil
@@ -155,8 +156,8 @@ class HomeViewModel: ObservableObject {
         print("🔍 Starting fact check for: \(link)")
         
         do {
-            // Create the fact check request with the user's ID
-            let request = FactCheckRequest(link: link, userId: userId)
+            // Create the fact check request with the user's ID and session ID
+            let request = FactCheckRequest(link: link, userId: userId, sessionId: sessionId)
             print("📤 Sending request to Flask server...")
             
             // Send the request and get the structured response
@@ -925,9 +926,12 @@ struct HomeView: View {
                     .padding(.vertical, 10)
                     .background(Color.backgroundLight)
                     .onAppear {
-                        // Set the userId when view appears
+                        // Set the userId and sessionId when view appears
                         if let userId = userManager.currentUserId {
                             viewModel.userId = userId
+                        }
+                        if let sessionId = userManager.currentSessionId {
+                            viewModel.sessionId = sessionId
                         }
                         
                         // Connect SharedReelManager to this ViewModel for integrated UI

@@ -145,8 +145,9 @@ class SharedReelManager: ObservableObject {
         reels.insert(newReel, at: 0)
         saveReels()
         
-        // Get user ID
+        // Get user ID and session ID
         let userId = UserManager.shared.currentUserId ?? "anonymous"
+        let sessionId = UserManager.shared.currentSessionId ?? ""
         
         // If we have a homeViewModel reference, trigger the same UI flow as pasting a link
         if let viewModel = homeViewModel {
@@ -159,7 +160,7 @@ class SharedReelManager: ObservableObject {
         
         do {
             // Use the existing sendFactCheck function from Requests.swift
-            let request = FactCheckRequest(link: instagramURL, userId: userId)
+            let request = FactCheckRequest(link: instagramURL, userId: userId, sessionId: sessionId)
             print("📤 Sending fact check request for shared reel...")
             
             let factCheckData = try await sendFactCheck(request)

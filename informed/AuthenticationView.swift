@@ -12,6 +12,7 @@ struct UserResponse: Codable {
     let userId: String
     let username: String
     let email: String
+    let sessionId: String
 }
 
 struct UserLogin: Codable {
@@ -27,6 +28,7 @@ struct LoginResponse: Codable {
         let userID: String
         let username: String
         let email: String
+        let sessionID: String
     }
 }
 
@@ -373,10 +375,14 @@ struct AuthenticationView: View {
                 
                 let loginResponse = try await loginUser(loginRequest)
                 
-                // Save user data locally
+                // Save user data locally and session ID to keychain
                 await MainActor.run {
-                    userManager.saveUser(userId: loginResponse.user.userID, username: loginResponse.user.username)
-                    print("✅ User logged in successfully! ID: \(loginResponse.user.userID)")
+                    userManager.saveUser(
+                        userId: loginResponse.user.userID, 
+                        username: loginResponse.user.username,
+                        sessionId: loginResponse.user.sessionID
+                    )
+                    print("✅ User logged in successfully! ID: \(loginResponse.user.userID), Session: \(loginResponse.user.sessionID)")
                 }
                 
             } catch let error as NSError where error.code == 401 {
@@ -413,10 +419,14 @@ struct AuthenticationView: View {
                 
                 let userResponse = try await createUser(registration)
                 
-                // Save user data locally
+                // Save user data locally and session ID to keychain
                 await MainActor.run {
-                    userManager.saveUser(userId: userResponse.userId, username: userResponse.username)
-                    print("✅ User created successfully! ID: \(userResponse.userId)")
+                    userManager.saveUser(
+                        userId: userResponse.userId, 
+                        username: userResponse.username,
+                        sessionId: userResponse.sessionId
+                    )
+                    print("✅ User created successfully! ID: \(userResponse.userId), Session: \(userResponse.sessionId)")
                 }
                 
             } catch {

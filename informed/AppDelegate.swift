@@ -122,12 +122,13 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             return
         }
         
-        // Get user ID
+        // Get user ID and session ID
         let userId = UserManager.shared.currentUserId ?? "anonymous"
+        let sessionId = UserManager.shared.currentSessionId ?? ""
         
         do {
             // Fetch the fact-check data from backend using the same endpoint
-            let request = FactCheckRequest(link: instagramURL, userId: userId)
+            let request = FactCheckRequest(link: instagramURL, userId: userId, sessionId: sessionId)
             let factCheckData = try await sendFactCheck(request)
             
             print("✅ Fetched fact-check data")

@@ -132,7 +132,7 @@ class ShareViewController: UIViewController {
     // MARK: - Background Fact Check
     
     private func startFactCheckInBackground(url: String) {
-        // Get user ID and device token from shared storage
+        // Get user ID, session ID, and device token from shared storage
         let appGroupName = "group.com.jacob.informed"
         guard let sharedDefaults = UserDefaults(suiteName: appGroupName) else {
             print("⚠️ Could not access App Group: \(appGroupName)")
@@ -141,18 +141,30 @@ class ShareViewController: UIViewController {
     
         
         let userId = sharedDefaults.string(forKey: "stored_user_id") ?? "anonymous"
+        let sessionId = sharedDefaults.string(forKey: "stored_session_id") ?? ""
         let deviceToken = sharedDefaults.string(forKey: "stored_device_token") ?? "no_token"
         
         print("📤 Starting background fact-check...")
         print("   User ID: \(userId)")
+        print("   Session ID: \(sessionId)")
         print("   Device Token: \(deviceToken)")
         
         // Get backend URL from shared config
         let backendURL = sharedDefaults.string(forKey: "backend_url") ?? "http://172.20.10.2:5001"
         
-        // Create the API request
-        guard let apiURL = URL(string: "\(backendURL)/fact-check") else {
+        // Create the API URL with query parameters
+        guard var urlComponents = URLComponents(string: "\(backendURL)/fact-check") else {
             print("❌ Invalid API URL")
+            return
+        }
+        
+        urlComponents.queryItems = [
+            URLQueryItem(name: "userId", value: userId),
+            URLQueryItem(name: "sessionId", value: sessionId)
+        ]
+        
+        guard let apiURL = urlComponents.url else {
+            print("❌ Failed to construct API URL with query parameters")
             return
         }
         
@@ -260,7 +272,10 @@ class ShareViewController: UIViewController {
             "status": "completed"
         ]
         
-        factCheck.merge(factCheckData) { (_, new) in new }
+        // Clean the fact check data to remove NSNull and other non-property-list objects
+        let cleanedFactCheckData = cleanDictionaryForUserDefaults(factCheckData)
+        
+        factCheck.merge(cleanedFactCheckData) { (_, new) in new }
         completedFactChecks.append(factCheck)
         sharedDefaults.set(completedFactChecks, forKey: "completed_fact_checks")
         
@@ -271,6 +286,62 @@ class ShareViewController: UIViewController {
         }
         
         print("💾 Saved completed fact-check to App Group")
+    }
+    
+    // MARK: - Clean Dictionary for UserDefaults
+    
+    /// Recursively cleans a dictionary to remove NSNull values and ensure all values are property-list compatible
+    private func cleanDictionaryForUserDefaults(_ dict: [String: Any]) -> [String: Any] {
+        var cleaned: [String: Any] = [:]
+        
+        for (key, value) in dict {
+            if value is NSNull {
+                // Convert NSNull to empty string or skip entirely
+                cleaned[key] = ""
+            } else if let nestedDict = value as? [String: Any] {
+                // Recursively clean nested dictionaries
+                cleaned[key] = cleanDictionaryForUserDefaults(nestedDict)
+            } else if let array = value as? [Any] {
+                // Clean arrays
+                cleaned[key] = cleanArrayForUserDefaults(array)
+            } else if isPropertyListCompatible(value) {
+                // Keep property-list compatible values
+                cleaned[key] = value
+            } else {
+                // Convert non-compatible values to string representation
+                cleaned[key] = String(describing: value)
+            }
+        }
+        
+        return cleaned
+    }
+    
+    /// Recursively cleans an array to ensure all elements are property-list compatible
+    private func cleanArrayForUserDefaults(_ array: [Any]) -> [Any] {
+        return array.compactMap { element -> Any? in
+            if element is NSNull {
+                return ""
+            } else if let dict = element as? [String: Any] {
+                return cleanDictionaryForUserDefaults(dict)
+            } else if let nestedArray = element as? [Any] {
+                return cleanArrayForUserDefaults(nestedArray)
+            } else if isPropertyListCompatible(element) {
+                return element
+            } else {
+                return String(describing: element)
+            }
+        }
+    }
+    
+    /// Checks if a value is property-list compatible
+    private func isPropertyListCompatible(_ value: Any) -> Bool {
+        return value is String || 
+               value is Int || 
+               value is Double || 
+               value is Float || 
+               value is Bool || 
+               value is Date || 
+               value is Data
     }
     
     // MARK: - Notifications
