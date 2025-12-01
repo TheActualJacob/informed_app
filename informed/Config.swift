@@ -7,7 +7,7 @@ struct Config {
     
     /// The base URL for the backend API
     /// Change this value when your backend server IP/port changes
-    static let backendURL = "http://172.20.10.2:5001"
+    static let backendURL = "http://192.168.1.222:5001"
     
     // MARK: - App Group
     

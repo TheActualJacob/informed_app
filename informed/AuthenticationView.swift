@@ -99,6 +99,12 @@ struct AuthenticationView: View {
     @State private var errorMessage: String?
     @State private var showPassword: Bool = false
     
+    @FocusState private var focusedField: Field?
+    
+    enum Field: Hashable {
+        case username, email, password, confirmPassword
+    }
+    
     var body: some View {
         ZStack {
             // Background gradient - adaptive
@@ -149,6 +155,11 @@ struct AuthenticationView: View {
                                     TextField("Enter username", text: $username)
                                         .textInputAutocapitalization(.never)
                                         .autocorrectionDisabled()
+                                        .focused($focusedField, equals: .username)
+                                        .submitLabel(.next)
+                                        .onSubmit {
+                                            focusedField = .email
+                                        }
                                     
                                     if !username.isEmpty {
                                         Image(systemName: username.count >= 3 ? "checkmark.circle.fill" : "xmark.circle.fill")
@@ -177,6 +188,11 @@ struct AuthenticationView: View {
                                     .textInputAutocapitalization(.never)
                                     .autocorrectionDisabled()
                                     .keyboardType(.emailAddress)
+                                    .focused($focusedField, equals: .email)
+                                    .submitLabel(.next)
+                                    .onSubmit {
+                                        focusedField = .password
+                                    }
                                 
                                 if !email.isEmpty {
                                     Image(systemName: isValidEmail(email) ? "checkmark.circle.fill" : "xmark.circle.fill")
@@ -202,8 +218,32 @@ struct AuthenticationView: View {
                             HStack {
                                 if showPassword {
                                     TextField("Enter password", text: $password)
+                                        .focused($focusedField, equals: .password)
+                                        .submitLabel(isLoginMode ? .done : .next)
+                                        .onSubmit {
+                                            if isLoginMode {
+                                                focusedField = nil
+                                                if isFormValid {
+                                                    login()
+                                                }
+                                            } else {
+                                                focusedField = .confirmPassword
+                                            }
+                                        }
                                 } else {
                                     SecureField("Enter password", text: $password)
+                                        .focused($focusedField, equals: .password)
+                                        .submitLabel(isLoginMode ? .done : .next)
+                                        .onSubmit {
+                                            if isLoginMode {
+                                                focusedField = nil
+                                                if isFormValid {
+                                                    login()
+                                                }
+                                            } else {
+                                                focusedField = .confirmPassword
+                                            }
+                                        }
                                 }
                                 
                                 Button(action: { showPassword.toggle() }) {
@@ -242,8 +282,24 @@ struct AuthenticationView: View {
                                 HStack {
                                     if showPassword {
                                         TextField("Confirm password", text: $confirmPassword)
+                                            .focused($focusedField, equals: .confirmPassword)
+                                            .submitLabel(.done)
+                                            .onSubmit {
+                                                focusedField = nil
+                                                if isFormValid {
+                                                    signUp()
+                                                }
+                                            }
                                     } else {
                                         SecureField("Confirm password", text: $confirmPassword)
+                                            .focused($focusedField, equals: .confirmPassword)
+                                            .submitLabel(.done)
+                                            .onSubmit {
+                                                focusedField = nil
+                                                if isFormValid {
+                                                    signUp()
+                                                }
+                                            }
                                     }
                                     
                                     if !confirmPassword.isEmpty {
@@ -336,6 +392,12 @@ struct AuthenticationView: View {
                 }
                 .padding(.horizontal, 20)
             }
+            .onTapGesture {
+                hideKeyboard()
+            }
+        }
+        .onTapGesture {
+            hideKeyboard()
         }
     }
     

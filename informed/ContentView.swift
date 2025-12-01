@@ -422,6 +422,7 @@ func formatDate(_ dateString: String) -> String {
 
 struct SearchBarView: View {
     @Binding var text: String
+    @FocusState.Binding var isFocused: Bool
     @Environment(\.colorScheme) var colorScheme
     
     private var isValidURL: Bool {
@@ -439,8 +440,15 @@ struct SearchBarView: View {
                 .foregroundColor(isValidURL ? .brandGreen : .brandBlue)
             TextField("Paste a link or search...", text: $text)
                 .foregroundColor(.primary) // Adaptive text color
+                .focused($isFocused)
+                .submitLabel(.done)
+                .onSubmit {
+                    isFocused = false
+                }
             if !text.isEmpty {
-                Button(action: { text = "" }) {
+                Button(action: { 
+                    text = ""
+                }) {
                     Image(systemName: "xmark.circle.fill").foregroundColor(.gray)
                 }
             }
@@ -911,16 +919,18 @@ struct HomeView: View {
     @StateObject var viewModel = HomeViewModel()
     @EnvironmentObject var userManager: UserManager
     @State private var showPopup = false // Popup state
+    @FocusState private var isSearchFocused: Bool
     
     var body: some View {
         NavigationView {
             ZStack(alignment: .bottom) {
-                Color.backgroundLight.edgesIgnoringSafeArea(.all)
+                Color.backgroundLight
+                    .edgesIgnoringSafeArea(.all)
                 
                 VStack(spacing: 0) {
                     // Header
                     VStack {
-                        SearchBarView(text: $viewModel.searchText)
+                        SearchBarView(text: $viewModel.searchText, isFocused: $isSearchFocused)
                     }
                     .padding(.horizontal)
                     .padding(.vertical, 10)
@@ -936,6 +946,9 @@ struct HomeView: View {
                         
                         // Connect SharedReelManager to this ViewModel for integrated UI
                         SharedReelManager.shared.homeViewModel = viewModel
+                        
+                        // Dismiss keyboard when returning to this view
+                        isSearchFocused = false
                     }
                     
                     // Error message banner
@@ -963,7 +976,10 @@ struct HomeView: View {
                     ScrollView {
                         LazyVStack(spacing: 20) {
                             ForEach(viewModel.items) { item in
-                                NavigationLink(destination: FactDetailView(item: item)) {
+                                NavigationLink(destination: FactDetailView(item: item).onAppear {
+                                    // Dismiss keyboard when navigating to detail
+                                    isSearchFocused = false
+                                }) {
                                     FactResultCard(item: item)
                                 }
                                 .buttonStyle(PlainButtonStyle())
@@ -974,6 +990,12 @@ struct HomeView: View {
                         .padding(.bottom, viewModel.processingLink != nil ? 140 : 100)
                     }
                     .refreshable { viewModel.refresh() }
+                    .simultaneousGesture(
+                        DragGesture().onChanged { _ in
+                            // Dismiss keyboard when user starts scrolling
+                            isSearchFocused = false
+                        }
+                    )
                 }
                 
                 // Processing Banner at Bottom
@@ -989,6 +1011,9 @@ struct HomeView: View {
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
                 }
+            }
+            .onTapGesture {
+                isSearchFocused = false
             }
             .animation(.spring(response: 0.4, dampingFraction: 0.8), value: viewModel.processingLink != nil)
             .navigationBarHidden(true)
