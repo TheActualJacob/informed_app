@@ -88,3 +88,209 @@ func calculateCredibilityScore(from rating: String) -> Double {
     }
     return 0.5 // Default to 50% if parsing fails
 }
+
+// MARK: - Public Reel Models
+
+struct ReelUser: Codable, Identifiable {
+    let id: String
+    let username: String
+    
+    enum CodingKeys: String, CodingKey {
+        case id = "userId"
+        case username
+    }
+    
+    // Custom decoder to handle null userId
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        
+        // Handle null userId by defaulting to "anonymous"
+        if let userId = try? container.decodeIfPresent(String.self, forKey: .id) {
+            id = userId ?? "anonymous"
+        } else {
+            id = "anonymous"
+        }
+        
+        // Handle null username by defaulting to "Anonymous"
+        if let usernameValue = try? container.decodeIfPresent(String.self, forKey: .username) {
+            username = usernameValue ?? "Anonymous"
+        } else {
+            username = "Anonymous"
+        }
+    }
+}
+
+struct ReelEngagement: Codable {
+    let viewCount: Int
+    let shareCount: Int
+    
+    enum CodingKeys: String, CodingKey {
+        case viewCount
+        case shareCount
+    }
+}
+
+struct PublicReel: Identifiable, Codable {
+    let id: String
+    let title: String
+    let description: String
+    let thumbnailUrl: String?
+    let videoLink: String
+    let claim: String
+    let verdict: String
+    let claimAccuracyRating: String
+    let explanation: String
+    let summary: String
+    let sources: [String]
+    let checkedAt: String
+    let datePosted: String?
+    let uploadedBy: ReelUser
+    let engagement: ReelEngagement
+    
+    enum CodingKeys: String, CodingKey {
+        case id = "uniqueID"
+        case title, description, thumbnailUrl, videoLink
+        case claim, verdict, claimAccuracyRating
+        case explanation, summary, sources, checkedAt, datePosted
+        case uploadedBy, engagement
+    }
+    
+    // Custom decoder to handle datePosted as either String or Int
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        
+        id = try container.decode(String.self, forKey: .id)
+        title = try container.decode(String.self, forKey: .title)
+        description = try container.decode(String.self, forKey: .description)
+        thumbnailUrl = try container.decodeIfPresent(String.self, forKey: .thumbnailUrl)
+        videoLink = try container.decode(String.self, forKey: .videoLink)
+        claim = try container.decode(String.self, forKey: .claim)
+        verdict = try container.decode(String.self, forKey: .verdict)
+        claimAccuracyRating = try container.decode(String.self, forKey: .claimAccuracyRating)
+        explanation = try container.decodeIfPresent(String.self, forKey: .explanation) ?? ""
+        summary = try container.decode(String.self, forKey: .summary)
+        sources = try container.decode([String].self, forKey: .sources)
+        checkedAt = try container.decode(String.self, forKey: .checkedAt)
+        uploadedBy = try container.decode(ReelUser.self, forKey: .uploadedBy)
+        engagement = try container.decode(ReelEngagement.self, forKey: .engagement)
+        
+        // Handle datePosted as either String or Int
+        if let dateString = try? container.decodeIfPresent(String.self, forKey: .datePosted) {
+            datePosted = dateString
+        } else if let dateInt = try? container.decodeIfPresent(Int.self, forKey: .datePosted) {
+            // Convert timestamp to string
+            datePosted = String(dateInt)
+        } else {
+            datePosted = nil
+        }
+    }
+    
+    // Computed properties
+    var timeAgo: String {
+        let formatter = ISO8601DateFormatter()
+        if let date = formatter.date(from: checkedAt) {
+            let relativeFormatter = RelativeDateTimeFormatter()
+            relativeFormatter.unitsStyle = .abbreviated
+            return relativeFormatter.localizedString(for: date, relativeTo: Date())
+        }
+        return "Recently"
+    }
+    
+    var credibilityScore: Double {
+        return calculateCredibilityScore(from: claimAccuracyRating)
+    }
+    
+    var credibilityLevel: CredibilityLevel {
+        if credibilityScore >= 0.8 { return .high }
+        if credibilityScore >= 0.5 { return .medium }
+        return .low
+    }
+    
+    // Convert to FactCheckItem for reusability with existing components
+    func toFactCheckItem() -> FactCheckItem {
+        let factCheck = FactCheck(
+            claim: claim,
+            verdict: verdict,
+            claimAccuracyRating: claimAccuracyRating,
+            explanation: explanation,
+            summary: summary,
+            sources: sources
+        )
+        
+        return FactCheckItem(
+            sourceName: "Instagram",
+            sourceIcon: "camera.fill",
+            timeAgo: timeAgo,
+            title: title,
+            summary: summary,
+            thumbnailURL: thumbnailUrl != nil ? URL(string: thumbnailUrl!) : nil,
+            credibilityScore: credibilityScore,
+            sources: sources.joined(separator: ", "),
+            verdict: verdict,
+            factCheck: factCheck,
+            originalLink: videoLink,
+            datePosted: datePosted
+        )
+    }
+}
+
+struct PublicFeedResponse: Codable {
+    let reels: [PublicReel]
+    let pagination: PaginationInfo
+}
+
+struct PaginationInfo: Codable {
+    let currentPage: Int
+    let totalPages: Int
+    let totalCount: Int
+    let hasMore: Bool
+    let nextCursor: String?
+}
+
+// MARK: - User Reel History Models
+
+struct UserReel: Identifiable, Codable {
+    let id: String
+    let title: String
+    let link: String
+    let status: String // "completed", "processing", "pending", "failed"
+    let thumbnailUrl: String?
+    let submittedAt: String
+    let claim: String?
+    let verdict: String?
+    let claimAccuracyRating: String?
+    let explanation: String?
+    let summary: String?
+    let sources: [String]?
+    let engagement: ReelEngagement?
+    let errorMessage: String?
+    
+    enum CodingKeys: String, CodingKey {
+        case id = "uniqueID"
+        case title, link, status, thumbnailUrl, submittedAt
+        case claim, verdict, claimAccuracyRating, explanation, summary, sources
+        case engagement, errorMessage
+    }
+    
+    var timeAgo: String {
+        let formatter = ISO8601DateFormatter()
+        if let date = formatter.date(from: submittedAt) {
+            let relativeFormatter = RelativeDateTimeFormatter()
+            relativeFormatter.unitsStyle = .abbreviated
+            return relativeFormatter.localizedString(for: date, relativeTo: Date())
+        }
+        return "Recently"
+    }
+    
+    var displayURL: String {
+        if link.count > 50 {
+            return String(link.prefix(47)) + "..."
+        }
+        return link
+    }
+}
+
+struct UserReelsResponse: Codable {
+    let reels: [UserReel]
+    let totalCount: Int
+}

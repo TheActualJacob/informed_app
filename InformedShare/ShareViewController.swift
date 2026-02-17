@@ -355,14 +355,19 @@ class ShareViewController: UIViewController {
         content.sound = .default
         content.badge = 1
         
+        // Generate a unique ID for this reel
+        let reelId = UUID().uuidString
+        
         content.userInfo = [
             "instagram_url": url,
-            "action": "fact_check_complete"
+            "action": "fact_check_complete",
+            "reel_id": reelId,
+            "reel_title": title
         ]
         
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 0.1, repeats: false)
         let request = UNNotificationRequest(
-            identifier: "factcheck-complete-\(UUID().uuidString)",
+            identifier: "factcheck-complete-\(reelId)",
             content: content,
             trigger: trigger
         )

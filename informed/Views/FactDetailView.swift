@@ -176,11 +176,19 @@ struct FactDetailView: View {
                 VStack(alignment: .leading, spacing: Theme.Spacing.md) {
                     Text("Explanation")
                         .font(.headline)
-                    Text(item.factCheck.explanation)
-                        .font(.body)
-                        .foregroundColor(.primary.opacity(0.8))
-                        .lineSpacing(6)
-                        .fixedSize(horizontal: false, vertical: true)
+                    
+                    if !item.factCheck.explanation.isEmpty {
+                        Text(item.factCheck.explanation)
+                            .font(.body)
+                            .foregroundColor(.primary.opacity(0.8))
+                            .lineSpacing(6)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        Text("No detailed explanation available for this fact check.")
+                            .font(.body)
+                            .foregroundColor(.gray.opacity(0.8))
+                            .italic()
+                    }
                 }
                 .padding(Theme.Spacing.lg)
                 .background(Color.cardBackground)

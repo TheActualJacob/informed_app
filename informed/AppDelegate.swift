@@ -90,6 +90,13 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
                     name: NSNotification.Name("CheckForPendingSharedURLs"),
                     object: nil
                 )
+                
+                // Navigate to My Reels tab
+                NotificationCenter.default.post(
+                    name: NSNotification.Name("NavigateToMyReels"),
+                    object: nil,
+                    userInfo: userInfo
+                )
             }
         }
         // Handle push notification from backend (if you implement APNs later)

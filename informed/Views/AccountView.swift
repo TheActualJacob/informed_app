@@ -10,8 +10,10 @@ import SwiftUI
 struct AccountView: View {
     @EnvironmentObject var userManager: UserManager
     @EnvironmentObject var notificationManager: NotificationManager
+    @EnvironmentObject var reelManager: SharedReelManager
     @StateObject private var viewModel = AccountViewModel()
     @State private var showLogoutConfirmation = false
+    @State private var showClearDataConfirmation = false
     
     var body: some View {
         NavigationView {
@@ -158,6 +160,20 @@ struct AccountView: View {
                                 color: .secondary
                             )
                         }
+                        
+                        Divider().padding(.leading, 60)
+                        
+                        // Debug: Clear My Reels Data
+                        Button(action: {
+                            HapticManager.lightImpact()
+                            showClearDataConfirmation = true
+                        }) {
+                            MenuRow(
+                                icon: "trash.circle",
+                                title: "Clear My Reels Data",
+                                color: .brandRed
+                            )
+                        }
                     }
                     .background(Color.cardBackground)
                     .cornerRadius(Theme.CornerRadius.md)
@@ -196,6 +212,15 @@ struct AccountView: View {
                 Button("Cancel", role: .cancel) {}
             } message: {
                 Text("Are you sure you want to sign out?")
+            }
+            .confirmationDialog("Clear Data", isPresented: $showClearDataConfirmation, titleVisibility: .visible) {
+                Button("Clear My Reels Data", role: .destructive) {
+                    HapticManager.success()
+                    reelManager.clearReelsForCurrentUser()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This will remove all locally stored reels for your account. You can sync them again from the server.")
             }
             .onAppear {
                 viewModel.loadStats()

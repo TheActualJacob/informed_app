@@ -119,6 +119,33 @@ class HomeViewModel: ObservableObject {
             // Add the new item to the top of the list
             self.items.insert(newItem, at: 0)
             
+            // IMPORTANT: Also add to SharedReelManager so it shows in "My Reels" tab
+            let storedData = StoredFactCheckData(
+                title: factCheckData.title,
+                summary: factCheckData.summary,
+                thumbnailURL: factCheckData.thumbnailUrl,
+                claim: factCheckData.claim,
+                verdict: factCheckData.verdict,
+                claimAccuracyRating: factCheckData.claimAccuracyRating,
+                explanation: factCheckData.explanation,
+                sources: factCheckData.sources,
+                datePosted: factCheckData.date
+            )
+            
+            let newReel = SharedReel(
+                id: UUID().uuidString,
+                url: link,
+                submittedAt: Date(),
+                status: .completed,
+                resultId: factCheckData.title,
+                errorMessage: nil,
+                factCheckData: storedData
+            )
+            
+            SharedReelManager.shared.reels.insert(newReel, at: 0)
+            SharedReelManager.shared.saveReels()
+            print("✅ Added reel to My Reels tab")
+            
             // Clear the search text and processing state
             self.searchText = ""
             self.processingLink = nil

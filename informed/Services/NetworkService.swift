@@ -11,6 +11,8 @@ import Foundation
 
 enum NetworkError: LocalizedError {
     case invalidURL
+    case invalidResponse
+    case unauthorized
     case noInternetConnection
     case serverError(statusCode: Int)
     case timeout
@@ -22,6 +24,10 @@ enum NetworkError: LocalizedError {
         switch self {
         case .invalidURL:
             return "Invalid URL"
+        case .invalidResponse:
+            return "Invalid response from server"
+        case .unauthorized:
+            return "Session expired. Please log in again."
         case .noInternetConnection:
             return "No internet connection"
         case .serverError(let statusCode):

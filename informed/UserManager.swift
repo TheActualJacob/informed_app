@@ -54,12 +54,19 @@ class UserManager: ObservableObject {
             print("💾 User info also saved to App Group for Share Extension")
         }
         
+        let oldUserId = self.currentUserId
         self.currentUserId = userId
         self.currentUsername = username
         self.currentSessionId = sessionId
         self.isAuthenticated = true
         
         print("✅ User saved: \(username) (ID: \(userId), Session: \(sessionId))")
+        
+        // Notify that user changed (if it's a different user)
+        if oldUserId != userId {
+            NotificationCenter.default.post(name: NSNotification.Name("UserDidChange"), object: nil)
+            print("📢 Posted UserDidChange notification")
+        }
     }
     
     func logout() {
@@ -83,5 +90,9 @@ class UserManager: ObservableObject {
         self.isAuthenticated = false
         
         print("✅ User logged out and session cleared")
+        
+        // Notify that user changed (logged out)
+        NotificationCenter.default.post(name: NSNotification.Name("UserDidChange"), object: nil)
+        print("📢 Posted UserDidChange notification (logout)")
     }
 }

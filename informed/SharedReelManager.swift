@@ -42,6 +42,9 @@ struct SharedReel: Identifiable, Codable {
     var resultId: String?
     var errorMessage: String?
     
+    // Store complete fact check data
+    var factCheckData: StoredFactCheckData?
+    
     var timeAgo: String {
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .abbreviated
@@ -56,6 +59,46 @@ struct SharedReel: Identifiable, Codable {
     }
 }
 
+// Store complete fact check data with the reel
+struct StoredFactCheckData: Codable {
+    let title: String
+    let summary: String
+    let thumbnailURL: String?
+    let claim: String
+    let verdict: String
+    let claimAccuracyRating: String
+    let explanation: String
+    let sources: [String]
+    let datePosted: String?
+    
+    // Convert to FactCheckItem for display
+    func toFactCheckItem(originalLink: String) -> FactCheckItem {
+        let factCheck = FactCheck(
+            claim: claim,
+            verdict: verdict,
+            claimAccuracyRating: claimAccuracyRating,
+            explanation: explanation,
+            summary: summary,
+            sources: sources
+        )
+        
+        return FactCheckItem(
+            sourceName: "Instagram",
+            sourceIcon: "camera.fill",
+            timeAgo: "Recently",
+            title: title,
+            summary: summary,
+            thumbnailURL: thumbnailURL != nil ? URL(string: thumbnailURL!) : nil,
+            credibilityScore: calculateCredibilityScore(from: claimAccuracyRating),
+            sources: sources.joined(separator: ", "),
+            verdict: verdict,
+            factCheck: factCheck,
+            originalLink: originalLink,
+            datePosted: datePosted
+        )
+    }
+}
+
 @MainActor
 class SharedReelManager: ObservableObject {
     static let shared = SharedReelManager()
@@ -64,31 +107,77 @@ class SharedReelManager: ObservableObject {
     @Published var isUploading: Bool = false
     @Published var uploadError: String?
     @Published var lastUploadSuccess: Bool = false
+    @Published var isSyncing: Bool = false
+    @Published var lastSyncDate: Date?
     
-    private let reelsKey = "stored_shared_reels"
+    private var currentUserId: String?
     
     // Reference to HomeViewModel to integrate with main feed
     weak var homeViewModel: HomeViewModel?
     
     init() {
+        currentUserId = UserManager.shared.currentUserId
         loadStoredReels()
         setupNotificationObserver()
+        setupUserChangeObserver()
     }
     
     // MARK: - Storage
     
+    /// Get user-specific storage key
+    private func getStorageKey() -> String {
+        if let userId = UserManager.shared.currentUserId {
+            return "stored_shared_reels_\(userId)"
+        }
+        return "stored_shared_reels_anonymous"
+    }
+    
     private func loadStoredReels() {
-        if let data = UserDefaults.standard.data(forKey: reelsKey),
+        let storageKey = getStorageKey()
+        if let data = UserDefaults.standard.data(forKey: storageKey),
            let decoded = try? JSONDecoder().decode([SharedReel].self, from: data) {
             self.reels = decoded
-            print("📱 Loaded \(decoded.count) stored reels")
+            print("📱 Loaded \(decoded.count) stored reels for user \(UserManager.shared.currentUserId ?? "anonymous")")
+        } else {
+            self.reels = []
+            print("📱 No stored reels found for current user")
         }
     }
     
     func saveReels() {
+        let storageKey = getStorageKey()
         if let encoded = try? JSONEncoder().encode(reels) {
-            UserDefaults.standard.set(encoded, forKey: reelsKey)
-            print("💾 Saved \(reels.count) reels")
+            UserDefaults.standard.set(encoded, forKey: storageKey)
+            print("💾 Saved \(reels.count) reels for user \(UserManager.shared.currentUserId ?? "anonymous")")
+        }
+    }
+    
+    /// Clear reels for current user (called when switching users)
+    func clearReelsForCurrentUser() {
+        reels.removeAll()
+        saveReels()
+        lastSyncDate = nil
+        print("🗑️ Cleared reels for user")
+    }
+    
+    /// Setup observer to detect user changes
+    private func setupUserChangeObserver() {
+        NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("UserDidChange"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self = self else { return }
+            
+            // Check if user actually changed
+            let newUserId = UserManager.shared.currentUserId
+            if self.currentUserId != newUserId {
+                print("👤 User changed from \(self.currentUserId ?? "nil") to \(newUserId ?? "nil")")
+                self.currentUserId = newUserId
+                
+                // Load reels for new user
+                self.loadStoredReels()
+            }
         }
     }
     
@@ -166,8 +255,21 @@ class SharedReelManager: ObservableObject {
             let factCheckData = try await sendFactCheck(request)
             print("✅ Successfully received fact check for shared reel")
             
-            // Update the reel status
-            updateReelStatus(id: newReel.id, status: .completed, resultId: factCheckData.title)
+            // Create stored fact check data
+            let storedData = StoredFactCheckData(
+                title: factCheckData.title,
+                summary: factCheckData.summary,
+                thumbnailURL: factCheckData.thumbnailUrl,
+                claim: factCheckData.claim,
+                verdict: factCheckData.verdict,
+                claimAccuracyRating: factCheckData.claimAccuracyRating,
+                explanation: factCheckData.explanation,
+                sources: factCheckData.sources,
+                datePosted: factCheckData.date
+            )
+            
+            // Update the reel status with complete data
+            updateReelStatus(id: newReel.id, status: .completed, resultId: factCheckData.title, factCheckData: storedData)
             
             // If we have a homeViewModel, add the result to the main feed (same as paste flow)
             if let viewModel = homeViewModel {
@@ -234,7 +336,7 @@ class SharedReelManager: ObservableObject {
     
     // MARK: - Status Updates
     
-    func updateReelStatus(id: String, status: FactCheckStatus, resultId: String? = nil, errorMessage: String? = nil) {
+    func updateReelStatus(id: String, status: FactCheckStatus, resultId: String? = nil, errorMessage: String? = nil, factCheckData: StoredFactCheckData? = nil) {
         if let index = reels.firstIndex(where: { $0.id == id }) {
             reels[index].status = status
             if let resultId = resultId {
@@ -242,6 +344,9 @@ class SharedReelManager: ObservableObject {
             }
             if let errorMessage = errorMessage {
                 reels[index].errorMessage = errorMessage
+            }
+            if let factCheckData = factCheckData {
+                reels[index].factCheckData = factCheckData
             }
             saveReels()
         }
@@ -398,5 +503,135 @@ class SharedReelManager: ObservableObject {
     func deleteReel(id: String) {
         reels.removeAll { $0.id == id }
         saveReels()
+    }
+    
+    // MARK: - Sync History from Backend
+    
+    /// Syncs user's complete reel history from the backend
+    func syncHistoryFromBackend() async {
+        guard let userId = UserManager.shared.currentUserId,
+              let sessionId = UserManager.shared.currentSessionId else {
+            print("⚠️ Cannot sync: No user credentials")
+            return
+        }
+        
+        await MainActor.run {
+            isSyncing = true
+        }
+        
+        do {
+            let userReels = try await fetchUserReels(userId: userId, sessionId: sessionId)
+            
+            await MainActor.run {
+                // Convert UserReel objects to SharedReel objects
+                let syncedReels = userReels.map { userReel -> SharedReel in
+                    // Map status string to FactCheckStatus
+                    let status: FactCheckStatus
+                    switch userReel.status.lowercased() {
+                    case "completed":
+                        status = .completed
+                    case "processing":
+                        status = .processing
+                    case "pending":
+                        status = .pending
+                    case "failed":
+                        status = .failed
+                    default:
+                        status = .pending
+                    }
+                    
+                    // Parse submittedAt date
+                    let formatter = ISO8601DateFormatter()
+                    let submittedDate = formatter.date(from: userReel.submittedAt) ?? Date()
+                    
+                    // Create stored fact check data if available
+                    var storedData: StoredFactCheckData? = nil
+                    if status == .completed,
+                       let claim = userReel.claim,
+                       let verdict = userReel.verdict,
+                       let rating = userReel.claimAccuracyRating,
+                       let summary = userReel.summary {
+                        
+                        storedData = StoredFactCheckData(
+                            title: userReel.title,
+                            summary: summary,
+                            thumbnailURL: userReel.thumbnailUrl,
+                            claim: claim,
+                            verdict: verdict,
+                            claimAccuracyRating: rating,
+                            explanation: userReel.explanation ?? "",
+                            sources: userReel.sources ?? [],
+                            datePosted: nil
+                        )
+                    }
+                    
+                    return SharedReel(
+                        id: userReel.id,
+                        url: userReel.link,
+                        submittedAt: submittedDate,
+                        status: status,
+                        resultId: userReel.title,
+                        errorMessage: userReel.errorMessage,
+                        factCheckData: storedData
+                    )
+                }
+                
+                // Update reels, keeping any local pending uploads
+                let localPendingReels = reels.filter { $0.status == .pending || $0.status == .processing }
+                let remoteIds = Set(syncedReels.map { $0.id })
+                let uniqueLocalReels = localPendingReels.filter { !remoteIds.contains($0.id) }
+                
+                reels = uniqueLocalReels + syncedReels
+                saveReels()
+                
+                lastSyncDate = Date()
+                isSyncing = false
+                
+                print("✅ Synced \(syncedReels.count) reels from backend")
+            }
+            
+        } catch {
+            await MainActor.run {
+                isSyncing = false
+                uploadError = "Failed to sync: \(error.localizedDescription)"
+            }
+            print("❌ Error syncing history: \(error)")
+        }
+    }
+    
+    /// Fetches user's reels from the backend
+    private func fetchUserReels(userId: String, sessionId: String) async throws -> [UserReel] {
+        guard var urlComponents = URLComponents(string: Config.Endpoints.userReels) else {
+            throw URLError(.badURL)
+        }
+        
+        urlComponents.queryItems = [
+            URLQueryItem(name: "userId", value: userId),
+            URLQueryItem(name: "sessionId", value: sessionId),
+            URLQueryItem(name: "limit", value: "50")
+        ]
+        
+        guard let url = urlComponents.url else {
+            throw URLError(.badURL)
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 30
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+        
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw URLError(.badServerResponse)
+        }
+        
+        let decoder = JSONDecoder()
+        let userReelsResponse = try decoder.decode(UserReelsResponse.self, from: data)
+        return userReelsResponse.reels
     }
 }

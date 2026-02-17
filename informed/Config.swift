@@ -42,5 +42,12 @@ struct Config {
         static let shareReel = Config.endpoint("/share-reel")
         static let getUserReels = Config.endpoint("/get-user-reels")
         static let registerDevice = Config.endpoint("/register-device")
+        
+        // New endpoints for enhanced features
+        static let publicFeed = Config.endpoint("/api/public-feed")
+        static let userReels = Config.endpoint("/api/user-reels")
+        static let trackInteraction = Config.endpoint("/api/track-interaction")
+        static let syncHistory = Config.endpoint("/api/sync-history")
+        static let history = Config.endpoint("/history")
     }
 }
