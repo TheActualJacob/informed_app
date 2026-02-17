@@ -2,24 +2,33 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>NSExtension</key>
-    <dict>
-        <key>NSExtensionAttributes</key>
-        <dict>
-            <key>NSExtensionActivationRule</key>
-            <dict>
-                <key>NSExtensionActivationSupportsMovieWithMaxCount</key>
-                <integer>1</integer>
-                <key>NSExtensionActivationSupportsWebURLWithMaxCount</key>
-                <integer>1</integer>
-                <key>NSExtensionActivationSupportsImageWithMaxCount</key>
-                <integer>1</integer>
-            </dict>
-        </dict>
-        <key>NSExtensionMainStoryboard</key>
-        <string>MainInterface</string>
-        <key>NSExtensionPointIdentifier</key>
-        <string>com.apple.share-services</string>
-    </dict>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSExtension</key>
+	<dict>
+		<key>NSExtensionAttributes</key>
+		<dict>
+			<key>NSExtensionActivationRule</key>
+			<dict>
+				<key>NSExtensionActivationSupportsImageWithMaxCount</key>
+				<integer>1</integer>
+				<key>NSExtensionActivationSupportsMovieWithMaxCount</key>
+				<integer>1</integer>
+				<key>NSExtensionActivationSupportsWebURLWithMaxCount</key>
+				<integer>1</integer>
+			</dict>
+		</dict>
+		<key>NSExtensionMainStoryboard</key>
+		<string>MainInterface</string>
+		<key>NSExtensionPointIdentifier</key>
+		<string>com.apple.share-services</string>
+	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>This extension needs to connect to your local development server for fact-checking content.</string>
 </dict>
 </plist>

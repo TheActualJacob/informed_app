@@ -7,7 +7,7 @@
 
 import Foundation
 import UserNotifications
-internal import Combine
+import Combine
 import UIKit
 
 @MainActor

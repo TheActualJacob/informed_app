@@ -52,6 +52,7 @@ struct FactCheckData: Codable {
     let description: String
     let date: String
     let videoLink: String
+    let thumbnailUrl: String?  // Optional: Direct image URL for preview (Instagram thumbnails)
     let claim: String
     let verdict: String
     let claimAccuracyRating: String
@@ -62,5 +63,6 @@ struct FactCheckData: Codable {
     enum CodingKeys: String, CodingKey {
         case title, description, date, videoLink, claim, verdict, explanation, summary, sources
         case claimAccuracyRating = "claim_accuracy_rating"
+        case thumbnailUrl = "thumbnail_url"
     }
 }

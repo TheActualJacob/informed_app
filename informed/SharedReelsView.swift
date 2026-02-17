@@ -11,6 +11,12 @@ struct SharedReelsView: View {
     @EnvironmentObject var reelManager: SharedReelManager
     @EnvironmentObject var userManager: UserManager
     
+    // Helper to find fact check item from SharedReelManager's homeViewModel
+    private func findFactCheckItem(for resultId: String) -> FactCheckItem? {
+        // Try to find in the home view model's items
+        return SharedReelManager.shared.homeViewModel?.items.first(where: { $0.title == resultId })
+    }
+    
     var body: some View {
         NavigationView {
             ZStack {
@@ -22,13 +28,10 @@ struct SharedReelsView: View {
                     ScrollView {
                         VStack(spacing: 16) {
                             ForEach(reelManager.reels) { reel in
-                                ReelStatusCard(reel: reel)
-                                    .onTapGesture {
-                                        // Navigate to results if completed
-                                        if reel.status == .completed {
-                                            // Handle navigation to results
-                                        }
-                                    }
+                                ReelStatusCard(
+                                    reel: reel,
+                                    factCheckItem: reel.resultId != nil ? findFactCheckItem(for: reel.resultId!) : nil
+                                )
                             }
                         }
                         .padding()
@@ -81,6 +84,7 @@ struct SharedReelsView: View {
 
 struct ReelStatusCard: View {
     let reel: SharedReel
+    let factCheckItem: FactCheckItem?
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -147,10 +151,8 @@ struct ReelStatusCard: View {
             }
             
             // Action button for completed items
-            if reel.status == .completed {
-                Button(action: {
-                    // Navigate to results
-                }) {
+            if reel.status == .completed, let item = factCheckItem {
+                NavigationLink(destination: FactDetailView(item: item)) {
                     HStack {
                         Image(systemName: "doc.text.magnifyingglass")
                         Text("View Results")
@@ -168,6 +170,9 @@ struct ReelStatusCard: View {
                         )
                     )
                     .cornerRadius(8)
+                }
+                .onTapGesture {
+                    HapticManager.lightImpact()
                 }
             }
         }

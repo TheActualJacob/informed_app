@@ -1,5 +1,5 @@
 import Foundation
-internal import Combine
+import Combine
 
 // MARK: - User Defaults Manager (for storing userId)
 

@@ -7,7 +7,7 @@
 
 import Foundation
 import SwiftUI
-internal import Combine
+import Combine
 
 enum FactCheckStatus: String, Codable {
     case pending = "Pending"
@@ -188,8 +188,8 @@ class SharedReelManager: ObservableObject {
                     timeAgo: "Just now",
                     title: factCheckData.title,
                     summary: factCheckData.summary,
-                    thumbnailURL: URL(string: factCheckData.videoLink),
-                    credibilityScore: viewModel.calculateCredibilityScore(from: factCheckData.claimAccuracyRating),
+                    thumbnailURL: URL(string: factCheckData.thumbnailUrl ?? factCheckData.videoLink),
+                    credibilityScore: calculateCredibilityScore(from: factCheckData.claimAccuracyRating),
                     sources: factCheckData.sources.joined(separator: ", "),
                     verdict: factCheckData.verdict,
                     factCheck: factCheck,
@@ -348,6 +348,9 @@ class SharedReelManager: ObservableObject {
             return
         }
         
+        // Get thumbnail URL if available, fallback to videoLink
+        let thumbnailUrl = factCheckData["thumbnail_url"] as? String
+        
         // Check if this fact-check is already in the feed
         if homeViewModel.items.contains(where: { $0.originalLink == url }) {
             print("ℹ️ Fact-check already in feed, skipping")
@@ -371,8 +374,8 @@ class SharedReelManager: ObservableObject {
             timeAgo: "Just now",
             title: title,
             summary: summary,
-            thumbnailURL: URL(string: videoLink),
-            credibilityScore: homeViewModel.calculateCredibilityScore(from: claimAccuracyRating),
+            thumbnailURL: URL(string: thumbnailUrl ?? videoLink),
+            credibilityScore: calculateCredibilityScore(from: claimAccuracyRating),
             sources: sources.joined(separator: ", "),
             verdict: verdict,
             factCheck: factCheck,
