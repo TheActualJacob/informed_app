@@ -196,9 +196,9 @@ struct PublicReelCard: View {
     var body: some View {
         NavigationLink(destination: PublicReelDetailView(reel: reel, viewModel: viewModel)) {
             VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-                // Header - match FactResultCard format
+                // Header - match FactResultCard format with platform-specific icon
                 HStack {
-                    Image(systemName: "camera.fill")
+                    Image(systemName: reel.platformIcon)
                         .foregroundColor(.brandBlue)
                         .padding(Theme.Spacing.sm)
                         .background(Color.brandBlue.opacity(0.1))

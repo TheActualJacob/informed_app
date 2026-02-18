@@ -14,7 +14,7 @@ struct FactResultCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
             HStack {
-                Image(systemName: item.sourceIcon)
+                Image(systemName: item.displaySourceIcon)
                     .foregroundColor(.brandBlue)
                     .padding(Theme.Spacing.sm)
                     .background(Color.brandBlue.opacity(0.1))

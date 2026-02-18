@@ -46,6 +46,15 @@ struct HapticManager {
         notification(.error)
     }
     
+    // Convenience aliases
+    static func successImpact() {
+        success()
+    }
+    
+    static func errorImpact() {
+        error()
+    }
+    
     // MARK: - Selection Feedback
     
     static func selection() {

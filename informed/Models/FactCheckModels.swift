@@ -76,6 +76,31 @@ struct FactCheckItem: Identifiable {
         if credibilityScore >= 0.5 { return .medium }
         return .low
     }
+    
+    // Dynamic platform detection for backward compatibility with old data
+    var displaySourceName: String {
+        // If it's the old generic name, detect from URL
+        if sourceName == "Fact Check API", let link = originalLink {
+            if link.lowercased().contains("tiktok") {
+                return "TikTok"
+            } else if link.lowercased().contains("instagram") {
+                return "Instagram"
+            }
+        }
+        return sourceName
+    }
+    
+    var displaySourceIcon: String {
+        // If it's the old generic icon, detect from URL
+        if sourceIcon == "checkmark.seal.fill", let link = originalLink {
+            if link.lowercased().contains("tiktok") {
+                return "music.note"
+            } else if link.lowercased().contains("instagram") {
+                return "camera.fill"
+            }
+        }
+        return sourceIcon
+    }
 }
 
 // MARK: - Helper Functions
@@ -146,13 +171,14 @@ struct PublicReel: Identifiable, Codable {
     let datePosted: String?
     let uploadedBy: ReelUser
     let engagement: ReelEngagement
+    let platform: String? // "instagram" or "tiktok"
     
     enum CodingKeys: String, CodingKey {
         case id = "uniqueID"
         case title, description, thumbnailUrl, videoLink
         case claim, verdict, claimAccuracyRating
         case explanation, summary, sources, checkedAt, datePosted
-        case uploadedBy, engagement
+        case uploadedBy, engagement, platform
     }
     
     // Custom decoder to handle datePosted as either String or Int
@@ -173,6 +199,7 @@ struct PublicReel: Identifiable, Codable {
         checkedAt = try container.decode(String.self, forKey: .checkedAt)
         uploadedBy = try container.decode(ReelUser.self, forKey: .uploadedBy)
         engagement = try container.decode(ReelEngagement.self, forKey: .engagement)
+        platform = try container.decodeIfPresent(String.self, forKey: .platform)
         
         // Handle datePosted as either String or Int
         if let dateString = try? container.decodeIfPresent(String.self, forKey: .datePosted) {
@@ -200,6 +227,29 @@ struct PublicReel: Identifiable, Codable {
         return calculateCredibilityScore(from: claimAccuracyRating)
     }
     
+    // Detect platform from URL if not explicitly set
+    var detectedPlatform: String {
+        if let platform = platform {
+            return platform
+        }
+        // Detect from URL
+        if videoLink.contains("tiktok.com") || videoLink.contains("vm.tiktok.com") {
+            return "tiktok"
+        } else if videoLink.contains("instagram.com") {
+            return "instagram"
+        }
+        return "instagram" // Default fallback
+    }
+    
+    // Platform-specific display properties
+    var platformDisplayName: String {
+        return detectedPlatform == "tiktok" ? "TikTok" : "Instagram"
+    }
+    
+    var platformIcon: String {
+        return detectedPlatform == "tiktok" ? "music.note" : "camera.fill"
+    }
+    
     var credibilityLevel: CredibilityLevel {
         if credibilityScore >= 0.8 { return .high }
         if credibilityScore >= 0.5 { return .medium }
@@ -218,8 +268,8 @@ struct PublicReel: Identifiable, Codable {
         )
         
         return FactCheckItem(
-            sourceName: "Instagram",
-            sourceIcon: "camera.fill",
+            sourceName: platformDisplayName,
+            sourceIcon: platformIcon,
             timeAgo: timeAgo,
             title: title,
             summary: summary,
@@ -264,12 +314,15 @@ struct UserReel: Identifiable, Codable {
     let sources: [String]?
     let engagement: ReelEngagement?
     let errorMessage: String?
+    let platform: String? // "instagram" or "tiktok"
+    let errorType: String? // For enhanced error handling (age_restricted, unavailable, invalid_url, etc.)
     
     enum CodingKeys: String, CodingKey {
         case id = "uniqueID"
         case title, link, status, thumbnailUrl, submittedAt
         case claim, verdict, claimAccuracyRating, explanation, summary, sources
-        case engagement, errorMessage
+        case engagement, errorMessage, platform
+        case errorType = "error_type"
     }
     
     var timeAgo: String {
@@ -287,6 +340,29 @@ struct UserReel: Identifiable, Codable {
             return String(link.prefix(47)) + "..."
         }
         return link
+    }
+    
+    // Detect platform from URL if not explicitly set
+    var detectedPlatform: String {
+        if let platform = platform {
+            return platform
+        }
+        // Detect from URL
+        if link.contains("tiktok.com") || link.contains("vm.tiktok.com") {
+            return "tiktok"
+        } else if link.contains("instagram.com") {
+            return "instagram"
+        }
+        return "instagram" // Default fallback
+    }
+    
+    // Platform-specific display properties
+    var platformDisplayName: String {
+        return detectedPlatform == "tiktok" ? "TikTok" : "Instagram"
+    }
+    
+    var platformIcon: String {
+        return detectedPlatform == "tiktok" ? "music.note" : "camera.fill"
     }
 }
 

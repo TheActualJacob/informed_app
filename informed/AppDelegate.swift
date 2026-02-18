@@ -7,6 +7,7 @@
 
 import UIKit
 import UserNotifications
+import ActivityKit
 
 class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     
@@ -17,11 +18,108 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         // Set the notification delegate
         UNUserNotificationCenter.current().delegate = self
         
+        // Register notification categories for reel processing
+        registerNotificationCategories()
+        
         // Sync backend URL to shared storage for Share Extension
         Config.syncBackendURLToSharedStorage()
         
+        // Setup Live Activity tap handling for iOS 16.1+
+        if #available(iOS 16.1, *) {
+            setupLiveActivityHandling()
+        }
+        
+        // Enable background fetch for checking submissions
+        application.setMinimumBackgroundFetchInterval(UIApplication.backgroundFetchIntervalMinimum)
+        
+        // Setup Darwin notification observer for Share Extension communication
+        setupDarwinNotificationObserver()
+        
         print("✅ AppDelegate initialized")
         return true
+    }
+    
+    // MARK: - Notification Categories
+    
+    private func registerNotificationCategories() {
+        let processingCategory = UNNotificationCategory(
+            identifier: "REEL_PROCESSING",
+            actions: [],
+            intentIdentifiers: [],
+            options: []
+        )
+        
+        UNUserNotificationCenter.current().setNotificationCategories([processingCategory])
+        print("✅ Registered notification categories")
+    }
+    
+    // MARK: - Darwin Notification Observer
+    
+    private func setupDarwinNotificationObserver() {
+        let center = CFNotificationCenterGetDarwinNotifyCenter()
+        let observer = Unmanaged.passUnretained(self).toOpaque()
+        
+        // Observer 1: New submission notification
+        let newSubmissionName = "com.jacob.informed.newSubmission" as CFString
+        print("🔧 Setting up Darwin notification observer for: \(newSubmissionName)")
+        
+        CFNotificationCenterAddObserver(
+            center,
+            observer,
+            { (center, observer, name, object, userInfo) in
+                print("============================================================")
+                print("📡 *** NEW SUBMISSION DARWIN NOTIFICATION RECEIVED *** ")
+                print("   Notification name: \(String(describing: name))")
+                print("   Time: \(Date())")
+                print("============================================================")
+                
+                // Trigger check immediately on main thread
+                DispatchQueue.main.async {
+                    print("🔄 Triggering immediate check from Darwin notification...")
+                    Task { @MainActor in
+                        if #available(iOS 16.1, *) {
+                            await SharedReelManager.shared.checkAndStartPendingLiveActivities()
+                        }
+                        
+                        // Also sync completed fact-checks
+                        SharedReelManager.shared.syncCompletedFactChecksFromAppGroup()
+                    }
+                }
+            },
+            newSubmissionName,
+            nil,
+            .deliverImmediately
+        )
+        
+        // Observer 2: Fact-check completion notification
+        let completionName = "com.jacob.informed.factCheckComplete" as CFString
+        print("🔧 Setting up Darwin notification observer for: \(completionName)")
+        
+        CFNotificationCenterAddObserver(
+            center,
+            observer,
+            { (center, observer, name, object, userInfo) in
+                print("============================================================")
+                print("📡 *** FACT-CHECK COMPLETE DARWIN NOTIFICATION RECEIVED *** ")
+                print("   Notification name: \(String(describing: name))")
+                print("   Time: \(Date())")
+                print("============================================================")
+                
+                // Sync completed fact-checks and update Live Activity immediately
+                DispatchQueue.main.async {
+                    print("🔄 Triggering Live Activity update from completion notification...")
+                    Task { @MainActor in
+                        // Sync completed fact-checks (this will update the Live Activity)
+                        SharedReelManager.shared.syncCompletedFactChecksFromAppGroup()
+                    }
+                }
+            },
+            completionName,
+            nil,
+            .deliverImmediately
+        )
+        
+        print("✅ Darwin notification observers set up successfully (new submission + completion)")
     }
     
     // MARK: - Remote Notification Registration
@@ -58,13 +156,36 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         
         print("📬 Notification received in foreground: \(userInfo)")
         
-        // Handle the notification
+        // Handle start processing notification immediately
+        if let action = userInfo["action"] as? String, action == "start_processing" {
+            print("🎬 START PROCESSING notification received - starting Live Activity NOW!")
+            
+            // Post to NotificationCenter for immediate response
+            NotificationCenter.default.post(
+                name: NSNotification.Name("StartProcessingNotificationReceived"),
+                object: nil
+            )
+            
+            Task { @MainActor in
+                // Check for pending submissions and start Live Activities IMMEDIATELY
+                if #available(iOS 16.1, *) {
+                    print("🚀 Calling checkAndStartPendingLiveActivities from foreground notification...")
+                    await SharedReelManager.shared.checkAndStartPendingLiveActivities()
+                }
+            }
+        }
+        
+        // Handle other notifications
         Task { @MainActor in
             NotificationManager.shared.handleNotification(userInfo: userInfo)
         }
         
-        // Show notification banner even when app is in foreground
-        completionHandler([.banner, .sound, .badge])
+        // Show notification banner even when app is in foreground (but not for start_processing)
+        if let action = userInfo["action"] as? String, action == "start_processing" {
+            completionHandler([]) // Silent - Live Activity will show instead
+        } else {
+            completionHandler([.banner, .sound, .badge])
+        }
     }
     
     // Called when user taps on notification
@@ -77,8 +198,22 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         
         print("👆 User tapped notification: \(userInfo)")
         
+        // Handle start processing notification (from Share Extension)
+        if let action = userInfo["action"] as? String, action == "start_processing" {
+            print("🎬 Starting Live Activity for new submission")
+            
+            Task { @MainActor in
+                // Check for pending submissions and start Live Activities
+                if #available(iOS 16.1, *) {
+                    await SharedReelManager.shared.checkAndStartPendingLiveActivities()
+                }
+                
+                // Also sync completed fact-checks
+                SharedReelManager.shared.syncCompletedFactChecksFromAppGroup()
+            }
+        }
         // Handle completion notification from Share Extension (fact-check complete)
-        if let action = userInfo["action"] as? String, action == "fact_check_complete" {
+        else if let action = userInfo["action"] as? String, action == "fact_check_complete" {
             print("✅ User tapped fact-check completion notification")
             
             Task { @MainActor in
@@ -152,10 +287,29 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
                     sources: factCheckData.sources
                 )
                 
+                // Determine platform from backend or URL
+                let platformName: String
+                let platformIcon: String
+                if let platform = factCheckData.platform {
+                    if platform.lowercased() == "tiktok" {
+                        platformName = "TikTok"
+                        platformIcon = "music.note"
+                    } else {
+                        platformName = "Instagram"
+                        platformIcon = "camera.fill"
+                    }
+                } else if instagramURL.contains("tiktok") {
+                    platformName = "TikTok"
+                    platformIcon = "music.note"
+                } else {
+                    platformName = "Instagram"
+                    platformIcon = "camera.fill"
+                }
+                
                 // Create FactCheckItem
                 let newItem = FactCheckItem(
-                    sourceName: "Instagram",
-                    sourceIcon: "camera.fill",
+                    sourceName: platformName,
+                    sourceIcon: platformIcon,
                     timeAgo: "Just now",
                     title: factCheckData.title,
                     summary: factCheckData.summary,
@@ -193,5 +347,100 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         }
         
         completionHandler(.newData)
+    }
+    
+    // MARK: - Background Notification Delivery
+    
+    // This is called when a notification is delivered while app is in background/suspended
+    func application(
+        _ application: UIApplication,
+        didReceive notification: UILocalNotification
+    ) {
+        print("📬 Local notification received in background!")
+        
+        if let userInfo = notification.userInfo as? [String: Any],
+           let action = userInfo["action"] as? String,
+           action == "start_processing" {
+            
+            print("🎬 START PROCESSING notification in background - starting Live Activity!")
+            
+            Task { @MainActor in
+                if #available(iOS 16.1, *) {
+                    await SharedReelManager.shared.checkAndStartPendingLiveActivities()
+                }
+            }
+        }
+    }
+    
+    // MARK: - Live Activity Handling
+    
+    @available(iOS 16.1, *)
+    private func setupLiveActivityHandling() {
+        Task { @MainActor in
+            // Monitor all active Live Activities
+            for activity in Activity<ReelProcessingActivityAttributes>.activities {
+                // Set up monitoring for this activity
+                Task {
+                    for await activityState in activity.activityStateUpdates {
+                        if activityState == .dismissed {
+                            print("🔄 Live Activity dismissed: \(activity.attributes.submissionId)")
+                        }
+                    }
+                }
+                
+                // Listen for user interaction (taps)
+                Task {
+                    for await pushToken in activity.pushTokenUpdates {
+                        let tokenString = pushToken.map { String(format: "%02x", $0) }.joined()
+                        print("🔑 Live Activity push token: \(tokenString)")
+                        // Optionally send this token to your backend for remote updates
+                    }
+                }
+            }
+        }
+    }
+    
+    @available(iOS 16.1, *)
+    @MainActor
+    func handleLiveActivityTap(submissionId: String) {
+        print("👆 User tapped Live Activity for submission: \(submissionId)")
+        
+        // Find the reel in SharedReelManager
+        if let reel = SharedReelManager.shared.reels.first(where: { $0.id == submissionId }) {
+            if reel.status == .completed {
+                // Navigate to My Reels tab and show the completed reel
+                NotificationCenter.default.post(
+                    name: NSNotification.Name("NavigateToMyReels"),
+                    object: nil,
+                    userInfo: ["submissionId": submissionId]
+                )
+                
+                // If we have fact check data, optionally navigate directly to detail view
+                if let factCheckData = reel.factCheckData {
+                    let factCheckItem = factCheckData.toFactCheckItem(originalLink: reel.url)
+                    NotificationCenter.default.post(
+                        name: NSNotification.Name("ShowFactCheckDetail"),
+                        object: nil,
+                        userInfo: ["factCheckItem": factCheckItem]
+                    )
+                }
+                
+                HapticManager.successImpact()
+            } else {
+                // Still processing, just navigate to My Reels
+                NotificationCenter.default.post(
+                    name: NSNotification.Name("NavigateToMyReels"),
+                    object: nil
+                )
+                HapticManager.lightImpact()
+            }
+        } else {
+            print("⚠️ Could not find reel for submission: \(submissionId)")
+            // Still navigate to My Reels tab
+            NotificationCenter.default.post(
+                name: NSNotification.Name("NavigateToMyReels"),
+                object: nil
+            )
+        }
     }
 }

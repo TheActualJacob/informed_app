@@ -8,6 +8,7 @@
 import Foundation
 import SwiftUI
 import Combine
+import ActivityKit
 
 enum FactCheckStatus: String, Codable {
     case pending = "Pending"
@@ -41,6 +42,7 @@ struct SharedReel: Identifiable, Codable {
     var status: FactCheckStatus
     var resultId: String?
     var errorMessage: String?
+    var platform: String?  // "instagram" or "tiktok"
     
     // Store complete fact check data
     var factCheckData: StoredFactCheckData?
@@ -57,6 +59,20 @@ struct SharedReel: Identifiable, Codable {
         }
         return url
     }
+    
+    // Detect platform from URL if not explicitly set
+    var detectedPlatform: String {
+        if let platform = platform {
+            return platform
+        }
+        // Detect from URL
+        if url.contains("tiktok.com") || url.contains("vm.tiktok.com") {
+            return "tiktok"
+        } else if url.contains("instagram.com") {
+            return "instagram"
+        }
+        return "instagram" // Default fallback
+    }
 }
 
 // Store complete fact check data with the reel
@@ -70,6 +86,7 @@ struct StoredFactCheckData: Codable {
     let explanation: String
     let sources: [String]
     let datePosted: String?
+    let platform: String?  // "instagram" or "tiktok"
     
     // Convert to FactCheckItem for display
     func toFactCheckItem(originalLink: String) -> FactCheckItem {
@@ -82,9 +99,31 @@ struct StoredFactCheckData: Codable {
             sources: sources
         )
         
+        // Determine platform-specific display
+        let platformName: String
+        let platformIcon: String
+        if let platform = platform {
+            if platform.lowercased() == "tiktok" {
+                platformName = "TikTok"
+                platformIcon = "music.note"  // TikTok-like icon
+            } else {
+                platformName = "Instagram"
+                platformIcon = "camera.fill"
+            }
+        } else {
+            // Fallback detection from URL
+            if originalLink.contains("tiktok") {
+                platformName = "TikTok"
+                platformIcon = "music.note"
+            } else {
+                platformName = "Instagram"
+                platformIcon = "camera.fill"
+            }
+        }
+        
         return FactCheckItem(
-            sourceName: "Instagram",
-            sourceIcon: "camera.fill",
+            sourceName: platformName,
+            sourceIcon: platformIcon,
             timeAgo: "Recently",
             title: title,
             summary: summary,
@@ -111,6 +150,7 @@ class SharedReelManager: ObservableObject {
     @Published var lastSyncDate: Date?
     
     private var currentUserId: String?
+    private var lastActivityCheckTime: Date? // For debouncing Live Activity checks
     
     // Reference to HomeViewModel to integrate with main feed
     weak var homeViewModel: HomeViewModel?
@@ -120,6 +160,46 @@ class SharedReelManager: ObservableObject {
         loadStoredReels()
         setupNotificationObserver()
         setupUserChangeObserver()
+        
+        // Clean up stale submissions from App Group on init
+        cleanupStaleAppGroupSubmissions()
+        
+        // Check for pending submissions and start Live Activities
+        if #available(iOS 16.1, *) {
+            Task {
+                await checkAndStartPendingLiveActivities()
+            }
+        }
+    }
+    
+    // MARK: - Cleanup Stale App Group Submissions
+    
+    private func cleanupStaleAppGroupSubmissions() {
+        let appGroupName = "group.com.jacob.informed"
+        guard let sharedDefaults = UserDefaults(suiteName: appGroupName) else {
+            return
+        }
+        
+        guard let submissions = sharedDefaults.array(forKey: "pending_submissions") as? [[String: Any]] else {
+            return
+        }
+        
+        let now = Date().timeIntervalSince1970
+        let twoMinutesAgo = now - 120 // 2 minutes
+        
+        // Keep only submissions from the last 2 minutes
+        let recentSubmissions = submissions.filter { submission in
+            guard let submittedAt = submission["submitted_at"] as? TimeInterval else {
+                return false
+            }
+            return submittedAt > twoMinutesAgo
+        }
+        
+        if recentSubmissions.count < submissions.count {
+            print("🧹 Cleaned up \(submissions.count - recentSubmissions.count) stale submissions from App Group")
+            sharedDefaults.set(recentSubmissions, forKey: "pending_submissions")
+            sharedDefaults.synchronize()
+        }
     }
     
     // MARK: - Storage
@@ -265,7 +345,8 @@ class SharedReelManager: ObservableObject {
                 claimAccuracyRating: factCheckData.claimAccuracyRating,
                 explanation: factCheckData.explanation,
                 sources: factCheckData.sources,
-                datePosted: factCheckData.date
+                datePosted: factCheckData.date,
+                platform: factCheckData.platform
             )
             
             // Update the reel status with complete data
@@ -283,10 +364,29 @@ class SharedReelManager: ObservableObject {
                     sources: factCheckData.sources
                 )
                 
+                // Determine platform from backend or URL
+                let platformName: String
+                let platformIcon: String
+                if let platform = factCheckData.platform {
+                    if platform.lowercased() == "tiktok" {
+                        platformName = "TikTok"
+                        platformIcon = "music.note"
+                    } else {
+                        platformName = "Instagram"
+                        platformIcon = "camera.fill"
+                    }
+                } else if instagramURL.contains("tiktok") {
+                    platformName = "TikTok"
+                    platformIcon = "music.note"
+                } else {
+                    platformName = "Instagram"
+                    platformIcon = "camera.fill"
+                }
+                
                 // Create FactCheckItem
                 let newItem = FactCheckItem(
-                    sourceName: "Instagram",
-                    sourceIcon: "camera.fill",
+                    sourceName: platformName,
+                    sourceIcon: platformIcon,
                     timeAgo: "Just now",
                     title: factCheckData.title,
                     summary: factCheckData.summary,
@@ -332,6 +432,114 @@ class SharedReelManager: ObservableObject {
             
             return false
         }
+    }
+    
+    // MARK: - Real-Time Progress Polling
+    
+    /// Polls backend for submission progress and updates Live Activity
+    /// - Parameter submissionId: The unique submission ID from backend
+    func startProgressPolling(submissionId: String) {
+        guard #available(iOS 16.1, *) else { return }
+        
+        print("🔄 [ProgressPolling] Starting progress polling for: \(submissionId)")
+        
+        Task {
+            var isCompleted = false
+            var pollCount = 0
+            let maxPolls = 60 // 60 polls * 3s = 3 minutes max
+            
+            while !isCompleted && pollCount < maxPolls {
+                pollCount += 1
+                
+                do {
+                    // Fetch current status from backend
+                    let statusResponse = try await fetchSubmissionStatus(submissionId: submissionId)
+                    
+                    print("📊 [ProgressPolling] Poll \(pollCount): \(statusResponse.status) - \(statusResponse.progressPercentage)%")
+                    
+                    // Update Live Activity with real backend data including time estimate
+                    await ReelProcessingActivityManager.shared.updateProgress(
+                        submissionId: submissionId,
+                        progress: statusResponse.normalizedProgress,
+                        message: statusResponse.currentStage,
+                        estimatedSecondsRemaining: statusResponse.estimatedSecondsRemaining
+                    )
+                    
+                    // Check if completed or failed
+                    if statusResponse.status.lowercased() == "completed" {
+                        print("✅ [ProgressPolling] Submission completed!")
+                        isCompleted = true
+                        
+                        // Sync completed fact-checks from App Group
+                        syncCompletedFactChecksFromAppGroup()
+                        break
+                    } else if statusResponse.status.lowercased() == "failed" {
+                        print("❌ [ProgressPolling] Submission failed")
+                        await ReelProcessingActivityManager.shared.failActivity(
+                            submissionId: submissionId,
+                            errorMessage: statusResponse.currentStage
+                        )
+                        isCompleted = true
+                        break
+                    }
+                    
+                    // Wait 3 seconds before next poll
+                    try await Task.sleep(nanoseconds: 3_000_000_000)
+                    
+                } catch {
+                    print("⚠️ [ProgressPolling] Error fetching status: \(error.localizedDescription)")
+                    
+                    // On error, wait and retry (don't fail immediately)
+                    try? await Task.sleep(nanoseconds: 5_000_000_000) // 5s on error
+                }
+            }
+            
+            if !isCompleted && pollCount >= maxPolls {
+                print("⏱️ [ProgressPolling] Timeout after \(maxPolls) polls (3 minutes)")
+                await ReelProcessingActivityManager.shared.failActivity(
+                    submissionId: submissionId,
+                    errorMessage: "Processing timeout"
+                )
+            }
+        }
+    }
+    
+    /// Fetches current submission status from backend
+    private func fetchSubmissionStatus(submissionId: String) async throws -> SubmissionStatusResponse {
+        guard let userId = UserManager.shared.currentUserId,
+              let sessionId = UserManager.shared.currentSessionId else {
+            throw URLError(.userAuthenticationRequired)
+        }
+        
+        // Construct URL: GET /api/submission-status/:id
+        let urlString = "\(Config.Endpoints.submissionStatus)/\(submissionId)"
+        guard var urlComponents = URLComponents(string: urlString) else {
+            throw URLError(.badURL)
+        }
+        
+        // Add authentication query parameters
+        urlComponents.queryItems = [
+            URLQueryItem(name: "userId", value: userId),
+            URLQueryItem(name: "sessionId", value: sessionId)
+        ]
+        
+        guard let url = urlComponents.url else {
+            throw URLError(.badURL)
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 10 // Short timeout for polling
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...299).contains(httpResponse.statusCode) else {
+            throw URLError(.badServerResponse)
+        }
+        
+        let decoder = JSONDecoder()
+        return try decoder.decode(SubmissionStatusResponse.self, from: data)
     }
     
     // MARK: - Status Updates
@@ -406,21 +614,79 @@ class SharedReelManager: ObservableObject {
             // Check if we already have this fact-check
             if reels.contains(where: { $0.id == id }) {
                 print("ℹ️ Fact-check \(id) already exists, skipping")
+                
+                // Update Live Activity to completed if it exists
+                if #available(iOS 16.1, *) {
+                    Task {
+                        let title = factCheckData["title"] as? String ?? "Fact-Check Complete"
+                        let verdict = factCheckData["verdict"] as? String ?? "View Results"
+                        await ReelProcessingActivityManager.shared.completeActivity(
+                            submissionId: id,
+                            title: title,
+                            verdict: verdict
+                        )
+                    }
+                }
                 continue
             }
             
-            // Add as completed to SharedReelManager
+            // Extract fact-check data for StoredFactCheckData
+            let storedData: StoredFactCheckData?
+            if let title = factCheckData["title"] as? String,
+               let summary = factCheckData["summary"] as? String,
+               let claim = factCheckData["claim"] as? String,
+               let verdict = factCheckData["verdict"] as? String,
+               let claimAccuracyRating = factCheckData["claim_accuracy_rating"] as? String,
+               let explanation = factCheckData["explanation"] as? String,
+               let sources = factCheckData["sources"] as? [String],
+               let datePosted = factCheckData["date"] as? String {
+                
+                let thumbnailURL = factCheckData["thumbnail_url"] as? String
+                let platform = factCheckData["platform"] as? String
+                
+                storedData = StoredFactCheckData(
+                    title: title,
+                    summary: summary,
+                    thumbnailURL: thumbnailURL,
+                    claim: claim,
+                    verdict: verdict,
+                    claimAccuracyRating: claimAccuracyRating,
+                    explanation: explanation,
+                    sources: sources,
+                    datePosted: datePosted,
+                    platform: platform
+                )
+            } else {
+                print("⚠️ Missing some fact-check fields, creating without stored data")
+                storedData = nil
+            }
+            
+            // Add as completed to SharedReelManager with fact-check data
             let sharedReel = SharedReel(
                 id: id,
                 url: url,
                 submittedAt: Date(timeIntervalSince1970: submittedAt),
                 status: .completed,
                 resultId: factCheckData["title"] as? String,
-                errorMessage: nil
+                errorMessage: nil,
+                factCheckData: storedData
             )
             
             reels.insert(sharedReel, at: 0)
-            print("✅ Synced completed fact-check \(id) to SharedReelManager")
+            print("✅ Synced completed fact-check \(id) to SharedReelManager with full data")
+            
+            // Complete Live Activity for iOS 16.1+
+            if #available(iOS 16.1, *) {
+                Task {
+                    let title = factCheckData["title"] as? String ?? "Fact-Check Complete"
+                    let verdict = factCheckData["verdict"] as? String ?? "View Results"
+                    await ReelProcessingActivityManager.shared.completeActivity(
+                        submissionId: id,
+                        title: title,
+                        verdict: verdict
+                    )
+                }
+            }
             
             // Add to HomeViewModel feed if available
             if let homeViewModel = homeViewModel {
@@ -456,6 +722,21 @@ class SharedReelManager: ObservableObject {
         // Get thumbnail URL if available, fallback to videoLink
         let thumbnailUrl = factCheckData["thumbnail_url"] as? String
         
+        // Get platform from backend data
+        let platform = factCheckData["platform"] as? String
+        let platformName: String
+        let platformIcon: String
+        if let platform = platform, platform.lowercased() == "tiktok" {
+            platformName = "TikTok"
+            platformIcon = "music.note"
+        } else if url.contains("tiktok") {
+            platformName = "TikTok"
+            platformIcon = "music.note"
+        } else {
+            platformName = "Instagram"
+            platformIcon = "camera.fill"
+        }
+        
         // Check if this fact-check is already in the feed
         if homeViewModel.items.contains(where: { $0.originalLink == url }) {
             print("ℹ️ Fact-check already in feed, skipping")
@@ -474,8 +755,8 @@ class SharedReelManager: ObservableObject {
         
         // Create FactCheckItem
         let newItem = FactCheckItem(
-            sourceName: "Instagram",
-            sourceIcon: "camera.fill",
+            sourceName: platformName,
+            sourceIcon: platformIcon,
             timeAgo: "Just now",
             title: title,
             summary: summary,
@@ -561,7 +842,8 @@ class SharedReelManager: ObservableObject {
                             claimAccuracyRating: rating,
                             explanation: userReel.explanation ?? "",
                             sources: userReel.sources ?? [],
-                            datePosted: nil
+                            datePosted: nil,
+                            platform: userReel.platform
                         )
                     }
                     
@@ -633,5 +915,165 @@ class SharedReelManager: ObservableObject {
         let decoder = JSONDecoder()
         let userReelsResponse = try decoder.decode(UserReelsResponse.self, from: data)
         return userReelsResponse.reels
+    }
+    
+    // MARK: - Live Activity Management
+    
+    @available(iOS 16.1, *)
+    func checkAndStartPendingLiveActivities() async {
+        print("🔍 [LiveActivity] checkAndStartPendingLiveActivities called")
+        
+        // Debounce: Skip if we checked within the last 2 seconds
+        let now = Date()
+        if let lastCheck = lastActivityCheckTime {
+            let timeSinceLastCheck = now.timeIntervalSince(lastCheck)
+            if timeSinceLastCheck < 2.0 {
+                print("⏭️ [LiveActivity] Skipping check - last check was \(String(format: "%.1f", timeSinceLastCheck))s ago (debouncing)")
+                return
+            }
+        }
+        lastActivityCheckTime = now
+        
+        // Check App Group for pending submissions that need Live Activities
+        let appGroupName = "group.com.jacob.informed"
+        guard let sharedDefaults = UserDefaults(suiteName: appGroupName) else {
+            print("❌ [LiveActivity] Could not access App Group: \(appGroupName)")
+            return
+        }
+        
+        print("📂 [LiveActivity] Accessing App Group: \(appGroupName)")
+        
+        // Force sync to get latest data
+        sharedDefaults.synchronize()
+        
+        // Check and clear the hasPendingReel flag from Share Extension
+        let hasPendingReel = sharedDefaults.bool(forKey: "hasPendingReel")
+        if hasPendingReel {
+            print("🚀 [LiveActivity] Share Extension flag detected - new reel submitted!")
+            sharedDefaults.removeObject(forKey: "hasPendingReel")
+            sharedDefaults.synchronize()
+        }
+        
+        // Check for polling flag from backend response
+        if let submissionIdForPolling = sharedDefaults.string(forKey: "latest_submission_id_for_polling") {
+            print("🔄 [LiveActivity] Found submission ID for progress polling: \(submissionIdForPolling)")
+            sharedDefaults.removeObject(forKey: "latest_submission_id_for_polling")
+            sharedDefaults.synchronize()
+            
+            // Start progress polling for this submission
+            startProgressPolling(submissionId: submissionIdForPolling)
+        }
+        
+        guard let submissions = sharedDefaults.array(forKey: "pending_submissions") as? [[String: Any]] else {
+            print("📭 [LiveActivity] No pending_submissions array found in App Group")
+            print("   Raw value: \(String(describing: sharedDefaults.object(forKey: "pending_submissions")))")
+            return
+        }
+        
+        print("📦 [LiveActivity] Found \(submissions.count) total submissions in App Group")
+        
+        // Clean up old submissions (older than 5 minutes)
+        let currentTimestamp = Date().timeIntervalSince1970
+        var freshSubmissions: [[String: Any]] = []
+        var startedCount = 0 // Count how many activities we started
+        let maxToStart = 3 // Only start 3 new activities at a time to avoid hitting limit
+        
+        print("🔍 [LiveActivity] Processing submissions (current time: \(currentTimestamp))...")
+        
+        for (index, submission) in submissions.enumerated() {
+            print("   Submission #\(index + 1):")
+            print("     ID: \(submission["id"] as? String ?? "nil")")
+            print("     URL: \((submission["url"] as? String ?? "nil").prefix(50))...")
+            print("     Status: \(submission["status"] as? String ?? "nil")")
+            print("     Submitted: \(submission["submitted_at"] as? TimeInterval ?? 0)")
+            
+            guard let submittedAt = submission["submitted_at"] as? TimeInterval else {
+                print("     ✗ Missing submitted_at timestamp, skipping")
+                continue
+            }
+            
+            let age = currentTimestamp - submittedAt
+            print("     Age: \(Int(age))s")
+            
+            // Remove submissions older than 5 minutes (300 seconds)
+            if age > 300 {
+                print("     ✗ Too old (\(Int(age))s > 300s), removing")
+                continue
+            }
+            
+            print("     ✓ Fresh submission, keeping")
+            freshSubmissions.append(submission)
+            
+            // Try to start Live Activity for fresh submissions
+            guard let submissionId = submission["id"] as? String else {
+                print("⚠️ [LiveActivity] Submission missing ID, skipping")
+                continue
+            }
+            
+            print("🔍 [LiveActivity] Checking submission: \(submissionId)")
+            
+            guard let url = submission["url"] as? String else {
+                print("⚠️ [LiveActivity]   Missing URL, skipping")
+                continue
+            }
+            
+            print("   ✓ Has URL: \(url.prefix(50))...")
+            
+            let status = submission["status"] as? String
+            print("   Status in App Group: '\(status ?? "nil")'")
+            
+            guard status == "processing" else {
+                print("   ✗ Status is not 'processing', skipping")
+                continue
+            }
+            
+            print("   ✓ Status is 'processing'")
+            
+            // Check if a system Live Activity already exists for this submission
+            let existingActivity = Activity<ReelProcessingActivityAttributes>.activities.first {
+                $0.attributes.submissionId == submissionId
+            }
+            
+            if let existing = existingActivity {
+                let age = Date().timeIntervalSince(existing.attributes.startTime)
+                print("✅ [LiveActivity] Active Live Activity found for \(submissionId)")
+                print("     State: \(existing.activityState)")
+                print("     Age: \(Int(age))s")
+                print("     ✅ Keeping existing activity - it's already visible!")
+                
+                // Track it in our manager
+                ReelProcessingActivityManager.shared.currentActivities[submissionId] = existing
+                startedCount += 1 // Count as started
+                continue // Skip creating a duplicate
+            }
+            
+            // Limit how many we start at once to avoid hitting the system limit
+            if startedCount >= maxToStart {
+                print("⏸️ [LiveActivity] Reached max new activities (\(maxToStart)), stopping for now")
+                break
+            }
+            
+            print("🎬 [LiveActivity] Starting Live Activity for submission: \(submissionId)")
+            print("   URL: \(url)")
+            print("   Age: \(Int(age))s")
+            
+            // Start Live Activity for this pending submission
+            await ReelProcessingActivityManager.shared.startActivity(
+                submissionId: submissionId,
+                reelURL: url,
+                thumbnailURL: nil
+            )
+            
+            startedCount += 1
+        }
+        
+        // Save cleaned up submissions back to App Group
+        sharedDefaults.set(freshSubmissions, forKey: "pending_submissions")
+        sharedDefaults.synchronize()
+        
+        print("✅ [LiveActivity] checkAndStartPendingLiveActivities complete")
+        print("   - Cleaned up: \(submissions.count - freshSubmissions.count) stale submissions")
+        print("   - Remaining: \(freshSubmissions.count) fresh submissions")
+        print("   - Started: \(startedCount) new Live Activities")
     }
 }

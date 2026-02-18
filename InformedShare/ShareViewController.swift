@@ -9,6 +9,7 @@ import UIKit
 import SwiftUI
 import UniformTypeIdentifiers
 import UserNotifications
+import ActivityKit
 
 class ShareViewController: UIViewController {
     
@@ -192,6 +193,50 @@ class ShareViewController: UIViewController {
         // Save pending submission immediately
         savePendingSubmission(submissionId: submissionId, url: url, sharedDefaults: sharedDefaults)
         
+        // Set a flag to trigger the main app to check immediately
+        sharedDefaults.set(Date().timeIntervalSince1970, forKey: "new_submission_timestamp")
+        sharedDefaults.set(true, forKey: "hasPendingReel")
+        sharedDefaults.synchronize()
+        print("🚩 Set new_submission_timestamp flag for main app")
+        
+        // ⚠️ IMPORTANT: extensionContext?.open() requires a PAID Apple Developer Account
+        // 
+        // This feature allows the Share Extension to automatically open the main app,
+        // triggering the Dynamic Island immediately. However, it requires:
+        // 1. Paid Apple Developer Program membership ($99/year)
+        // 2. Proper App Group provisioning and code signing
+        // 3. Valid provisioning profiles for both app and extension
+        //
+        // With a FREE account, this call will SILENTLY FAIL (success = false).
+        // The app will still work - users just need to manually switch back to the app
+        // after sharing, and the Dynamic Island will appear then.
+        //
+        // FALLBACK: The scenePhase observer in informedApp.swift will detect when
+        // the user manually returns to the app and trigger checkForPendingSharedURL().
+        
+        if let appURL = URL(string: "factcheckapp://startActivity") {
+            print("🚀 Attempting to open main app via URL scheme: \(appURL.absoluteString)")
+            print("   ⚠️  Note: This requires a paid Apple Developer account")
+            extensionContext?.open(appURL, completionHandler: { success in
+                if success {
+                    print("✅ Successfully opened main app - Dynamic Island should start instantly!")
+                } else {
+                    print("⚠️ Could not auto-open main app (likely using free developer account)")
+                    print("   User will need to manually switch back to the app")
+                    print("   Dynamic Island will appear when they do")
+                }
+            })
+        }
+        
+        // Send Darwin notification as backup (works across app boundaries)
+        let notificationName = "com.jacob.informed.newSubmission" as CFString
+        let center = CFNotificationCenterGetDarwinNotifyCenter()
+        CFNotificationCenterPostNotification(center, CFNotificationName(notificationName), nil, nil, true)
+        print("📡 Sent Darwin notification: \(notificationName)")
+        
+        // Send local notification as fallback to trigger main app to start Live Activity
+        sendStartProcessingNotification(submissionId: submissionId, url: url)
+        
         // Send the request in background (fire and forget)
         let task = URLSession.shared.dataTask(with: request) { data, response, error in
             if let error = error {
@@ -207,27 +252,50 @@ class ShareViewController: UIViewController {
             }
             
             if (200...299).contains(httpResponse.statusCode), let data = data {
-                print("✅ Fact-check completed successfully!")
+                print("✅ Fact-check request accepted by backend!")
                 
                 do {
                     if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
                         print("📦 Response data: \(json)")
                         
-                        self.saveCompletedFactCheck(
-                            submissionId: submissionId,
-                            url: url,
-                            factCheckData: json,
-                            sharedDefaults: sharedDefaults
-                        )
+                        // Check if backend returned a submission_id for progress tracking
+                        if let backendSubmissionId = json["submission_id"] as? String {
+                            print("🆔 Backend returned submission_id: \(backendSubmissionId)")
+                            
+                            // Update the pending submission with backend's ID
+                            self.updatePendingSubmissionId(
+                                localId: submissionId,
+                                backendId: backendSubmissionId,
+                                sharedDefaults: sharedDefaults
+                            )
+                            
+                            // Store flag to trigger main app to start progress polling
+                            sharedDefaults.set(backendSubmissionId, forKey: "latest_submission_id_for_polling")
+                            sharedDefaults.synchronize()
+                            print("🚩 Set polling flag for main app")
+                        }
                         
-                        let title = json["title"] as? String ?? "Fact-Check Complete"
-                        self.sendCompletionNotification(url: url, title: title)
-                        
-                        print("✅ Fact-check saved and user notified")
+                        // If fact-check is already completed (synchronous response), save it
+                        if let status = json["status"] as? String, status == "completed" {
+                            self.saveCompletedFactCheck(
+                                submissionId: submissionId,
+                                url: url,
+                                factCheckData: json,
+                                sharedDefaults: sharedDefaults
+                            )
+                            
+                            let title = json["title"] as? String ?? "Fact-Check Complete"
+                            let verdict = json["verdict"] as? String ?? "View Results"
+                            self.sendCompletionNotification(url: url, title: title)
+                            
+                            print("✅ Fact-check completed synchronously and saved")
+                        } else {
+                            print("⏳ Fact-check is processing asynchronously")
+                        }
                     }
                 } catch {
                     print("❌ Error parsing response: \(error)")
-                    self.sendErrorNotification()
+                    // Don't send error notification for parsing errors - request was accepted
                 }
             } else {
                 print("❌ Server error: \(httpResponse.statusCode)")
@@ -256,8 +324,33 @@ class ShareViewController: UIViewController {
         
         submissions.append(submission)
         sharedDefaults.set(submissions, forKey: "pending_submissions")
+        sharedDefaults.synchronize() // Force immediate write
         
         print("💾 Saved pending submission to App Group")
+        print("   Total submissions now: \(submissions.count)")
+        print("   Submission ID: \(submissionId)")
+        print("   URL: \(url)")
+    }
+    
+    /// Updates a pending submission with backend's submission_id for progress tracking
+    private func updatePendingSubmissionId(localId: String, backendId: String, sharedDefaults: UserDefaults) {
+        guard var submissions = sharedDefaults.array(forKey: "pending_submissions") as? [[String: Any]] else {
+            return
+        }
+        
+        // Find and update the submission with matching local ID
+        for (index, var submission) in submissions.enumerated() {
+            if submission["id"] as? String == localId {
+                submission["backend_id"] = backendId
+                submissions[index] = submission
+                sharedDefaults.set(submissions, forKey: "pending_submissions")
+                sharedDefaults.synchronize()
+                print("✅ Updated submission \(localId) with backend ID: \(backendId)")
+                return
+            }
+        }
+        
+        print("⚠️ Could not find submission \(localId) to update with backend ID")
     }
     
     // MARK: - Save Completed Fact-Check
@@ -284,6 +377,17 @@ class ShareViewController: UIViewController {
             pending.removeAll { ($0["id"] as? String) == submissionId }
             sharedDefaults.set(pending, forKey: "pending_submissions")
         }
+        
+        // Set completion flag to trigger main app to update Live Activity
+        sharedDefaults.set(Date().timeIntervalSince1970, forKey: "fact_check_completed_timestamp")
+        sharedDefaults.synchronize()
+        print("🚩 Set fact_check_completed_timestamp flag for main app")
+        
+        // Send Darwin notification to wake main app and update Live Activity
+        let notificationName = "com.jacob.informed.factCheckComplete" as CFString
+        let center = CFNotificationCenterGetDarwinNotifyCenter()
+        CFNotificationCenterPostNotification(center, CFNotificationName(notificationName), nil, nil, true)
+        print("📡 Sent Darwin notification: \(notificationName) for completed fact-check")
         
         print("💾 Saved completed fact-check to App Group")
     }
@@ -335,16 +439,53 @@ class ShareViewController: UIViewController {
     
     /// Checks if a value is property-list compatible
     private func isPropertyListCompatible(_ value: Any) -> Bool {
-        return value is String || 
-               value is Int || 
-               value is Double || 
-               value is Float || 
-               value is Bool || 
-               value is Date || 
+        return value is String ||
+               value is Int ||
+               value is Double ||
+               value is Float ||
+               value is Bool ||
+               value is Date ||
                value is Data
     }
     
     // MARK: - Notifications
+    
+    private func sendStartProcessingNotification(submissionId: String, url: String) {
+        let center = UNUserNotificationCenter.current()
+        
+        let content = UNMutableNotificationContent()
+        content.title = "🎬 Fact-Checking Reel"
+        content.body = "Processing your submission..."
+        content.sound = .default
+        content.badge = nil
+        
+        // CRITICAL: Set category to make it actionable and wake the app
+        content.categoryIdentifier = "REEL_PROCESSING"
+        
+        content.userInfo = [
+            "action": "start_processing",
+            "submission_id": submissionId,
+            "reel_url": url,
+            "timestamp": Date().timeIntervalSince1970
+        ]
+        
+        // Deliver immediately with minimal delay
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 0.1, repeats: false)
+        let request = UNNotificationRequest(
+            identifier: "start-processing-\(submissionId)",
+            content: content,
+            trigger: trigger
+        )
+        
+        center.add(request) { error in
+            if let error = error {
+                print("❌ Failed to send start processing notification: \(error)")
+            } else {
+                print("✅ Start processing notification sent for submission \(submissionId)")
+                print("   This notification will wake the main app to start Live Activity")
+            }
+        }
+    }
     
     private func sendCompletionNotification(url: String, title: String) {
         let center = UNUserNotificationCenter.current()
@@ -401,6 +542,69 @@ class ShareViewController: UIViewController {
                 print("❌ Failed to send error notification: \(error)")
             }
         }
+    }
+    
+    // MARK: - Live Activity
+    // MARK: - Live Activity (NOT USED - Cannot start from Share Extension)
+    
+    // NOTE: This function exists but is NOT called because Live Activities CANNOT be started
+    // from Share Extensions in iOS. They can only be started from the main app process.
+    // The Share Extension now uses extensionContext?.open(url:) to wake the main app,
+    // which then starts the Live Activity in checkAndStartPendingLiveActivities().
+    //
+    // Keeping this code for reference only.
+    
+    @available(iOS 16.1, *)
+    private func startLiveActivity(submissionId: String, url: String) {
+        print("⚠️ [ShareExtension] WARNING: This function should not be called!")
+        print("⚠️ Live Activities cannot be started from Share Extensions.")
+        print("⚠️ The main app must start them via checkAndStartPendingLiveActivities()")
+        
+        // This code is kept for reference but will not work from Share Extension
+        /*
+        print("🚀 [ShareExtension] Starting Live Activity for: \(submissionId)")
+        
+        // Check if Live Activities are enabled
+        let authInfo = ActivityAuthorizationInfo()
+        guard authInfo.areActivitiesEnabled else {
+            print("⚠️ [ShareExtension] Live Activities not enabled")
+            return
+        }
+        
+        // Create activity attributes
+        let attributes = ReelProcessingActivityAttributes(
+            reelURL: url,
+            submissionId: submissionId,
+            startTime: Date()
+        )
+        
+        // Create initial state
+        let initialState = ReelProcessingActivityAttributes.ContentState(
+            status: .submitting,
+            progress: 0.1,
+            statusMessage: "Submitting your reel...",
+            title: nil,
+            verdict: nil,
+            thumbnailURL: nil
+        )
+        
+        do {
+            // Request Live Activity
+            let activity = try Activity<ReelProcessingActivityAttributes>.request(
+                attributes: attributes,
+                contentState: initialState,
+                pushType: nil
+            )
+            
+            print("✅ [ShareExtension] Live Activity started successfully!")
+            print("   Activity ID: \(activity.id)")
+            print("   🎉 Dynamic Island should now be visible!")
+            
+        } catch {
+            print("❌ [ShareExtension] Failed to start Live Activity: \(error.localizedDescription)")
+            // Not critical - main app can still start it as fallback
+        }
+        */
     }
 }
 

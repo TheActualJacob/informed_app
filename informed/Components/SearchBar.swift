@@ -18,7 +18,13 @@ struct SearchBarView: View {
               url.host != nil else {
             return false
         }
-        return true
+        
+        // Check if it's an Instagram or TikTok URL
+        let lowercasedString = text.lowercased()
+        let isInstagram = lowercasedString.contains("instagram.com") || lowercasedString.contains("instagr.am")
+        let isTikTok = lowercasedString.contains("tiktok.com") || lowercasedString.contains("vm.tiktok.com")
+        
+        return isInstagram || isTikTok
     }
     
     var body: some View {
@@ -26,7 +32,7 @@ struct SearchBarView: View {
             Image(systemName: isValidURL ? "link.circle.fill" : "magnifyingglass")
                 .foregroundColor(isValidURL ? .brandGreen : .brandBlue)
             
-            TextField("Paste a link or search...", text: $text)
+            TextField("Paste Instagram Reel or TikTok URL...", text: $text)
                 .foregroundColor(.primary)
                 .focused($isFocused)
                 .submitLabel(.done)

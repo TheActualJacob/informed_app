@@ -59,10 +59,14 @@ struct FactCheckData: Codable {
     let explanation: String
     let summary: String
     let sources: [String]
+    let platform: String?  // "instagram" or "tiktok"
+    let errorType: String?  // For enhanced error handling (age_restricted, unavailable, invalid_url, etc.)
     
     enum CodingKeys: String, CodingKey {
         case title, description, date, videoLink, claim, verdict, explanation, summary, sources
         case claimAccuracyRating = "claim_accuracy_rating"
         case thumbnailUrl = "thumbnail_url"
+        case platform
+        case errorType = "error_type"
     }
 }

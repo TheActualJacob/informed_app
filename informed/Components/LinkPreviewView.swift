@@ -18,6 +18,7 @@ struct LinkPreviewView: View {
             }
         }) {
             HStack(spacing: 0) {
+                // Thumbnail
                 AsyncImage(url: item.thumbnailURL) { phase in
                     if let image = phase.image {
                         image.resizable().aspectRatio(contentMode: .fill)
@@ -35,7 +36,7 @@ struct LinkPreviewView: View {
                         .foregroundColor(.primary)
                     
                     HStack(spacing: 4) {
-                        Text(item.sourceName)
+                        Text(item.displaySourceName)
                             .font(.caption2)
                             .foregroundColor(.secondary)
                         

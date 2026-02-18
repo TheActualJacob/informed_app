@@ -7,7 +7,7 @@ struct Config {
     
     /// The base URL for the backend API
     /// Change this value when your backend server IP/port changes
-    static let backendURL = "http://192.168.1.163:5001"
+    static let backendURL = "http://192.168.1.54:5001"
     
     // MARK: - App Group
     
@@ -49,5 +49,8 @@ struct Config {
         static let trackInteraction = Config.endpoint("/api/track-interaction")
         static let syncHistory = Config.endpoint("/api/sync-history")
         static let history = Config.endpoint("/history")
+        
+        // Real-time progress tracking
+        static let submissionStatus = Config.endpoint("/api/submission-status")
     }
 }

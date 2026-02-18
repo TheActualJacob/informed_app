@@ -8,6 +8,7 @@
 import Foundation
 import SwiftUI
 import Combine
+import ActivityKit
 
 @MainActor
 class HomeViewModel: ObservableObject {
@@ -25,6 +26,9 @@ class HomeViewModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var processingLink: String? // For showing processing banner
     @Published var processingThumbnailURL: URL? // For link preview in banner
+    
+    // Track current Live Activity submission ID for testing
+    private var currentSubmissionId: String?
     
     // MARK: - Properties
     
@@ -77,6 +81,22 @@ class HomeViewModel: ObservableObject {
         
         print("🔍 Starting fact check for: \(link)")
         
+        // 🧪 TEST: Start Live Activity when fact-checking from app
+        if #available(iOS 16.1, *) {
+            let submissionId = UUID().uuidString
+            currentSubmissionId = submissionId
+            print("🧪 [TEST] Starting Live Activity for in-app fact-check")
+            print("   Submission ID: \(submissionId)")
+            
+            Task { @MainActor in
+                await ReelProcessingActivityManager.shared.startActivity(
+                    submissionId: submissionId,
+                    reelURL: link,
+                    thumbnailURL: nil
+                )
+            }
+        }
+        
         do {
             // Use NetworkService for the API call
             let factCheckData = try await NetworkService.shared.performFactCheck(
@@ -97,10 +117,29 @@ class HomeViewModel: ObservableObject {
                 sources: factCheckData.sources
             )
             
+            // Determine platform from backend or URL
+            let platformName: String
+            let platformIcon: String
+            if let platform = factCheckData.platform {
+                if platform.lowercased() == "tiktok" {
+                    platformName = "TikTok"
+                    platformIcon = "music.note"
+                } else {
+                    platformName = "Instagram"
+                    platformIcon = "camera.fill"
+                }
+            } else if link.lowercased().contains("tiktok") {
+                platformName = "TikTok"
+                platformIcon = "music.note"
+            } else {
+                platformName = "Instagram"
+                platformIcon = "camera.fill"
+            }
+            
             // Create a new FactCheckItem from the response
             let newItem = FactCheckItem(
-                sourceName: "Fact Check API",
-                sourceIcon: "checkmark.seal.fill",
+                sourceName: platformName,
+                sourceIcon: platformIcon,
                 timeAgo: "Just now",
                 title: factCheckData.title,
                 summary: factCheckData.summary,
@@ -129,7 +168,8 @@ class HomeViewModel: ObservableObject {
                 claimAccuracyRating: factCheckData.claimAccuracyRating,
                 explanation: factCheckData.explanation,
                 sources: factCheckData.sources,
-                datePosted: factCheckData.date
+                datePosted: factCheckData.date,
+                platform: factCheckData.platform
             )
             
             let newReel = SharedReel(
@@ -146,6 +186,19 @@ class HomeViewModel: ObservableObject {
             SharedReelManager.shared.saveReels()
             print("✅ Added reel to My Reels tab")
             
+            // 🧪 TEST: Complete Live Activity
+            if #available(iOS 16.1, *), let submissionId = currentSubmissionId {
+                print("🧪 [TEST] Completing Live Activity")
+                Task { @MainActor in
+                    await ReelProcessingActivityManager.shared.completeActivity(
+                        submissionId: submissionId,
+                        title: factCheckData.title,
+                        verdict: factCheckData.verdict
+                    )
+                }
+                currentSubmissionId = nil
+            }
+            
             // Clear the search text and processing state
             self.searchText = ""
             self.processingLink = nil
@@ -153,15 +206,55 @@ class HomeViewModel: ObservableObject {
             
         } catch let networkError as NetworkError {
             // Use NetworkError for better error messages
-            self.errorMessage = networkError.errorDescription
+            // Check if we have errorType from backend in the response
+            var errorMessage = networkError.errorDescription ?? "An error occurred"
+            
+            // Try to extract error_type if available (would need to be added to NetworkError)
+            // For now, use the description as-is
+            self.errorMessage = errorMessage
             print("❌ Error performing fact check: \(networkError)")
+            
+            // 🧪 TEST: Fail Live Activity on error
+            if #available(iOS 16.1, *), let submissionId = currentSubmissionId {
+                print("🧪 [TEST] Failing Live Activity due to error")
+                Task { @MainActor in
+                    await ReelProcessingActivityManager.shared.failActivity(
+                        submissionId: submissionId,
+                        errorMessage: errorMessage
+                    )
+                }
+                currentSubmissionId = nil
+            }
             
             // Clear processing state
             self.processingLink = nil
             self.processingThumbnailURL = nil
         } catch {
-            self.errorMessage = "Failed to check fact: \(error.localizedDescription)"
+            // Try to extract error_type from response if it's a data error
+            var errorMessage = "Failed to check fact: \(error.localizedDescription)"
+            
+            // Check if error contains JSON with error_type
+            if let nsError = error as NSError?,
+               let data = nsError.userInfo["data"] as? Data,
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let errorType = json["error_type"] as? String {
+                errorMessage = getUserFriendlyErrorMessage(errorType: errorType, fallbackMessage: errorMessage)
+            }
+            
+            self.errorMessage = errorMessage
             print("❌ Error performing fact check: \(error)")
+            
+            // 🧪 TEST: Fail Live Activity on error
+            if #available(iOS 16.1, *), let submissionId = currentSubmissionId {
+                print("🧪 [TEST] Failing Live Activity due to error")
+                Task { @MainActor in
+                    await ReelProcessingActivityManager.shared.failActivity(
+                        submissionId: submissionId,
+                        errorMessage: errorMessage
+                    )
+                }
+                currentSubmissionId = nil
+            }
             
             // Clear processing state
             self.processingLink = nil

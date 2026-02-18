@@ -87,12 +87,12 @@ struct SharedReelsView: View {
                 .font(.system(size: 60))
                 .foregroundColor(.gray.opacity(0.5))
             
-            Text("No Shared Reels")
+            Text("No Shared Content")
                 .font(.title2)
                 .fontWeight(.bold)
                 .foregroundColor(.primary)
             
-            Text("Share Instagram reels to this app\nto start fact-checking them")
+            Text("Share Instagram Reels or TikTok videos\nto this app to start fact-checking them")
                 .font(.body)
                 .foregroundColor(.gray)
                 .multilineTextAlignment(.center)
@@ -163,9 +163,9 @@ struct ReelStatusCard: View {
             // Show fact check card matching Home format for completed reels
             if reel.status == .completed, let factCheckData = reel.factCheckData {
                 VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-                    // Header - match FactResultCard format
+                    // Header - match FactResultCard format with platform-specific icon
                     HStack {
-                        Image(systemName: "camera.fill")
+                        Image(systemName: reel.detectedPlatform == "tiktok" ? "music.note" : "camera.fill")
                             .foregroundColor(.brandBlue)
                             .padding(Theme.Spacing.sm)
                             .background(Color.brandBlue.opacity(0.1))

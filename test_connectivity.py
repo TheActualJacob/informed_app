@@ -55,7 +55,7 @@ def main():
 ╚════════════════════════════════════════════════════════════╝
     """)
     
-    BASE_URL = "http://192.168.1.163:5001"
+    BASE_URL = "http://192.168.1.54:5001"
     
     print(f"\n🎯 Testing backend at: {BASE_URL}")
     print("📝 Make sure your Flask server is running first!")
