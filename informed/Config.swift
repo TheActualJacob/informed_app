@@ -52,5 +52,10 @@ struct Config {
         
         // Real-time progress tracking
         static let submissionStatus = Config.endpoint("/api/submission-status")
+        
+        // Vector & Category endpoints
+        static let categories = Config.endpoint("/api/categories")
+        static let search = Config.endpoint("/api/search")
+        static let personalizedFeed = Config.endpoint("/api/user-feed-personalized")
     }
 }

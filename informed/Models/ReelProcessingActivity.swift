@@ -362,11 +362,8 @@ class ReelProcessingActivityManager: ObservableObject {
             await activity.update(using: completedState)
             HapticManager.successImpact()
             
-            // End activity after 8 seconds
-            Task {
-                try? await Task.sleep(nanoseconds: 8_000_000_000) // 8 seconds
-                await endActivity(submissionId: submissionId)
-            }
+            // Note: Dismissal timing is now handled by the caller (SharedReelManager)
+            // This allows for context-aware dismissal (immediate if user in app, delayed if background)
         } catch {
             print("⚠️ Could not complete Live Activity: \(error.localizedDescription)")
             // Try to end it anyway

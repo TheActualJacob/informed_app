@@ -51,6 +51,85 @@ class PersistenceService {
         defaults.removeObject(forKey: Keys.factCheckHistory)
     }
     
+    // MARK: - Stale Thumbnail Resolution
+    
+    /// Fetches the user's reel list from the backend and patches any locally-stored
+    /// FactCheckItems whose thumbnailURL is still pointing at a social page URL
+    /// (i.e. was saved before the backend started returning real image URLs).
+    func resolveStaleThumbnails() async {
+        guard let userId = UserManager.shared.currentUserId,
+              let sessionId = UserManager.shared.currentSessionId else { return }
+        
+        guard var urlComponents = URLComponents(string: Config.Endpoints.userReels) else { return }
+        urlComponents.queryItems = [
+            URLQueryItem(name: "userId", value: userId),
+            URLQueryItem(name: "sessionId", value: sessionId),
+            URLQueryItem(name: "limit", value: "100")
+        ]
+        guard let url = urlComponents.url else { return }
+        
+        do {
+            let (data, response) = try await URLSession.shared.data(from: url)
+            guard let http = response as? HTTPURLResponse,
+                  (200...299).contains(http.statusCode) else { return }
+            
+            let userReels = try JSONDecoder().decode(UserReelsResponse.self, from: data)
+            
+            // Build a map of videoLink -> real thumbnailUrl
+            var thumbnailMap: [String: String] = [:]
+            for reel in userReels.reels {
+                if let thumb = reel.thumbnailUrl, !thumb.isEmpty {
+                    thumbnailMap[reel.link] = thumb
+                }
+            }
+            
+            guard !thumbnailMap.isEmpty else { return }
+            
+            // Patch history
+            let history = getFactCheckHistory()
+            var changed = false
+            let patched = history.map { item -> FactCheckItem in
+                guard let link = item.originalLink,
+                      let realThumb = thumbnailMap[link],
+                      let realURL = URL(string: realThumb) else { return item }
+                
+                // Only patch if current thumbnail is missing or is a social page URL
+                let current = item.thumbnailURL?.absoluteString ?? ""
+                let isSocialPage = current.contains("instagram.com/reel") ||
+                                   current.contains("instagram.com/p/") ||
+                                   current.contains("tiktok.com/@") ||
+                                   current.contains("vm.tiktok.com") ||
+                                   current.isEmpty
+                guard isSocialPage else { return item }
+                
+                changed = true
+                return FactCheckItem(
+                    sourceName: item.sourceName,
+                    sourceIcon: item.sourceIcon,
+                    timeAgo: item.timeAgo,
+                    title: item.title,
+                    summary: item.summary,
+                    thumbnailURL: realURL,
+                    credibilityScore: item.credibilityScore,
+                    sources: item.sources,
+                    verdict: item.verdict,
+                    factCheck: item.factCheck,
+                    originalLink: item.originalLink,
+                    datePosted: item.datePosted
+                )
+            }
+            
+            if changed {
+                if let encoded = try? JSONEncoder().encode(patched.map { FactCheckCodable(from: $0) }) {
+                    defaults.set(encoded, forKey: Keys.factCheckHistory)
+                    print("✅ Patched stale thumbnails in local history")
+                }
+            }
+        } catch {
+            print("⚠️ Could not resolve stale thumbnails: \(error)")
+        }
+    }
+    
     // MARK: - Saved Fact Checks
     
     func saveFactCheckForLater(_ item: FactCheckItem) {

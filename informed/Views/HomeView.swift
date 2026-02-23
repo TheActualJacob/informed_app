@@ -2,7 +2,7 @@
 //  HomeView.swift
 //  informed
 //
-//  Main feed view for fact-checking content
+//  Main home view: search bar, category grid, personalized feed, and search results
 //
 
 import SwiftUI
@@ -15,46 +15,67 @@ struct HomeView: View {
     var body: some View {
         NavigationView {
             ZStack(alignment: .bottom) {
-                Color.backgroundLight
-                    .edgesIgnoringSafeArea(.all)
+                Color.backgroundLight.ignoresSafeArea()
                 
                 VStack(spacing: 0) {
-                    // Header with search
-                    VStack {
+                    // ── Header ───────────────────────────────────────────────
+                    VStack(spacing: 0) {
+                        // Title row
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("informed")
+                                    .font(.system(size: 28, weight: .black))
+                                    .foregroundStyle(
+                                        LinearGradient(
+                                            colors: [.brandTeal, .brandBlue],
+                                            startPoint: .leading,
+                                            endPoint: .trailing
+                                        )
+                                    )
+                                if !viewModel.isSearchMode {
+                                    Text(viewModel.feedSource == "personalized" ? "Your personalized feed" : "Explore fact-checks")
+                                        .font(.system(size: 13))
+                                        .foregroundColor(.secondary)
+                                        .transition(.opacity)
+                                }
+                            }
+                            Spacer()
+                        }
+                        .padding(.horizontal)
+                        .padding(.top, 12)
+                        .padding(.bottom, 8)
+                        
+                        // Search bar
                         SearchBarView(text: $viewModel.searchText, isFocused: $isSearchFocused)
+                            .padding(.horizontal)
+                            .padding(.bottom, 10)
                     }
-                    .padding(.horizontal)
-                    .padding(.vertical, 10)
                     .background(Color.backgroundLight)
                     .onAppear {
-                        // Set the userId and sessionId when view appears
                         if let userId = userManager.currentUserId {
                             viewModel.userId = userId
                         }
                         if let sessionId = userManager.currentSessionId {
                             viewModel.sessionId = sessionId
                         }
-                        
-                        // Connect SharedReelManager to this ViewModel for integrated UI
                         SharedReelManager.shared.homeViewModel = viewModel
-                        
-                        // Dismiss keyboard when returning to this view
                         isSearchFocused = false
+                        viewModel.loadInitialData()
                     }
                     
-                    // Error message banner
+                    // ── Error Banner ─────────────────────────────────────────
                     if let errorMessage = viewModel.errorMessage {
-                        HStack {
+                        HStack(spacing: 8) {
                             Image(systemName: "exclamationmark.triangle.fill")
                                 .foregroundColor(.brandYellow)
                             Text(errorMessage)
                                 .font(.caption)
                                 .foregroundColor(.primary)
                             Spacer()
-                            Button(action: {
+                            Button {
                                 viewModel.errorMessage = nil
                                 HapticManager.lightImpact()
-                            }) {
+                            } label: {
                                 Image(systemName: "xmark.circle.fill")
                                     .foregroundColor(.secondary)
                             }
@@ -67,26 +88,49 @@ struct HomeView: View {
                         .transition(.move(edge: .top).combined(with: .opacity))
                     }
                     
-                    // Main content
+                    // ── Main Content ─────────────────────────────────────────
                     ScrollView {
-                        LazyVStack(spacing: Theme.Spacing.xl) {
-                            ForEach(viewModel.items) { item in
-                                NavigationLink(destination: FactDetailView(item: item)
-                                    .onAppear {
-                                        // Dismiss keyboard when navigating to detail
+                        LazyVStack(alignment: .leading, spacing: 0) {
+                            
+                            if viewModel.isSearchMode {
+                                // ── Search Results ──────────────────────────
+                                SearchResultsView(
+                                    query: viewModel.searchText,
+                                    results: viewModel.searchResults,
+                                    totalCount: viewModel.searchResultCount,
+                                    isSearching: viewModel.isSearching,
+                                    categories: viewModel.categories,
+                                    selectedCategory: $viewModel.selectedCategory,
+                                    onCategoryFilter: { cat in
+                                        viewModel.filterSearchByCategory(cat)
+                                    }
+                                )
+                                .padding(.top, Theme.Spacing.sm)
+                                
+                            } else {
+                                // ── Category Grid ───────────────────────────
+                                CategoryGridView(
+                                    categories: viewModel.categories.isEmpty
+                                        ? HomeViewModel.staticCategories
+                                        : viewModel.categories,
+                                    isLoading: viewModel.isCategoriesLoading,
+                                    onCategoryTap: { cat in
+                                        // Pre-fill search bar with category name to trigger search mode
+                                        viewModel.searchText = cat.name
                                         isSearchFocused = false
                                     }
-                                ) {
-                                    FactResultCard(item: item)
-                                }
-                                .buttonStyle(PlainButtonStyle())
-                                .onTapGesture {
-                                    HapticManager.lightImpact()
+                                )
+                                .padding(.horizontal)
+                                .padding(.top, Theme.Spacing.lg)
+                                
+                                // ── Personalized Feed ────────────────────────
+                                if viewModel.isFeedLoading {
+                                    feedSkeletonSection
+                                } else if !viewModel.personalizedFeed.isEmpty {
+                                    personalizedFeedSection
                                 }
                             }
                         }
-                        .padding(.horizontal)
-                        .padding(.top, 10)
                         .padding(.bottom, viewModel.processingLink != nil ? 140 : 100)
                     }
                     .refreshable {
@@ -95,13 +139,12 @@ struct HomeView: View {
                     }
                     .simultaneousGesture(
                         DragGesture().onChanged { _ in
-                            // Dismiss keyboard when user starts scrolling
                             isSearchFocused = false
                         }
                     )
                 }
                 
-                // Processing Banner at Bottom
+                // ── Processing Banner ─────────────────────────────────────
                 if let processingLink = viewModel.processingLink {
                     VStack(spacing: 0) {
                         Spacer()
@@ -115,12 +158,59 @@ struct HomeView: View {
                     }
                 }
             }
-            .onTapGesture {
-                isSearchFocused = false
-            }
+            .onTapGesture { isSearchFocused = false }
             .animation(Theme.Animation.spring, value: viewModel.processingLink != nil)
             .animation(Theme.Animation.smooth, value: viewModel.errorMessage != nil)
+            .animation(Theme.Animation.smooth, value: viewModel.isSearchMode)
             .navigationBarHidden(true)
+        }
+    }
+    
+    // MARK: - Personalized Feed Section
+    
+    private var personalizedFeedSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 6) {
+                Image(systemName: viewModel.feedSource == "personalized" ? "sparkles" : "clock.arrow.circlepath")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.brandBlue)
+                Text(viewModel.feedSource == "personalized" ? "For You" : "Recent Fact-Checks")
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundColor(.primary)
+                Spacer()
+            }
+            .padding(.horizontal)
+            .padding(.top, Theme.Spacing.xl)
+            
+            LazyVStack(spacing: 12) {
+                ForEach(viewModel.personalizedFeed) { reel in
+                    NavigationLink(destination: PublicReelDetailView(reel: reel)) {
+                        SearchReelRow(reel: reel)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .padding(.horizontal)
+                    .onTapGesture { HapticManager.lightImpact() }
+                }
+            }
+        }
+    }
+    
+    // MARK: - Feed Skeleton
+    
+    private var feedSkeletonSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 6) {
+                RoundedRectangle(cornerRadius: 4).fill(Color.secondary.opacity(0.15)).frame(width: 100, height: 20)
+            }
+            .padding(.horizontal)
+            .padding(.top, Theme.Spacing.xl)
+            
+            VStack(spacing: 12) {
+                ForEach(0..<4, id: \.self) { _ in
+                    SearchResultSkeleton()
+                        .padding(.horizontal)
+                }
+            }
         }
     }
 }

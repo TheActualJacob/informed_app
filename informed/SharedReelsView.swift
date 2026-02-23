@@ -3,6 +3,8 @@
 //  informed
 //
 //  Displays a list of shared Instagram reels and their fact-checking status
+
+import ActivityKit
 //
 
 import SwiftUI
@@ -57,6 +59,14 @@ struct SharedReelsView: View {
                 // Auto-sync from backend when view appears
                 Task {
                     await reelManager.syncHistoryFromBackend()
+                }
+                
+                // Dismiss any completed Live Activities since user is now viewing the results
+                if #available(iOS 16.1, *) {
+                    Task {
+                        print("🎬 User opened My Reels tab - dismissing completed Live Activities")
+                        await dismissCompletedActivities()
+                    }
                 }
             }
             .toolbar {
@@ -122,6 +132,22 @@ struct SharedReelsView: View {
         formatter.unitsStyle = .abbreviated
         return formatter.localizedString(for: date, relativeTo: Date())
     }
+    
+    @available(iOS 16.1, *)
+    private func dismissCompletedActivities() async {
+        // Get all completed reels
+        let completedReelIds = reelManager.reels
+            .filter { $0.status == .completed }
+            .map { $0.id }
+        
+        // Dismiss their Live Activities if they exist
+        for submissionId in completedReelIds {
+            await ReelProcessingActivityManager.shared.endActivity(
+                submissionId: submissionId,
+                dismissalPolicy: .immediate
+            )
+        }
+    }
 }
 
 struct ReelStatusCard: View {
@@ -165,7 +191,7 @@ struct ReelStatusCard: View {
                 VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
                     // Header - match FactResultCard format with platform-specific icon
                     HStack {
-                        Image(systemName: reel.detectedPlatform == "tiktok" ? "music.note" : "camera.fill")
+                        Image(systemName: reel.detectedPlatform == "tiktok" ? "music.note" : reel.detectedPlatform == "tiktok" ? "music.note" : reel.detectedPlatform == "tiktok" ? "music.note" : reel.detectedPlatform == "tiktok" ? "music.note" : "camera.fill")
                             .foregroundColor(.brandBlue)
                             .padding(Theme.Spacing.sm)
                             .background(Color.brandBlue.opacity(0.1))

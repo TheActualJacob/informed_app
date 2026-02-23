@@ -2,7 +2,7 @@
 //  SearchBar.swift
 //  informed
 //
-//  Reusable search bar component with link detection
+//  Reusable search bar component with link detection and text search
 //
 
 import SwiftUI
@@ -12,41 +12,54 @@ struct SearchBarView: View {
     @FocusState.Binding var isFocused: Bool
     @Environment(\.colorScheme) var colorScheme
     
-    private var isValidURL: Bool {
+    private var isValidSocialURL: Bool {
         guard let url = URL(string: text),
               url.scheme != nil,
-              url.host != nil else {
-            return false
-        }
-        
-        // Check if it's an Instagram or TikTok URL
-        let lowercasedString = text.lowercased()
-        let isInstagram = lowercasedString.contains("instagram.com") || lowercasedString.contains("instagr.am")
-        let isTikTok = lowercasedString.contains("tiktok.com") || lowercasedString.contains("vm.tiktok.com")
-        
-        return isInstagram || isTikTok
+              url.host != nil else { return false }
+        let lower = text.lowercased()
+        return lower.contains("instagram.com") || lower.contains("instagr.am") ||
+               lower.contains("tiktok.com") || lower.contains("vm.tiktok.com")
+    }
+    
+    private var isTextSearch: Bool {
+        !text.isEmpty && !isValidSocialURL
+    }
+    
+    private var leadingIcon: String {
+        if isValidSocialURL { return "link.circle.fill" }
+        if isTextSearch     { return "magnifyingglass.circle.fill" }
+        return "magnifyingglass"
+    }
+    
+    private var leadingColor: Color {
+        if isValidSocialURL { return .brandGreen }
+        if isTextSearch     { return .brandBlue }
+        return .secondary
+    }
+    
+    private var borderColor: Color {
+        if isValidSocialURL { return .brandGreen }
+        if isTextSearch     { return .brandBlue }
+        return .clear
     }
     
     var body: some View {
-        HStack {
-            Image(systemName: isValidURL ? "link.circle.fill" : "magnifyingglass")
-                .foregroundColor(isValidURL ? .brandGreen : .brandBlue)
+        HStack(spacing: 10) {
+            Image(systemName: leadingIcon)
+                .foregroundColor(leadingColor)
+                .font(.system(size: 18, weight: .medium))
+                .animation(Theme.Animation.quick, value: leadingIcon)
             
-            TextField("Paste Instagram Reel or TikTok URL...", text: $text)
+            TextField("Search or paste a Reel/TikTok link…", text: $text)
                 .foregroundColor(.primary)
                 .focused($isFocused)
-                .submitLabel(.done)
-                .onSubmit {
-                    isFocused = false
-                }
+                .submitLabel(.search)
+                .onSubmit { isFocused = false }
             
             if !text.isEmpty {
-                Button(action: {
-                    text = ""
-                    HapticManager.lightImpact()
-                }) {
+                Button(action: { text = ""; HapticManager.lightImpact() }) {
                     Image(systemName: "xmark.circle.fill")
-                        .foregroundColor(.gray)
+                        .foregroundColor(.secondary)
                 }
             }
         }
@@ -61,8 +74,9 @@ struct SearchBarView: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: Theme.CornerRadius.lg)
-                .stroke(isValidURL ? Color.brandGreen : Color.clear, lineWidth: 2)
+                .stroke(borderColor, lineWidth: 2)
         )
-        .animation(Theme.Animation.quick, value: isValidURL)
+        .animation(Theme.Animation.quick, value: isValidSocialURL)
+        .animation(Theme.Animation.quick, value: isTextSearch)
     }
 }

@@ -282,7 +282,8 @@ struct PublicReelCard: View {
 
 struct PublicReelDetailView: View {
     let reel: PublicReel
-    let viewModel: FeedViewModel
+    // viewModel kept for backward compat with FeedView callers but no longer required
+    var viewModel: FeedViewModel? = nil
     
     @Environment(\.presentationMode) var presentationMode
     
@@ -472,8 +473,8 @@ struct PublicReelDetailView: View {
                 // Share Button
                 Button(action: {
                     HapticManager.lightImpact()
-                    Task {
-                        await viewModel.trackShare(for: reel)
+                    if let viewModel = viewModel {
+                        Task { await viewModel.trackShare(for: reel) }
                     }
                     if let url = URL(string: reel.videoLink) {
                         let activityVC = UIActivityViewController(

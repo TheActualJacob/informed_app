@@ -352,55 +352,10 @@ class SharedReelManager: ObservableObject {
             // Update the reel status with complete data
             updateReelStatus(id: newReel.id, status: .completed, resultId: factCheckData.title, factCheckData: storedData)
             
-            // If we have a homeViewModel, add the result to the main feed (same as paste flow)
+            // If we have a homeViewModel, refresh the personalized feed
             if let viewModel = homeViewModel {
-                // Convert to FactCheck model
-                let factCheck = FactCheck(
-                    claim: factCheckData.claim,
-                    verdict: factCheckData.verdict,
-                    claimAccuracyRating: factCheckData.claimAccuracyRating,
-                    explanation: factCheckData.explanation,
-                    summary: factCheckData.summary,
-                    sources: factCheckData.sources
-                )
-                
-                // Determine platform from backend or URL
-                let platformName: String
-                let platformIcon: String
-                if let platform = factCheckData.platform {
-                    if platform.lowercased() == "tiktok" {
-                        platformName = "TikTok"
-                        platformIcon = "music.note"
-                    } else {
-                        platformName = "Instagram"
-                        platformIcon = "camera.fill"
-                    }
-                } else if instagramURL.contains("tiktok") {
-                    platformName = "TikTok"
-                    platformIcon = "music.note"
-                } else {
-                    platformName = "Instagram"
-                    platformIcon = "camera.fill"
-                }
-                
-                // Create FactCheckItem
-                let newItem = FactCheckItem(
-                    sourceName: platformName,
-                    sourceIcon: platformIcon,
-                    timeAgo: "Just now",
-                    title: factCheckData.title,
-                    summary: factCheckData.summary,
-                    thumbnailURL: URL(string: factCheckData.thumbnailUrl ?? factCheckData.videoLink),
-                    credibilityScore: calculateCredibilityScore(from: factCheckData.claimAccuracyRating),
-                    sources: factCheckData.sources.joined(separator: ", "),
-                    verdict: factCheckData.verdict,
-                    factCheck: factCheck,
-                    originalLink: instagramURL,
-                    datePosted: factCheckData.date
-                )
-                
-                // Add to main feed
-                viewModel.items.insert(newItem, at: 0)
+                // Refresh the personalized feed so the new result appears
+                viewModel.refreshFeedAfterExternalFactCheck()
                 
                 // Clear processing state
                 viewModel.processingLink = nil
@@ -615,15 +570,14 @@ class SharedReelManager: ObservableObject {
             if reels.contains(where: { $0.id == id }) {
                 print("ℹ️ Fact-check \(id) already exists, skipping")
                 
-                // Update Live Activity to completed if it exists
+                // End Live Activity immediately if user is viewing the app
+                // (they don't need to see it anymore since they're in the app)
                 if #available(iOS 16.1, *) {
                     Task {
-                        let title = factCheckData["title"] as? String ?? "Fact-Check Complete"
-                        let verdict = factCheckData["verdict"] as? String ?? "View Results"
-                        await ReelProcessingActivityManager.shared.completeActivity(
+                        print("🎬 Ending Live Activity for completed reel (user is in app)")
+                        await ReelProcessingActivityManager.shared.endActivity(
                             submissionId: id,
-                            title: title,
-                            verdict: verdict
+                            dismissalPolicy: .immediate
                         )
                     }
                 }
@@ -675,15 +629,24 @@ class SharedReelManager: ObservableObject {
             reels.insert(sharedReel, at: 0)
             print("✅ Synced completed fact-check \(id) to SharedReelManager with full data")
             
-            // Complete Live Activity for iOS 16.1+
+            // Complete Live Activity for iOS 16.1+ - show completion briefly then dismiss
             if #available(iOS 16.1, *) {
                 Task {
                     let title = factCheckData["title"] as? String ?? "Fact-Check Complete"
                     let verdict = factCheckData["verdict"] as? String ?? "View Results"
+                    
+                    // Update to completion state
                     await ReelProcessingActivityManager.shared.completeActivity(
                         submissionId: id,
                         title: title,
                         verdict: verdict
+                    )
+                    
+                    // Then dismiss after 3 seconds (reduced from 8 for faster cleanup)
+                    try? await Task.sleep(nanoseconds: 3_000_000_000)
+                    await ReelProcessingActivityManager.shared.endActivity(
+                        submissionId: id,
+                        dismissalPolicy: .default
                     )
                 }
             }
@@ -704,74 +667,17 @@ class SharedReelManager: ObservableObject {
     // MARK: - Add Fact-Check to Feed
     
     private func addFactCheckToFeed(factCheckData: [String: Any], homeViewModel: HomeViewModel) {
-        // Extract fact-check data from dictionary
-        guard let title = factCheckData["title"] as? String,
-              let claim = factCheckData["claim"] as? String,
-              let verdict = factCheckData["verdict"] as? String,
-              let claimAccuracyRating = factCheckData["claim_accuracy_rating"] as? String,
-              let explanation = factCheckData["explanation"] as? String,
-              let summary = factCheckData["summary"] as? String,
-              let sources = factCheckData["sources"] as? [String],
-              let videoLink = factCheckData["videoLink"] as? String,
-              let datePosted = factCheckData["date"] as? String,
-              let url = factCheckData["url"] as? String else {
-            print("⚠️ Missing required fields in fact-check data")
-            return
-        }
+        guard let url = factCheckData["url"] as? String else { return }
         
-        // Get thumbnail URL if available, fallback to videoLink
-        let thumbnailUrl = factCheckData["thumbnail_url"] as? String
-        
-        // Get platform from backend data
-        let platform = factCheckData["platform"] as? String
-        let platformName: String
-        let platformIcon: String
-        if let platform = platform, platform.lowercased() == "tiktok" {
-            platformName = "TikTok"
-            platformIcon = "music.note"
-        } else if url.contains("tiktok") {
-            platformName = "TikTok"
-            platformIcon = "music.note"
-        } else {
-            platformName = "Instagram"
-            platformIcon = "camera.fill"
-        }
-        
-        // Check if this fact-check is already in the feed
+        // Skip if already present in the computed feed
         if homeViewModel.items.contains(where: { $0.originalLink == url }) {
             print("ℹ️ Fact-check already in feed, skipping")
             return
         }
         
-        // Convert to FactCheck model
-        let factCheck = FactCheck(
-            claim: claim,
-            verdict: verdict,
-            claimAccuracyRating: claimAccuracyRating,
-            explanation: explanation,
-            summary: summary,
-            sources: sources
-        )
-        
-        // Create FactCheckItem
-        let newItem = FactCheckItem(
-            sourceName: platformName,
-            sourceIcon: platformIcon,
-            timeAgo: "Just now",
-            title: title,
-            summary: summary,
-            thumbnailURL: URL(string: thumbnailUrl ?? videoLink),
-            credibilityScore: calculateCredibilityScore(from: claimAccuracyRating),
-            sources: sources.joined(separator: ", "),
-            verdict: verdict,
-            factCheck: factCheck,
-            originalLink: url,
-            datePosted: datePosted
-        )
-        
-        // Add to main feed at the top
-        homeViewModel.items.insert(newItem, at: 0)
-        print("✅ Added completed fact-check to feed: \(title)")
+        // Refresh the personalized feed so the new item appears
+        homeViewModel.refreshFeedAfterExternalFactCheck()
+        print("✅ Triggered feed refresh after completed fact-check")
     }
     
     // MARK: - Clear Data

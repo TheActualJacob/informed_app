@@ -194,6 +194,108 @@ class NetworkService {
         }
     }
     
+    // MARK: - Categories & Search
+    
+    func fetchCategories() async throws -> [CategoryItem] {
+        guard let url = URL(string: Config.Endpoints.categories) else {
+            throw NetworkError.invalidURL
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 15
+        
+        let (data, response) = try await session.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...299).contains(httpResponse.statusCode) else {
+            throw NetworkError.serverError(statusCode: (response as? HTTPURLResponse)?.statusCode ?? 0)
+        }
+        
+        let decoded = try JSONDecoder().decode(CategoryResponse.self, from: data)
+        return decoded.categories
+    }
+    
+    func searchReels(
+        query: String,
+        userId: String,
+        sessionId: String,
+        limit: Int = 20,
+        category: String? = nil,
+        platform: String? = nil,
+        verdict: String? = nil
+    ) async throws -> SearchResponse {
+        guard var urlComponents = URLComponents(string: Config.Endpoints.search) else {
+            throw NetworkError.invalidURL
+        }
+        
+        var queryItems: [URLQueryItem] = [
+            URLQueryItem(name: "userId", value: userId),
+            URLQueryItem(name: "sessionId", value: sessionId),
+            URLQueryItem(name: "q", value: query),
+            URLQueryItem(name: "limit", value: String(limit))
+        ]
+        if let category = category { queryItems.append(URLQueryItem(name: "category", value: category)) }
+        if let platform = platform { queryItems.append(URLQueryItem(name: "platform", value: platform)) }
+        if let verdict = verdict  { queryItems.append(URLQueryItem(name: "verdict", value: verdict)) }
+        urlComponents.queryItems = queryItems
+        
+        guard let url = urlComponents.url else { throw NetworkError.invalidURL }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 30
+        
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse else { throw NetworkError.invalidResponse }
+            if httpResponse.statusCode == 401 { throw NetworkError.unauthorized }
+            guard (200...299).contains(httpResponse.statusCode) else {
+                throw NetworkError.serverError(statusCode: httpResponse.statusCode)
+            }
+            return try JSONDecoder().decode(SearchResponse.self, from: data)
+        } catch let urlError as URLError {
+            throw mapURLError(urlError)
+        }
+    }
+    
+    func fetchPersonalizedFeed(
+        userId: String,
+        sessionId: String,
+        limit: Int = 20,
+        category: String? = nil
+    ) async throws -> PersonalizedFeedResponse {
+        guard var urlComponents = URLComponents(string: Config.Endpoints.personalizedFeed) else {
+            throw NetworkError.invalidURL
+        }
+        
+        var queryItems: [URLQueryItem] = [
+            URLQueryItem(name: "userId", value: userId),
+            URLQueryItem(name: "sessionId", value: sessionId),
+            URLQueryItem(name: "limit", value: String(limit))
+        ]
+        if let category = category { queryItems.append(URLQueryItem(name: "category", value: category)) }
+        urlComponents.queryItems = queryItems
+        
+        guard let url = urlComponents.url else { throw NetworkError.invalidURL }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 30
+        
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse else { throw NetworkError.invalidResponse }
+            if httpResponse.statusCode == 401 { throw NetworkError.unauthorized }
+            guard (200...299).contains(httpResponse.statusCode) else {
+                throw NetworkError.serverError(statusCode: httpResponse.statusCode)
+            }
+            return try JSONDecoder().decode(PersonalizedFeedResponse.self, from: data)
+        } catch let urlError as URLError {
+            throw mapURLError(urlError)
+        }
+    }
+    
     // MARK: - Helper Methods
     
     private func mapURLError(_ error: URLError) -> NetworkError {

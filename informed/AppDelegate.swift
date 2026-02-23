@@ -271,61 +271,14 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         do {
             // Fetch the fact-check data from backend using the same endpoint
             let request = FactCheckRequest(link: instagramURL, userId: userId, sessionId: sessionId)
-            let factCheckData = try await sendFactCheck(request)
+            let _ = try await sendFactCheck(request)
             
             print("✅ Fetched fact-check data")
             
-            // Add to HomeViewModel if it's set up
+            // Refresh the personalized feed so the new item appears
             if let homeViewModel = SharedReelManager.shared.homeViewModel {
-                // Convert to FactCheck model
-                let factCheck = FactCheck(
-                    claim: factCheckData.claim,
-                    verdict: factCheckData.verdict,
-                    claimAccuracyRating: factCheckData.claimAccuracyRating,
-                    explanation: factCheckData.explanation,
-                    summary: factCheckData.summary,
-                    sources: factCheckData.sources
-                )
-                
-                // Determine platform from backend or URL
-                let platformName: String
-                let platformIcon: String
-                if let platform = factCheckData.platform {
-                    if platform.lowercased() == "tiktok" {
-                        platformName = "TikTok"
-                        platformIcon = "music.note"
-                    } else {
-                        platformName = "Instagram"
-                        platformIcon = "camera.fill"
-                    }
-                } else if instagramURL.contains("tiktok") {
-                    platformName = "TikTok"
-                    platformIcon = "music.note"
-                } else {
-                    platformName = "Instagram"
-                    platformIcon = "camera.fill"
-                }
-                
-                // Create FactCheckItem
-                let newItem = FactCheckItem(
-                    sourceName: platformName,
-                    sourceIcon: platformIcon,
-                    timeAgo: "Just now",
-                    title: factCheckData.title,
-                    summary: factCheckData.summary,
-                    thumbnailURL: URL(string: factCheckData.thumbnailUrl ?? factCheckData.videoLink),
-                    credibilityScore: calculateCredibilityScore(from: factCheckData.claimAccuracyRating),
-                    sources: factCheckData.sources.joined(separator: ", "),
-                    verdict: factCheckData.verdict,
-                    factCheck: factCheck,
-                    originalLink: instagramURL,
-                    datePosted: factCheckData.date
-                )
-                
-                // Add to main feed
-                homeViewModel.items.insert(newItem, at: 0)
-                
-                print("✅ Added fact-check to feed")
+                homeViewModel.refreshFeedAfterExternalFactCheck()
+                print("✅ Triggered feed refresh after fact-check")
             }
         } catch {
             print("❌ Error fetching fact-check: \(error)")

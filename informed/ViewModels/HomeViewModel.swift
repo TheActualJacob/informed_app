@@ -14,18 +14,38 @@ import ActivityKit
 class HomeViewModel: ObservableObject {
     // MARK: - Published Properties
     
-    @Published var items: [FactCheckItem] = []
     @Published var searchText: String = "" {
         didSet {
             if searchText != oldValue {
-                checkIfLink(searchText)
+                handleSearchTextChange(searchText)
             }
         }
     }
+    
+    // Search & mode state
+    @Published var isSearchMode: Bool = false
+    @Published var isSearching: Bool = false
+    @Published var searchResults: [PublicReel] = []
+    @Published var searchResultCount: Int = 0
+    
+    // Categories
+    @Published var categories: [CategoryItem] = []
+    @Published var isCategoriesLoading: Bool = false
+    @Published var selectedCategory: String? = nil
+    
+    // Personalized feed
+    @Published var personalizedFeed: [PublicReel] = []
+    @Published var isFeedLoading: Bool = false
+    @Published var feedSource: String = "chronological" // "personalized" | "chronological"
+    
+    // Shared state
     @Published var isLoading: Bool = false
     @Published var errorMessage: String?
     @Published var processingLink: String? // For showing processing banner
     @Published var processingThumbnailURL: URL? // For link preview in banner
+
+    // Keep items for any legacy references (populated from personalizedFeed)
+    var items: [FactCheckItem] { personalizedFeed.map { $0.toFactCheckItem() } }
     
     // Track current Live Activity submission ID for testing
     private var currentSubmissionId: String?
@@ -33,61 +53,173 @@ class HomeViewModel: ObservableObject {
     // MARK: - Properties
     
     private var debounceTask: Task<Void, Never>?
-    var userId: String = "default-user" // Will be set by HomeView
-    var sessionId: String = "" // Will be set by HomeView
+    private var searchDebounceTask: Task<Void, Never>?
+    var userId: String = "default-user"
+    var sessionId: String = ""
     
     // MARK: - Initialization
     
     init() {
-        loadData()
+        // Data loads triggered by HomeView.onAppear once userId/sessionId are set
     }
     
-    // MARK: - Link Detection
+    // MARK: - Initial Load
     
-    private func checkIfLink(_ text: String) {
-        // Cancel any pending request
+    func loadInitialData() {
+        Task {
+            await withTaskGroup(of: Void.self) { group in
+                group.addTask { await self.loadCategories() }
+                group.addTask { await self.loadPersonalizedFeed() }
+                group.addTask { await PersistenceService.shared.resolveStaleThumbnails() }
+            }
+        }
+    }
+    
+    // MARK: - Categories
+    
+    func loadCategories() async {
+        guard !isCategoriesLoading else { return }
+        isCategoriesLoading = true
+        do {
+            let cats = try await NetworkService.shared.fetchCategories()
+            categories = cats
+        } catch {
+            print("⚠️ Could not load categories: \(error)")
+            // Populate with static fallback so UI still shows
+            categories = Self.staticCategories
+        }
+        isCategoriesLoading = false
+    }
+    
+    // MARK: - Personalized Feed
+    
+    func loadPersonalizedFeed() async {
+        guard !isFeedLoading else { return }
+        isFeedLoading = true
+        do {
+            let response = try await NetworkService.shared.fetchPersonalizedFeed(
+                userId: userId,
+                sessionId: sessionId,
+                limit: 20
+            )
+            personalizedFeed = response.reels
+            feedSource = response.source
+        } catch {
+            print("⚠️ Could not load personalized feed: \(error)")
+            personalizedFeed = []
+        }
+        isFeedLoading = false
+    }
+    
+    func refresh() {
+        Task {
+            await withTaskGroup(of: Void.self) { group in
+                group.addTask { await self.loadCategories() }
+                group.addTask { await self.loadPersonalizedFeed() }
+            }
+        }
+    }
+    
+    // MARK: - Search Text Handling
+    
+    private func handleSearchTextChange(_ text: String) {
+        // Cancel pending tasks
         debounceTask?.cancel()
+        searchDebounceTask?.cancel()
         
-        // Check if the text is a valid URL
-        guard let url = URL(string: text),
-              url.scheme != nil,
-              url.host != nil else {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        if trimmed.isEmpty {
+            isSearchMode = false
+            searchResults = []
             return
         }
         
-        // Wait 1 second before sending the request (gives user time to finish typing/pasting)
-        debounceTask = Task {
-            try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second delay
-            
-            // Check if task was cancelled
+        // Check if it's a social media link
+        if let url = URL(string: trimmed),
+           url.scheme != nil,
+           url.host != nil {
+            let lower = trimmed.lowercased()
+            let isSocialLink = lower.contains("instagram.com") ||
+                               lower.contains("instagr.am") ||
+                               lower.contains("tiktok.com") ||
+                               lower.contains("vm.tiktok.com")
+            if isSocialLink {
+                // It's a URL — debounce and fact-check
+                isSearchMode = false
+                debounceTask = Task {
+                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                    guard !Task.isCancelled else { return }
+                    await performFactCheck(for: trimmed, userId: userId, sessionId: sessionId)
+                }
+                return
+            }
+        }
+        
+        // It's a text search query
+        isSearchMode = true
+        searchDebounceTask = Task {
+            try? await Task.sleep(nanoseconds: 500_000_000) // 0.5s debounce
             guard !Task.isCancelled else { return }
-            
-            // If it's a valid URL, send the fact check request
-            await performFactCheck(for: text, userId: userId, sessionId: sessionId)
+            await performSearch(query: trimmed)
+        }
+    }
+    
+    // MARK: - Search
+    
+    func performSearch(query: String, category: String? = nil) async {
+        guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        isSearching = true
+        do {
+            let response = try await NetworkService.shared.searchReels(
+                query: query,
+                userId: userId,
+                sessionId: sessionId,
+                limit: 30,
+                category: category ?? selectedCategory
+            )
+            searchResults = response.reels
+            searchResultCount = response.totalCount
+        } catch {
+            print("❌ Search failed: \(error)")
+            searchResults = []
+            searchResultCount = 0
+        }
+        isSearching = false
+    }
+    
+    func clearSearch() {
+        searchText = ""
+        isSearchMode = false
+        searchResults = []
+        selectedCategory = nil
+    }
+    
+    // MARK: - Category Filter for Search
+    
+    func filterSearchByCategory(_ category: String?) {
+        selectedCategory = category
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if isSearchMode && !query.isEmpty {
+            Task { await performSearch(query: query, category: category) }
         }
     }
     
     // MARK: - Fact Checking
     
     func performFactCheck(for link: String, userId: String, sessionId: String) async {
-        // Don't set isLoading - we'll use processingLink instead
         self.processingLink = link
         self.errorMessage = nil
         
-        // Extract preview image from link if possible
         if let url = URL(string: link) {
             self.processingThumbnailURL = url
         }
         
         print("🔍 Starting fact check for: \(link)")
         
-        // 🧪 TEST: Start Live Activity when fact-checking from app
         if #available(iOS 16.1, *) {
             let submissionId = UUID().uuidString
             currentSubmissionId = submissionId
-            print("🧪 [TEST] Starting Live Activity for in-app fact-check")
-            print("   Submission ID: \(submissionId)")
-            
             Task { @MainActor in
                 await ReelProcessingActivityManager.shared.startActivity(
                     submissionId: submissionId,
@@ -98,16 +230,12 @@ class HomeViewModel: ObservableObject {
         }
         
         do {
-            // Use NetworkService for the API call
             let factCheckData = try await NetworkService.shared.performFactCheck(
                 link: link,
                 userId: userId,
                 sessionId: sessionId
             )
-            print("✅ Received response from server")
-            print("📊 Data: \(factCheckData.title)")
             
-            // Convert FactCheckData to FactCheck (the model used in the UI)
             let factCheck = FactCheck(
                 claim: factCheckData.claim,
                 verdict: factCheckData.verdict,
@@ -117,26 +245,20 @@ class HomeViewModel: ObservableObject {
                 sources: factCheckData.sources
             )
             
-            // Determine platform from backend or URL
             let platformName: String
             let platformIcon: String
             if let platform = factCheckData.platform {
                 if platform.lowercased() == "tiktok" {
-                    platformName = "TikTok"
-                    platformIcon = "music.note"
+                    platformName = "TikTok"; platformIcon = "music.note"
                 } else {
-                    platformName = "Instagram"
-                    platformIcon = "camera.fill"
+                    platformName = "Instagram"; platformIcon = "camera.fill"
                 }
             } else if link.lowercased().contains("tiktok") {
-                platformName = "TikTok"
-                platformIcon = "music.note"
+                platformName = "TikTok"; platformIcon = "music.note"
             } else {
-                platformName = "Instagram"
-                platformIcon = "camera.fill"
+                platformName = "Instagram"; platformIcon = "camera.fill"
             }
             
-            // Create a new FactCheckItem from the response
             let newItem = FactCheckItem(
                 sourceName: platformName,
                 sourceIcon: platformIcon,
@@ -152,13 +274,8 @@ class HomeViewModel: ObservableObject {
                 datePosted: factCheckData.date
             )
             
-            // Save to history
             PersistenceService.shared.saveFactCheck(newItem)
             
-            // Add the new item to the top of the list
-            self.items.insert(newItem, at: 0)
-            
-            // IMPORTANT: Also add to SharedReelManager so it shows in "My Reels" tab
             let storedData = StoredFactCheckData(
                 title: factCheckData.title,
                 summary: factCheckData.summary,
@@ -184,11 +301,8 @@ class HomeViewModel: ObservableObject {
             
             SharedReelManager.shared.reels.insert(newReel, at: 0)
             SharedReelManager.shared.saveReels()
-            print("✅ Added reel to My Reels tab")
             
-            // 🧪 TEST: Complete Live Activity
             if #available(iOS 16.1, *), let submissionId = currentSubmissionId {
-                print("🧪 [TEST] Completing Live Activity")
                 Task { @MainActor in
                     await ReelProcessingActivityManager.shared.completeActivity(
                         submissionId: submissionId,
@@ -199,183 +313,78 @@ class HomeViewModel: ObservableObject {
                 currentSubmissionId = nil
             }
             
-            // Clear the search text and processing state
             self.searchText = ""
             self.processingLink = nil
             self.processingThumbnailURL = nil
             
+            // Refresh personalized feed after new fact-check
+            await loadPersonalizedFeed()
+            
         } catch let networkError as NetworkError {
-            // Use NetworkError for better error messages
-            // Check if we have errorType from backend in the response
-            var errorMessage = networkError.errorDescription ?? "An error occurred"
-            
-            // Try to extract error_type if available (would need to be added to NetworkError)
-            // For now, use the description as-is
-            self.errorMessage = errorMessage
-            print("❌ Error performing fact check: \(networkError)")
-            
-            // 🧪 TEST: Fail Live Activity on error
+            let msg = networkError.errorDescription ?? "An error occurred"
+            self.errorMessage = msg
             if #available(iOS 16.1, *), let submissionId = currentSubmissionId {
-                print("🧪 [TEST] Failing Live Activity due to error")
                 Task { @MainActor in
                     await ReelProcessingActivityManager.shared.failActivity(
-                        submissionId: submissionId,
-                        errorMessage: errorMessage
-                    )
+                        submissionId: submissionId, errorMessage: msg)
                 }
                 currentSubmissionId = nil
             }
-            
-            // Clear processing state
             self.processingLink = nil
             self.processingThumbnailURL = nil
         } catch {
-            // Try to extract error_type from response if it's a data error
-            var errorMessage = "Failed to check fact: \(error.localizedDescription)"
-            
-            // Check if error contains JSON with error_type
+            var msg = "Failed to check fact: \(error.localizedDescription)"
             if let nsError = error as NSError?,
                let data = nsError.userInfo["data"] as? Data,
                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let errorType = json["error_type"] as? String {
-                errorMessage = getUserFriendlyErrorMessage(errorType: errorType, fallbackMessage: errorMessage)
+                msg = getUserFriendlyErrorMessage(errorType: errorType, fallbackMessage: msg)
             }
-            
-            self.errorMessage = errorMessage
-            print("❌ Error performing fact check: \(error)")
-            
-            // 🧪 TEST: Fail Live Activity on error
+            self.errorMessage = msg
             if #available(iOS 16.1, *), let submissionId = currentSubmissionId {
-                print("🧪 [TEST] Failing Live Activity due to error")
                 Task { @MainActor in
                     await ReelProcessingActivityManager.shared.failActivity(
-                        submissionId: submissionId,
-                        errorMessage: errorMessage
-                    )
+                        submissionId: submissionId, errorMessage: msg)
                 }
                 currentSubmissionId = nil
             }
-            
-            // Clear processing state
             self.processingLink = nil
             self.processingThumbnailURL = nil
         }
     }
     
-    // MARK: - Data Loading
+    // MARK: - External Feed Update (called from SharedReelManager / AppDelegate)
     
-    func loadData() {
-        self.isLoading = true
-
-        // Mock Network Delay
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
-            guard let self = self else { return }
-            self.items = self.getMockData()
-            self.isLoading = false
-        }
-    }
-    
-    func refresh() {
-        items.removeAll()
-        loadData()
+    /// Called when a fact-check completes outside of HomeViewModel (e.g. Share Extension).
+    /// Refreshes the personalized feed so the new item appears.
+    func refreshFeedAfterExternalFactCheck() {
+        Task { await loadPersonalizedFeed() }
     }
     
     // MARK: - Helper Methods
     
     func calculateCredibilityScore(from rating: String) -> Double {
-        // Extract percentage from rating string like "100%" or "5%"
         let numericString = rating.replacingOccurrences(of: "%", with: "")
         if let percentage = Double(numericString) {
             return percentage / 100.0
         }
-        return 0.5 // Default to 50% if parsing fails
+        return 0.5
     }
     
-    // MARK: - Mock Data
+    // MARK: - Static Category Fallback
     
-    private func getMockData() -> [FactCheckItem] {
-        return [
-            // NYC Election Fact Check
-            FactCheckItem(
-                sourceName: "News Aggregator",
-                sourceIcon: "newspaper.fill",
-                timeAgo: "1h ago",
-                title: "NYC 2025 Mayoral Election Voter Turnout",
-                summary: "More people voted in New York City's election this year than they have in 50 years.",
-                thumbnailURL: URL(string: "https://images.unsplash.com/photo-1554687589-f6b201f55d95?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"),
-                credibilityScore: 1.0,
-                sources: "News Aggregator",
-                verdict: "True",
-                factCheck: FactCheck(
-                    claim: "More people voted in New York City's election this year than they have in 50 years.",
-                    verdict: "True",
-                    claimAccuracyRating: "100%",
-                    explanation: "The claim states that the 2025 New York City election saw the highest voter turnout in 50 years. According to multiple news sources and the New York City Board of Elections, the 2025 mayoral election had the largest voter turnout in over 50 years, with more than 2 million New Yorkers casting ballots. The last time a mayoral race had over 2 million voters was in 1969. This confirms the claim's accuracy.",
-                    summary: "The 2025 New York City mayoral election had the highest voter turnout in over 50 years, with over 2 million voters casting ballots, making the claim true.",
-                    sources: [
-                        "https://www.cityandstateny.com/politics/2025/11/5-takeaways-2025-nyc-election-turnout/409413/",
-                        "https://www.nbcnewyork.com/news/politics/nyc-voter-turnout-breaking-records/6414233/",
-                        "https://www.nytimes.com/2025/11/04/nyregion/nyc-mayor-election-turnout.html",
-                        "https://www.pbs.org/newshour/politics/democrat-zohran-mamdani-wins-new-york-city-mayors-race"
-                    ]
-                ),
-                originalLink: nil,
-                datePosted: nil
-            ),
-            // AI Chip Fact Check
-            FactCheckItem(
-                sourceName: "TechCrunch",
-                sourceIcon: "network",
-                timeAgo: "2h ago",
-                title: "Does the new AI Chip actually use human neurons?",
-                summary: "Viral claims suggest the new Z-90 chip uses biological components. Our analysis confirms it uses silicon-based neuromorphic architecture.",
-                thumbnailURL: URL(string: "https://images.unsplash.com/photo-1555255707-c07966088b7b?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"),
-                credibilityScore: 0.95,
-                sources: "TechCrunch",
-                verdict: "False",
-                factCheck: FactCheck(
-                    claim: "The new Z-90 AI chip incorporates actual human neurons into its architecture.",
-                    verdict: "False",
-                    claimAccuracyRating: "5%",
-                    explanation: "Extensive technical documentation and manufacturer specifications confirm that the Z-90 chip uses exclusively silicon-based components with neuromorphic architecture designed to mimic neural behavior. No biological components are used. The claim appears to stem from misunderstandings about neuromorphic engineering, which aims to replicate aspects of biological neural networks using electronic circuits, not actual biological tissue.",
-                    summary: "The Z-90 chip uses advanced silicon-based neuromorphic architecture to simulate neural behavior, but does not incorporate actual human neurons or any biological components.",
-                    sources: [
-                        "https://tech-manufacturer.com/z90-technical-specs.pdf",
-                        "https://journalofneurotechnology.org/z90-analysis-2025",
-                        "https://www.techcrunch.com/2025/10/15/ai-chip-breakdown/",
-                        "https://www.electronicnews.com/z90-architecture-review"
-                    ]
-                ),
-                originalLink: nil,
-                datePosted: nil
-            ),
-            // Salt Water Health Claim
-            FactCheckItem(
-                sourceName: "Health Watch",
-                sourceIcon: "heart.fill",
-                timeAgo: "5h ago",
-                title: "Can drinking salt water cure insomnia?",
-                summary: "A viral social media video claims salt water aids sleep. Medical experts warn of serious health risks.",
-                thumbnailURL: URL(string: "https://images.unsplash.com/photo-1515871204537-49a5e85aee65?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"),
-                credibilityScore: 0.15,
-                sources: "Health Watch",
-                verdict: "False",
-                factCheck: FactCheck(
-                    claim: "Drinking salt water can effectively treat insomnia and improve sleep quality.",
-                    verdict: "False",
-                    claimAccuracyRating: "2%",
-                    explanation: "Medical research and the American Sleep Association explicitly refute this claim. Consuming salt water can cause dehydration, electrolyte imbalances, and elevated blood pressure - all of which worsen sleep quality. The trend appears to originate from social media influencers without medical backgrounds. Legitimate sleep treatments include cognitive behavioral therapy, consistent sleep schedules, and in some cases, FDA-approved medications prescribed by healthcare professionals.",
-                    summary: "Salt water consumption does not treat insomnia and may cause serious health complications including dehydration and elevated blood pressure.",
-                    sources: [
-                        "https://www.sleepfoundation.org/sleep-hygiene",
-                        "https://www.mayoclinic.org/healthy-lifestyle/adult-health/in-depth/sleep/art-20048379",
-                        "https://www.aasm.org/public/resources/sleeptips",
-                        "https://pubmed.ncbi.nlm.nih.gov/salt-water-health-effects"
-                    ]
-                ),
-                originalLink: nil,
-                datePosted: nil
-            )
-        ]
-    }
+    static let staticCategories: [CategoryItem] = [
+        CategoryItem(name: "Current Events",              count: 0),
+        CategoryItem(name: "Politics & Government",       count: 0),
+        CategoryItem(name: "Geopolitics & International", count: 0),
+        CategoryItem(name: "Health & Medicine",           count: 0),
+        CategoryItem(name: "Science & Technology",        count: 0),
+        CategoryItem(name: "Environment & Climate",       count: 0),
+        CategoryItem(name: "Economy & Finance",           count: 0),
+        CategoryItem(name: "Entertainment & Celebrities", count: 0),
+        CategoryItem(name: "Sports",                      count: 0),
+        CategoryItem(name: "Social Media & Viral",        count: 0),
+        CategoryItem(name: "History",                     count: 0),
+        CategoryItem(name: "Other",                       count: 0)
+    ]
 }

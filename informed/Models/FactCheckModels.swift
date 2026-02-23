@@ -169,6 +169,7 @@ struct PublicReel: Identifiable, Codable {
     let sources: [String]
     let checkedAt: String
     let datePosted: String?
+    let category: String?
     let uploadedBy: ReelUser
     let engagement: ReelEngagement
     let platform: String? // "instagram" or "tiktok"
@@ -178,6 +179,7 @@ struct PublicReel: Identifiable, Codable {
         case title, description, thumbnailUrl, videoLink
         case claim, verdict, claimAccuracyRating
         case explanation, summary, sources, checkedAt, datePosted
+        case category
         case uploadedBy, engagement, platform
     }
     
@@ -197,6 +199,7 @@ struct PublicReel: Identifiable, Codable {
         summary = try container.decode(String.self, forKey: .summary)
         sources = try container.decode([String].self, forKey: .sources)
         checkedAt = try container.decode(String.self, forKey: .checkedAt)
+        category = try container.decodeIfPresent(String.self, forKey: .category)
         uploadedBy = try container.decode(ReelUser.self, forKey: .uploadedBy)
         engagement = try container.decode(ReelEngagement.self, forKey: .engagement)
         platform = try container.decodeIfPresent(String.self, forKey: .platform)
@@ -287,6 +290,34 @@ struct PublicReel: Identifiable, Codable {
 struct PublicFeedResponse: Codable {
     let reels: [PublicReel]
     let pagination: PaginationInfo
+}
+
+// MARK: - Category Models
+
+struct CategoryItem: Identifiable, Codable {
+    var id: String { name }
+    let name: String
+    let count: Int
+}
+
+struct CategoryResponse: Codable {
+    let categories: [CategoryItem]
+}
+
+// MARK: - Search Response
+
+struct SearchResponse: Codable {
+    let reels: [PublicReel]
+    let totalCount: Int
+    let query: String
+}
+
+// MARK: - Personalized Feed Response
+
+struct PersonalizedFeedResponse: Codable {
+    let reels: [PublicReel]
+    let totalCount: Int
+    let source: String // "personalized" or "chronological"
 }
 
 struct PaginationInfo: Codable {

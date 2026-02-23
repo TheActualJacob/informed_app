@@ -1,4 +1,5 @@
 import SwiftUI
+import ActivityKit
 
 // MARK: - Main Content View
 // This is now a lightweight container that composes the modular views
@@ -46,6 +47,17 @@ struct ContentView: View {
                 .tag(3)
         }
         .accentColor(.brandBlue)
+        .onChange(of: selectedTab) { oldValue, newValue in
+            // When user switches to My Reels tab, dismiss completed activities
+            if newValue == 2 {
+                if #available(iOS 16.1, *) {
+                    Task {
+                        print("🎬 User switched to My Reels tab - dismissing completed activities")
+                        await dismissCompletedActivitiesForMyReels()
+                    }
+                }
+            }
+        }
         .onAppear {
             // Listen for navigation requests from notifications
             NotificationCenter.default.addObserver(
@@ -56,6 +68,22 @@ struct ContentView: View {
                 // Switch to My Reels tab
                 selectedTab = 2
             }
+        }
+    }
+    
+    @available(iOS 16.1, *)
+    private func dismissCompletedActivitiesForMyReels() async {
+        // Get SharedReelManager instance
+        let completedReelIds = SharedReelManager.shared.reels
+            .filter { $0.status == .completed }
+            .map { $0.id }
+        
+        // Dismiss their Live Activities
+        for submissionId in completedReelIds {
+            await ReelProcessingActivityManager.shared.endActivity(
+                submissionId: submissionId,
+                dismissalPolicy: .immediate
+            )
         }
     }
 }

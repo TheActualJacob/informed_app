@@ -12,6 +12,22 @@ struct FactDetailView: View {
     let item: FactCheckItem
     @Environment(\.presentationMode) var presentationMode
     @State private var showSafari = false
+    
+    private var hasRealThumbnail: Bool {
+        guard let url = item.thumbnailURL else { return false }
+        let s = url.absoluteString.lowercased()
+        let isSocialPage = s.contains("instagram.com/reel") ||
+                           s.contains("instagram.com/p/") ||
+                           s.contains("tiktok.com/@") ||
+                           s.contains("vm.tiktok.com") ||
+                           (s.contains("instagram.com") && !s.contains("cdninstagram") && !s.contains("fbcdn")) ||
+                           (s.contains("tiktok.com") && !s.contains("tiktokcdn") && !s.contains("muscdn"))
+        return !isSocialPage
+    }
+    
+    private var isTikTok: Bool {
+        (item.originalLink ?? "").lowercased().contains("tiktok")
+    }
 
     var body: some View {
         ScrollView {
@@ -20,11 +36,18 @@ struct FactDetailView: View {
                 // Hero Section
                 ZStack(alignment: .topLeading) {
                     GeometryReader { geo in
-                        AsyncImage(url: item.thumbnailURL) { phase in
-                            if let image = phase.image {
-                                image.resizable().aspectRatio(contentMode: .fill)
+                        Group {
+                            if hasRealThumbnail {
+                                AsyncImage(url: item.thumbnailURL) { phase in
+                                    switch phase {
+                                    case .success(let image):
+                                        image.resizable().aspectRatio(contentMode: .fill)
+                                    default:
+                                        heroPlaceholder
+                                    }
+                                }
                             } else {
-                                Rectangle().fill(Color.brandBlue.opacity(0.1))
+                                heroPlaceholder
                             }
                         }
                         .frame(width: geo.size.width, height: 300)
@@ -243,5 +266,27 @@ struct FactDetailView: View {
         }
         .edgesIgnoringSafeArea(.top)
         .navigationBarHidden(true)
+    }
+    
+    // MARK: - Hero Placeholder
+    
+    private var heroPlaceholder: some View {
+        ZStack {
+            LinearGradient(
+                colors: isTikTok
+                    ? [Color(red:0.01,green:0.01,blue:0.01), Color(red:0.12,green:0.12,blue:0.12)]
+                    : [Color(red:0.83,green:0.12,blue:0.53), Color(red:0.40,green:0.05,blue:0.70)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            VStack(spacing: 10) {
+                Image(systemName: isTikTok ? "music.note" : "camera.fill")
+                    .font(.system(size: 52, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.9))
+                Text(isTikTok ? "TikTok" : "Instagram")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(.white.opacity(0.7))
+            }
+        }
     }
 }
