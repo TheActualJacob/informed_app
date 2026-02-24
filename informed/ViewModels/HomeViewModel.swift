@@ -216,19 +216,35 @@ class HomeViewModel: ObservableObject {
         }
         
         print("🔍 Starting fact check for: \(link)")
-        
+
+        // ── GHOST DIAGNOSTICS ──────────────────────────────────────────
+        if #available(iOS 16.1, *) {
+            let sysActivities = Activity<ReelProcessingActivityAttributes>.activities
+            print("🔬 [GHOST_DIAG] performFactCheck START")
+            print("🔬 [GHOST_DIAG]   System activities at entry: \(sysActivities.count)")
+            for a in sysActivities {
+                print("🔬 [GHOST_DIAG]     • sid=\(a.attributes.submissionId) state=\(a.activityState) progress=\(Int((a.content.state.progress)*100))%")
+            }
+            print("🔬 [GHOST_DIAG]   currentSubmissionId at entry: \(currentSubmissionId ?? "nil")")
+            print("🔬 [GHOST_DIAG]   currentActivities keys: \(ReelProcessingActivityManager.shared.currentActivities.keys.map{$0.prefix(8)})")
+        }
+        // ───────────────────────────────────────────────────────────────
+
         // Start the Live Activity and AWAIT it before launching the network call.
-        // Previously this was a detached Task, which meant the server could respond
-        // before startActivity finished — completeActivity/endActivity would then
-        // find nil in currentActivities and silently bail, leaving a ghost at 10%.
         if #available(iOS 16.1, *) {
             let submissionId = UUID().uuidString
             currentSubmissionId = submissionId
+            print("🔬 [GHOST_DIAG] Calling startActivity for sid=\(submissionId.prefix(8))…")
             await ReelProcessingActivityManager.shared.startActivity(
                 submissionId: submissionId,
                 reelURL: link,
                 thumbnailURL: nil
             )
+            if #available(iOS 16.1, *) {
+                let tracked = ReelProcessingActivityManager.shared.currentActivities[submissionId] != nil
+                let inSystem = Activity<ReelProcessingActivityAttributes>.activities.contains { $0.attributes.submissionId == submissionId }
+                print("🔬 [GHOST_DIAG] After startActivity: tracked=\(tracked) inSystem=\(inSystem)")
+            }
         }
         
         do {
@@ -311,25 +327,42 @@ class HomeViewModel: ObservableObject {
             SharedReelManager.shared.saveReels()
             
             if #available(iOS 16.1, *), let submissionId = currentSubmissionId {
+                print("🔬 [GHOST_DIAG] Fact check SUCCESS. sid=\(submissionId.prefix(8))")
+                print("🔬 [GHOST_DIAG]   tracked in currentActivities: \(ReelProcessingActivityManager.shared.currentActivities[submissionId] != nil)")
+                print("🔬 [GHOST_DIAG]   in system activities: \(Activity<ReelProcessingActivityAttributes>.activities.contains { $0.attributes.submissionId == submissionId })")
                 // Capture and clear before the async Task so a rapid second fact-check
                 // cannot accidentally re-use or orphan this id.
                 currentSubmissionId = nil
                 Task { @MainActor in
+                    print("🔬 [GHOST_DIAG] Calling completeActivity for sid=\(submissionId.prefix(8))…")
                     // Show the "Complete" banner for 3 seconds…
                     await ReelProcessingActivityManager.shared.completeActivity(
                         submissionId: submissionId,
                         title: factCheckData.title,
                         verdict: factCheckData.verdict
                     )
+                    print("🔬 [GHOST_DIAG] completeActivity done. Sleeping 3s then calling endActivity…")
                     try? await Task.sleep(nanoseconds: 3_000_000_000)
+                    print("🔬 [GHOST_DIAG] Calling endActivity for sid=\(submissionId.prefix(8))…")
                     // …then fully tear it down so no ghost lingers.
                     await ReelProcessingActivityManager.shared.endActivity(
                         submissionId: submissionId,
                         dismissalPolicy: .default
                     )
+                    // Verify it's gone
+                    if #available(iOS 16.1, *) {
+                        let stillInSystem = Activity<ReelProcessingActivityAttributes>.activities.contains { $0.attributes.submissionId == submissionId }
+                        print("🔬 [GHOST_DIAG] After endActivity: stillInSystem=\(stillInSystem)")
+                        let allSystemActivities = Activity<ReelProcessingActivityAttributes>.activities
+                        print("🔬 [GHOST_DIAG] All remaining system activities: \(allSystemActivities.count)")
+                        for a in allSystemActivities {
+                            print("🔬 [GHOST_DIAG]   • sid=\(a.attributes.submissionId.prefix(8)) state=\(a.activityState) progress=\(Int(a.content.state.progress*100))%")
+                        }
+                    }
                     print("🏁 [HomeViewModel] Live Activity fully ended for \(submissionId)")
                 }
             } else {
+                print("🔬 [GHOST_DIAG] ⚠️ No currentSubmissionId at success point — activity will be orphaned!")
                 currentSubmissionId = nil
             }
             

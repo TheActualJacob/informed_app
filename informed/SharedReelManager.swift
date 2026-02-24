@@ -846,6 +846,13 @@ class SharedReelManager: ObservableObject {
     @available(iOS 16.1, *)
     func checkAndStartPendingLiveActivities() async {
         print("🔍 [LiveActivity] checkAndStartPendingLiveActivities called")
+        // ── GHOST DIAGNOSTICS ──────────────────────────────────────────
+        let sysNow = Activity<ReelProcessingActivityAttributes>.activities
+        print("🔬 [GHOST_DIAG] checkAndStart entry: system=\(sysNow.count) tracked=\(ReelProcessingActivityManager.shared.currentActivities.count)")
+        for a in sysNow {
+            print("🔬 [GHOST_DIAG]   • sid=\(a.attributes.submissionId.prefix(8)) state=\(a.activityState) progress=\(Int(a.content.state.progress*100))% age=\(Int(Date().timeIntervalSince(a.attributes.startTime)))s")
+        }
+        // ───────────────────────────────────────────────────────────────
         
         // Debounce: Skip if we checked within the last 2 seconds
         let now = Date()

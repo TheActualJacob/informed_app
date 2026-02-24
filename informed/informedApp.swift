@@ -114,11 +114,23 @@ struct informedApp: App {
 
     @available(iOS 16.1, *)
     private func dismissAllCompletedLiveActivities() async {
+        let allSys = Activity<ReelProcessingActivityAttributes>.activities
+        print("🔬 [GHOST_DIAG] dismissAllCompletedLiveActivities called")
+        print("🔬 [GHOST_DIAG]   System activities: \(allSys.count)")
+        for a in allSys {
+            print("🔬 [GHOST_DIAG]     • sid=\(a.attributes.submissionId.prefix(8)) state=\(a.activityState) progress=\(Int(a.content.state.progress*100))% status=\(a.content.state.status.rawValue)")
+        }
+        let trackedKeys = ReelProcessingActivityManager.shared.currentActivities.keys.map { $0.prefix(8) }
+        print("🔬 [GHOST_DIAG]   currentActivities keys: \(trackedKeys)")
+        let terminalReels = reelManager.reels.filter { $0.status == .completed || $0.status == .failed }
+        let pendingReels  = reelManager.reels.filter { $0.status == .pending   || $0.status == .processing }
+        print("🔬 [GHOST_DIAG]   Terminal reels: \(terminalReels.map { $0.id.prefix(8) })")
+        print("🔬 [GHOST_DIAG]   Pending/processing reels: \(pendingReels.map { $0.id.prefix(8) })")
+
         // 1. End activities whose matching reel is already in a terminal state.
-        let terminalIds = reelManager.reels
-            .filter { $0.status == .completed || $0.status == .failed }
-            .map { $0.id }
+        let terminalIds = terminalReels.map { $0.id }
         for submissionId in terminalIds {
+            print("🔬 [GHOST_DIAG]   Ending terminal reel activity sid=\(submissionId.prefix(8))")
             await ReelProcessingActivityManager.shared.endActivity(
                 submissionId: submissionId,
                 dismissalPolicy: .immediate
@@ -128,6 +140,7 @@ struct informedApp: App {
         // 2. End system activities that are already in an ended/dismissed state.
         for activity in Activity<ReelProcessingActivityAttributes>.activities {
             if activity.activityState == .ended || activity.activityState == .dismissed {
+                print("🔬 [GHOST_DIAG]   Ending already-ended system activity sid=\(activity.attributes.submissionId.prefix(8))")
                 await activity.end(
                     ActivityContent(state: activity.content.state, staleDate: nil),
                     dismissalPolicy: .immediate
@@ -136,26 +149,27 @@ struct informedApp: App {
         }
 
         // 3. Orphan sweep: end any *active* system activity whose submissionId has no
-        //    matching pending/processing reel. This catches ghosts regardless of whether
-        //    they're in currentActivities or not — the previous guard on currentActivities
-        //    was wrong because a tracked-but-never-ended activity also needs to be swept.
-        let activeProcessingIds = Set(
-            reelManager.reels
-                .filter { $0.status == .pending || $0.status == .processing }
-                .map { $0.id }
-        )
+        //    matching pending/processing reel.
+        let activeProcessingIds = Set(pendingReels.map { $0.id })
         for activity in Activity<ReelProcessingActivityAttributes>.activities
         where activity.activityState == .active {
             let sid = activity.attributes.submissionId
             if !activeProcessingIds.contains(sid) {
-                print("🧹 [App] Orphan sweep: ending ghost activity for \(sid)")
+                print("🔬 [GHOST_DIAG]   🧹 Orphan sweep: ending ghost sid=\(sid.prefix(8)) progress=\(Int(activity.content.state.progress*100))%")
                 await ReelProcessingActivityManager.shared.endActivity(
                     submissionId: sid,
                     dismissalPolicy: .immediate
                 )
+            } else {
+                print("🔬 [GHOST_DIAG]   ✅ Keeping active activity sid=\(sid.prefix(8)) — has matching pending reel")
             }
         }
 
+        let remaining = Activity<ReelProcessingActivityAttributes>.activities
+        print("🔬 [GHOST_DIAG] dismissAll complete. Remaining system activities: \(remaining.count)")
+        for a in remaining {
+            print("🔬 [GHOST_DIAG]   • sid=\(a.attributes.submissionId.prefix(8)) state=\(a.activityState) progress=\(Int(a.content.state.progress*100))%")
+        }
         print("✅ [App] Dismissed completed/failed/orphan Live Activities on foreground")
     }
 

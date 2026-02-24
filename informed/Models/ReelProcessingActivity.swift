@@ -215,7 +215,8 @@ class ReelProcessingActivityManager: ObservableObject {
     // MARK: - Start Activity
     
     func startActivity(submissionId: String, reelURL: String, thumbnailURL: String? = nil) async {
-        print("🚀 [ActivityManager] startActivity called for: \(submissionId)")
+        print("🚀 [ActivityManager] startActivity called for: \(submissionId.prefix(8))…")
+        print("🔬 [GHOST_DIAG] startActivity: currentActivities.count=\(currentActivities.count) systemActivities.count=\(Activity<ReelProcessingActivityAttributes>.activities.count)")
         
         // Check if activity actually exists in the system (not just in our tracking dictionary)
         let existingSystemActivity = Activity<ReelProcessingActivityAttributes>.activities.first {
@@ -223,15 +224,13 @@ class ReelProcessingActivityManager: ObservableObject {
         }
         
         if let existing = existingSystemActivity {
-            print("⚠️ [ActivityManager] System Live Activity already exists for \(submissionId)")
-            print("   State: \(existing.activityState)")
+            print("⚠️ [ActivityManager] System Live Activity already exists for \(submissionId.prefix(8)) state=\(existing.activityState)")
             currentActivities[submissionId] = existing
             return
         }
         
         print("   No existing system activity found, creating new one...")
         
-        // Check if Live Activities are available (they may not work on simulators or with personal dev accounts)
         let authInfo = ActivityAuthorizationInfo()
         let areEnabled = authInfo.areActivitiesEnabled
         
@@ -240,11 +239,6 @@ class ReelProcessingActivityManager: ObservableObject {
         
         guard areEnabled else {
             print("⚠️ [ActivityManager] Live Activities are NOT enabled")
-            print("   Possible reasons:")
-            print("   - iOS Simulator (not supported)")
-            print("   - Personal Apple Developer accounts (limited)")
-            print("   - Missing entitlements")
-            print("   - Settings → [App] → Live Activities is OFF")
             return
         }
         
@@ -274,7 +268,7 @@ class ReelProcessingActivityManager: ObservableObject {
         )
         
         do {
-            print("🎬 [ActivityManager] Requesting Live Activity from system...")
+            print("🎬 [ActivityManager] Requesting Live Activity from system…")
             let activity = try Activity<ReelProcessingActivityAttributes>.request(
                 attributes: attributes,
                 content: ActivityContent(state: initialState, staleDate: nil),
@@ -282,26 +276,14 @@ class ReelProcessingActivityManager: ObservableObject {
             )
             
             currentActivities[submissionId] = activity
-            print("✅ [ActivityManager] ✨ Live Activity started successfully! ✨")
-            print("   - Activity ID: \(activity.id)")
-            print("   - Submission ID: \(submissionId)")
-            print("   - Dynamic Island should now be visible!")
-            
-            // Note: Haptic feedback removed to prevent constant feedback loop
-            // from periodic activity checks. Only user-triggered events get haptic.
+            print("✅ [ActivityManager] ✨ Live Activity started! id=\(activity.id) sid=\(submissionId.prefix(8))")
+            print("🔬 [GHOST_DIAG] startActivity SUCCESS: currentActivities.count=\(currentActivities.count) systemActivities.count=\(Activity<ReelProcessingActivityAttributes>.activities.count)")
             
         } catch {
-            print("❌ [ActivityManager] Failed to start Live Activity")
-            print("   Error: \(error.localizedDescription)")
+            print("❌ [ActivityManager] Failed to start Live Activity: \(error.localizedDescription)")
             if let nsError = error as NSError? {
                 print("   Domain: \(nsError.domain), Code: \(nsError.code)")
             }
-            print("   This is expected if:")
-            print("   - Running on simulator")
-            print("   - Personal Apple Developer account")
-            print("   - Live Activities disabled in Settings")
-            print("   - Device doesn't have Dynamic Island hardware")
-            // Don't crash - just continue without Live Activity
         }
     }
     
@@ -403,27 +385,31 @@ class ReelProcessingActivityManager: ObservableObject {
     // MARK: - End Activity
     
     func endActivity(submissionId: String, dismissalPolicy: ActivityUIDismissalPolicy = .default) async {
+        print("🔬 [GHOST_DIAG] endActivity called for sid=\(submissionId.prefix(8)) policy=\(dismissalPolicy)")
         // Prefer the tracked instance; fall back to a system-level lookup.
         let activity: Activity<ReelProcessingActivityAttributes>?
         if let tracked = currentActivities[submissionId] {
             activity = tracked
+            print("🔬 [GHOST_DIAG]   found in currentActivities ✓")
         } else {
             activity = Activity<ReelProcessingActivityAttributes>.activities.first {
                 $0.attributes.submissionId == submissionId
             }
             if let a = activity {
-                print("⚠️ [ActivityManager] endActivity: found untracked system activity for \(submissionId) — ending it")
+                print("🔬 [GHOST_DIAG]   NOT in currentActivities — found in system (state=\(a.activityState)) ⚠️")
+            } else {
+                print("🔬 [GHOST_DIAG]   NOT found anywhere ❌ (currentActivities.count=\(currentActivities.count) system.count=\(Activity<ReelProcessingActivityAttributes>.activities.count))")
             }
         }
         
         guard let activity = activity else {
-            print("⚠️ [ActivityManager] endActivity: no activity found for \(submissionId)")
+            print("⚠️ [ActivityManager] endActivity: no activity found for \(submissionId.prefix(8))")
             return
         }
         let finalContent = ActivityContent(state: activity.content.state, staleDate: nil)
         await activity.end(finalContent, dismissalPolicy: dismissalPolicy)
         currentActivities.removeValue(forKey: submissionId)
-        print("✅ Live Activity ended for submission \(submissionId)")
+        print("✅ Live Activity ended for submission \(submissionId.prefix(8))")
     }
     
     func failActivity(submissionId: String, errorMessage: String) async {
