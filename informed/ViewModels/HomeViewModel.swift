@@ -217,16 +217,18 @@ class HomeViewModel: ObservableObject {
         
         print("🔍 Starting fact check for: \(link)")
         
+        // Start the Live Activity and AWAIT it before launching the network call.
+        // Previously this was a detached Task, which meant the server could respond
+        // before startActivity finished — completeActivity/endActivity would then
+        // find nil in currentActivities and silently bail, leaving a ghost at 10%.
         if #available(iOS 16.1, *) {
             let submissionId = UUID().uuidString
             currentSubmissionId = submissionId
-            Task { @MainActor in
-                await ReelProcessingActivityManager.shared.startActivity(
-                    submissionId: submissionId,
-                    reelURL: link,
-                    thumbnailURL: nil
-                )
-            }
+            await ReelProcessingActivityManager.shared.startActivity(
+                submissionId: submissionId,
+                reelURL: link,
+                thumbnailURL: nil
+            )
         }
         
         do {

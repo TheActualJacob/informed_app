@@ -136,9 +136,9 @@ struct informedApp: App {
         }
 
         // 3. Orphan sweep: end any *active* system activity whose submissionId has no
-        //    matching pending/processing reel. This catches ghost activities created by
-        //    the in-app fact-check path before the SharedReel.id unification fix, as well
-        //    as any activity the system re-surfaced after the app was force-quit.
+        //    matching pending/processing reel. This catches ghosts regardless of whether
+        //    they're in currentActivities or not — the previous guard on currentActivities
+        //    was wrong because a tracked-but-never-ended activity also needs to be swept.
         let activeProcessingIds = Set(
             reelManager.reels
                 .filter { $0.status == .pending || $0.status == .processing }
@@ -147,13 +147,10 @@ struct informedApp: App {
         for activity in Activity<ReelProcessingActivityAttributes>.activities
         where activity.activityState == .active {
             let sid = activity.attributes.submissionId
-            // If there's no matching in-flight reel AND it's not already tracked by
-            // the manager (i.e. it truly has no owner), end it immediately.
-            if !activeProcessingIds.contains(sid),
-               ReelProcessingActivityManager.shared.currentActivities[sid] == nil {
+            if !activeProcessingIds.contains(sid) {
                 print("🧹 [App] Orphan sweep: ending ghost activity for \(sid)")
-                await activity.end(
-                    ActivityContent(state: activity.content.state, staleDate: nil),
+                await ReelProcessingActivityManager.shared.endActivity(
+                    submissionId: sid,
                     dismissalPolicy: .immediate
                 )
             }

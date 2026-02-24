@@ -309,7 +309,7 @@ class ReelProcessingActivityManager: ObservableObject {
     
     func updateActivity(submissionId: String, status: ProcessingStatus, customMessage: String? = nil) async {
         guard let activity = currentActivities[submissionId] else {
-            print("⚠️ No Live Activity found for submission \(submissionId)")
+            print("⚠️ [ActivityManager] updateActivity: no tracked activity for \(submissionId) — skipping")
             return
         }
         
@@ -328,7 +328,7 @@ class ReelProcessingActivityManager: ObservableObject {
     
     func updateProgress(submissionId: String, status: ProcessingStatus? = nil, progress: Double, message: String, estimatedSecondsRemaining: Int? = nil) async {
         guard let activity = currentActivities[submissionId] else {
-            print("⚠️ No Live Activity found for submission \(submissionId)")
+            print("⚠️ [ActivityManager] updateProgress: no tracked activity for \(submissionId) — skipping")
             return
         }
         
@@ -356,8 +356,23 @@ class ReelProcessingActivityManager: ObservableObject {
     // MARK: - Complete Activity
     
     func completeActivity(submissionId: String, title: String, verdict: String) async {
-        guard let activity = currentActivities[submissionId] else {
-            print("⚠️ No Live Activity found for submission \(submissionId)")
+        // Prefer the tracked instance; fall back to a system-level lookup so we
+        // don't silently bail when a race caused the activity to be missed.
+        let activity: Activity<ReelProcessingActivityAttributes>?
+        if let tracked = currentActivities[submissionId] {
+            activity = tracked
+        } else {
+            activity = Activity<ReelProcessingActivityAttributes>.activities.first {
+                $0.attributes.submissionId == submissionId
+            }
+            if let a = activity {
+                print("⚠️ [ActivityManager] completeActivity: found untracked system activity for \(submissionId) — using it")
+                currentActivities[submissionId] = a
+            }
+        }
+        
+        guard let activity = activity else {
+            print("⚠️ [ActivityManager] completeActivity: no activity found for \(submissionId)")
             return
         }
         
@@ -388,8 +403,7 @@ class ReelProcessingActivityManager: ObservableObject {
     // MARK: - End Activity
     
     func endActivity(submissionId: String, dismissalPolicy: ActivityUIDismissalPolicy = .default) async {
-        // First try our in-memory tracking dict. If the app was killed and relaunched
-        // currentActivities will be empty, so fall back to the system list.
+        // Prefer the tracked instance; fall back to a system-level lookup.
         let activity: Activity<ReelProcessingActivityAttributes>?
         if let tracked = currentActivities[submissionId] {
             activity = tracked
@@ -397,13 +411,13 @@ class ReelProcessingActivityManager: ObservableObject {
             activity = Activity<ReelProcessingActivityAttributes>.activities.first {
                 $0.attributes.submissionId == submissionId
             }
-            if activity != nil {
-                print("🔍 [ActivityManager] Found untracked system activity for \(submissionId) — ending it")
+            if let a = activity {
+                print("⚠️ [ActivityManager] endActivity: found untracked system activity for \(submissionId) — ending it")
             }
         }
-
+        
         guard let activity = activity else {
-            print("⚠️ [ActivityManager] No Live Activity found for submission \(submissionId) (checked both dict and system)")
+            print("⚠️ [ActivityManager] endActivity: no activity found for \(submissionId)")
             return
         }
         let finalContent = ActivityContent(state: activity.content.state, staleDate: nil)
@@ -413,8 +427,22 @@ class ReelProcessingActivityManager: ObservableObject {
     }
     
     func failActivity(submissionId: String, errorMessage: String) async {
-        guard let activity = currentActivities[submissionId] else {
-            print("⚠️ No Live Activity found for submission \(submissionId)")
+        // Prefer the tracked instance; fall back to a system-level lookup.
+        let activity: Activity<ReelProcessingActivityAttributes>?
+        if let tracked = currentActivities[submissionId] {
+            activity = tracked
+        } else {
+            activity = Activity<ReelProcessingActivityAttributes>.activities.first {
+                $0.attributes.submissionId == submissionId
+            }
+            if let a = activity {
+                print("⚠️ [ActivityManager] failActivity: found untracked system activity for \(submissionId) — using it")
+                currentActivities[submissionId] = a
+            }
+        }
+        
+        guard let activity = activity else {
+            print("⚠️ [ActivityManager] failActivity: no activity found for \(submissionId)")
             return
         }
         
