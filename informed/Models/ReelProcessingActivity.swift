@@ -410,6 +410,11 @@ class ReelProcessingActivityManager: ObservableObject {
         await activity.end(finalContent, dismissalPolicy: dismissalPolicy)
         currentActivities.removeValue(forKey: submissionId)
         print("✅ Live Activity ended for submission \(submissionId.prefix(8))")
+        // Critically: remove this submission from the App Group pending_submissions so that
+        // checkAndStartPendingLiveActivities can never re-create a ghost activity for it.
+        // This is the root cause of the ghost: the App Group entry outlives the activity
+        // (especially after syncHistoryFromBackend wipes the local reels array).
+        Self.removeFromAppGroupPendingSubmissions(submissionId: submissionId)
     }
     
     func failActivity(submissionId: String, errorMessage: String) async {
@@ -487,6 +492,25 @@ class ReelProcessingActivityManager: ObservableObject {
             return String(raw.prefix(57)) + "…"
         }
         return raw
+    }
+    
+    // MARK: - App Group Cleanup
+    
+    /// Removes a submission from the App Group `pending_submissions` list so that
+    /// `checkAndStartPendingLiveActivities` cannot resurrect a ghost activity for it.
+    static func removeFromAppGroupPendingSubmissions(submissionId: String) {
+        let appGroupName = "group.com.jacob.informed"
+        guard let defaults = UserDefaults(suiteName: appGroupName) else { return }
+        guard var submissions = defaults.array(forKey: "pending_submissions") as? [[String: Any]] else { return }
+        let before = submissions.count
+        submissions.removeAll {
+            ($0["id"] as? String)?.lowercased() == submissionId.lowercased()
+        }
+        if submissions.count < before {
+            defaults.set(submissions, forKey: "pending_submissions")
+            defaults.synchronize()
+            print("🗑️ [ActivityManager] Removed \(submissionId.prefix(8)) from App Group pending_submissions (\(before)→\(submissions.count))")
+        }
     }
     
     // MARK: - Cleanup

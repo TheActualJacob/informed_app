@@ -436,12 +436,20 @@ class SharedReelManager: ObservableObject {
                     if statusResponse.status.lowercased() == "completed" {
                         print("✅ [ProgressPolling] Submission completed!")
                         isCompleted = true
-                        
+                        // Remove from App Group immediately so the periodic checker
+                        // cannot re-spawn a ghost activity for this submission.
+                        if #available(iOS 16.1, *) {
+                            ReelProcessingActivityManager.removeFromAppGroupPendingSubmissions(submissionId: submissionId)
+                        }
                         // Sync completed fact-checks from App Group
                         syncCompletedFactChecksFromAppGroup()
                         break
                     } else if statusResponse.status.lowercased() == "failed" {
                         print("❌ [ProgressPolling] Submission failed")
+                        // Remove from App Group immediately.
+                        if #available(iOS 16.1, *) {
+                            ReelProcessingActivityManager.removeFromAppGroupPendingSubmissions(submissionId: submissionId)
+                        }
                         await ReelProcessingActivityManager.shared.failActivity(
                             submissionId: submissionId,
                             errorMessage: statusResponse.currentStage
@@ -463,6 +471,9 @@ class SharedReelManager: ObservableObject {
             
             if !isCompleted && pollCount >= maxPolls {
                 print("⏱️ [ProgressPolling] Timeout after \(maxPolls) polls (3 minutes)")
+                if #available(iOS 16.1, *) {
+                    ReelProcessingActivityManager.removeFromAppGroupPendingSubmissions(submissionId: submissionId)
+                }
                 await ReelProcessingActivityManager.shared.failActivity(
                     submissionId: submissionId,
                     errorMessage: "Processing timeout"

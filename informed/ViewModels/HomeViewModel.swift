@@ -330,6 +330,10 @@ class HomeViewModel: ObservableObject {
                 print("🔬 [GHOST_DIAG] Fact check SUCCESS. sid=\(submissionId.prefix(8))")
                 print("🔬 [GHOST_DIAG]   tracked in currentActivities: \(ReelProcessingActivityManager.shared.currentActivities[submissionId] != nil)")
                 print("🔬 [GHOST_DIAG]   in system activities: \(Activity<ReelProcessingActivityAttributes>.activities.contains { $0.attributes.submissionId == submissionId })")
+                // Remove from App Group immediately so checkAndStartPendingLiveActivities
+                // can never re-create a ghost for this submission (e.g. after syncHistoryFromBackend
+                // wipes the local reels array and the "completed locally" guard is bypassed).
+                ReelProcessingActivityManager.removeFromAppGroupPendingSubmissions(submissionId: submissionId)
                 // Capture and clear before the async Task so a rapid second fact-check
                 // cannot accidentally re-use or orphan this id.
                 currentSubmissionId = nil
@@ -362,6 +366,40 @@ class HomeViewModel: ObservableObject {
                     print("🏁 [HomeViewModel] Live Activity fully ended for \(submissionId)")
                 }
             } else {
+                print("🔬 [GHOST_DIAG] ⚠️ No currentSubmissionId at success point — activity will be orphaned!")await ReelProcessingActivityManager.shared.endActivity(
+                        submissionId: submissionId,
+                        dismissalPolicy: .default
+                    )
+                    // Verify it's gone
+                    if #available(iOS 16.1, *) {
+                        let stillInSystem = Activity<ReelProcessingActivityAttributes>.activities.contains { $0.attributes.submissionId == submissionId }
+                        print("🔬 [GHOST_DIAG] After endActivity: stillInSystem=\(stillInSystem)")
+                        let allSystemActivities = Activity<ReelProcessingActivityAttributes>.activities
+                        print("🔬 [GHOST_DIAG] All remaining system activities: \(allSystemActivities.count)")
+                        for a in allSystemActivities {
+                            print("🔬 [GHOST_DIAG]   • sid=\(a.attributes.submissionId.prefix(8)) state=\(a.activityState) progress=\(Int(a.content.state.progress*100))%")
+                        }
+                    }
+                    print("🏁 [HomeViewModel] Live Activity fully ended for \(submissionId)")
+                }
+            } else {
+                print("🔬 [GHOST_DIAG] ⚠️ No currentSubmissionId at success point — activity will be orphaned!")await ReelProcessingActivityManager.shared.endActivity(
+                        submissionId: submissionId,
+                        dismissalPolicy: .default
+                    )
+                    // Verify it's gone
+                    if #available(iOS 16.1, *) {
+                        let stillInSystem = Activity<ReelProcessingActivityAttributes>.activities.contains { $0.attributes.submissionId == submissionId }
+                        print("🔬 [GHOST_DIAG] After endActivity: stillInSystem=\(stillInSystem)")
+                        let allSystemActivities = Activity<ReelProcessingActivityAttributes>.activities
+                        print("🔬 [GHOST_DIAG] All remaining system activities: \(allSystemActivities.count)")
+                        for a in allSystemActivities {
+                            print("🔬 [GHOST_DIAG]   • sid=\(a.attributes.submissionId.prefix(8)) state=\(a.activityState) progress=\(Int(a.content.state.progress*100))%")
+                        }
+                    }
+                    print("🏁 [HomeViewModel] Live Activity fully ended for \(submissionId)")
+                }
+            } else {
                 print("🔬 [GHOST_DIAG] ⚠️ No currentSubmissionId at success point — activity will be orphaned!")
                 currentSubmissionId = nil
             }
@@ -377,6 +415,7 @@ class HomeViewModel: ObservableObject {
             let msg = networkError.errorDescription ?? "An error occurred"
             self.errorMessage = msg
             if #available(iOS 16.1, *), let submissionId = currentSubmissionId {
+                ReelProcessingActivityManager.removeFromAppGroupPendingSubmissions(submissionId: submissionId)
                 Task { @MainActor in
                     await ReelProcessingActivityManager.shared.failActivity(
                         submissionId: submissionId, errorMessage: msg)
@@ -395,6 +434,7 @@ class HomeViewModel: ObservableObject {
             }
             self.errorMessage = msg
             if #available(iOS 16.1, *), let submissionId = currentSubmissionId {
+                ReelProcessingActivityManager.removeFromAppGroupPendingSubmissions(submissionId: submissionId)
                 Task { @MainActor in
                     await ReelProcessingActivityManager.shared.failActivity(
                         submissionId: submissionId, errorMessage: msg)
