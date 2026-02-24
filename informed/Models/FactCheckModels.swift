@@ -50,7 +50,10 @@ struct FactCheck: Codable {
 
 // MARK: - Fact Check Item
 
-struct FactCheckItem: Identifiable {
+struct FactCheckItem: Identifiable, Equatable {
+    static func == (lhs: FactCheckItem, rhs: FactCheckItem) -> Bool {
+        lhs.id == rhs.id
+    }
     let id = UUID()
     let sourceName: String
     let sourceIcon: String

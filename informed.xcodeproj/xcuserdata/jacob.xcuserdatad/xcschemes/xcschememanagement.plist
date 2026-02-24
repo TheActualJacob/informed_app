@@ -7,17 +7,35 @@
 		<key>InformedShare.xcscheme_^#shared#^_</key>
 		<dict>
 			<key>orderHint</key>
-			<integer>2</integer>
+			<integer>1</integer>
 		</dict>
 		<key>InformedWidgetExtension.xcscheme_^#shared#^_</key>
 		<dict>
 			<key>orderHint</key>
-			<integer>1</integer>
+			<integer>0</integer>
 		</dict>
 		<key>informed.xcscheme_^#shared#^_</key>
 		<dict>
 			<key>orderHint</key>
-			<integer>0</integer>
+			<integer>2</integer>
+		</dict>
+	</dict>
+	<key>SuppressBuildableAutocreation</key>
+	<dict>
+		<key>16AAEBAF2ED2446C000C4DE6</key>
+		<dict>
+			<key>primary</key>
+			<true/>
+		</dict>
+		<key>16CD92842F46151F0021A6D8</key>
+		<dict>
+			<key>primary</key>
+			<true/>
+		</dict>
+		<key>16DDB8892ED3F1200086AE3B</key>
+		<dict>
+			<key>primary</key>
+			<true/>
 		</dict>
 	</dict>
 </dict>

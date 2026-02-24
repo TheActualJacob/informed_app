@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import ActivityKit
 
 @main
 struct informedApp: App {
@@ -66,11 +67,17 @@ struct informedApp: App {
                             print("🔄 App became active - checking for pending shared URLs")
                             print("   (This works even with free Apple Developer account)")
                             
-                            // Check IMMEDIATELY when becoming active (don't wait for timer)
-                            checkForPendingSharedURL()
-                            
-                            // Then start periodic checking every 1 second while app is active
-                            startPeriodicChecking()
+                            // Dismiss completed Live Activities FIRST, then check for new ones.
+                            // Running these in sequence (not parallel) prevents a completed
+                            // submission from being re-started by checkAndStartPendingLiveActivities.
+                            Task {
+                                if #available(iOS 16.1, *) {
+                                    await dismissAllCompletedLiveActivities()
+                                }
+                                // Only check for new pending submissions after cleanup is done
+                                checkForPendingSharedURL()
+                                startPeriodicChecking()
+                            }
                         } else if newPhase == .background {
                             print("📱 App went to background - continuing checks for Share Extension")
                             // DON'T stop checking - keep running to detect Share Extension submissions
@@ -103,6 +110,31 @@ struct informedApp: App {
         }
     }
     
+    // MARK: - Live Activity Dismissal
+
+    @available(iOS 16.1, *)
+    private func dismissAllCompletedLiveActivities() async {
+        let terminalIds = reelManager.reels
+            .filter { $0.status == .completed || $0.status == .failed }
+            .map { $0.id }
+        for submissionId in terminalIds {
+            await ReelProcessingActivityManager.shared.endActivity(
+                submissionId: submissionId,
+                dismissalPolicy: .immediate
+            )
+        }
+        // Also end any system activities we've lost track of that are in a terminal state
+        for activity in Activity<ReelProcessingActivityAttributes>.activities {
+            if activity.activityState == .ended || activity.activityState == .dismissed {
+                await activity.end(
+                    ActivityContent(state: activity.content.state, staleDate: nil),
+                    dismissalPolicy: .immediate
+                )
+            }
+        }
+        print("✅ [App] Dismissed completed/failed Live Activities on foreground")
+    }
+
     // MARK: - Periodic Checking
     
     private func startPeriodicChecking() {
@@ -114,9 +146,13 @@ struct informedApp: App {
         // Check immediately
         checkForPendingSharedURL()
         
-        // Then check every 1 second
+        // Then check every 1 second, but auto-stop when nothing is pending
         checkTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
             checkForPendingSharedURL()
+            // Stop polling once there are no more pending share-extension submissions
+            if reelManager.activeProcessingURL == nil {
+                stopPeriodicChecking()
+            }
         }
     }
     
@@ -199,6 +235,57 @@ struct informedApp: App {
             return
         }
         
+        if url.host == "detail" {
+            // Deep-link from Live Activity tap: factcheckapp://detail?id=<submissionId>
+            if let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+               let submissionId = components.queryItems?.first(where: { $0.name == "id" })?.value {
+                print("🔗 Live Activity deep-link: opening fact check for submission \(submissionId)")
+                Task { @MainActor in
+                    openFactCheck(submissionId: submissionId)
+                }
+            }
+            return
+        }
+
         print("⚠️ Unknown URL host: \(url.host ?? "nil")")
+    }
+
+    // MARK: - Open Fact Check Deep Link
+
+    @MainActor
+    private func openFactCheck(submissionId: String) {
+        // 1. Dismiss the Live Activity right away
+        if #available(iOS 16.1, *) {
+            Task {
+                await ReelProcessingActivityManager.shared.endActivity(
+                    submissionId: submissionId,
+                    dismissalPolicy: .immediate
+                )
+            }
+        }
+
+        // 2. Switch to My Reels tab
+        NotificationCenter.default.post(
+            name: NSNotification.Name("NavigateToMyReels"),
+            object: nil,
+            userInfo: ["submissionId": submissionId]
+        )
+
+        // 3. If the reel is completed, fire ShowFactCheckDetail after a brief delay
+        //    so SharedReelsView has time to mount before being asked to navigate
+        if let reel = reelManager.reels.first(where: { $0.id == submissionId }),
+           reel.status == .completed,
+           let factCheckData = reel.factCheckData {
+            let item = factCheckData.toFactCheckItem(originalLink: reel.url)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                NotificationCenter.default.post(
+                    name: NSNotification.Name("ShowFactCheckDetail"),
+                    object: nil,
+                    userInfo: ["factCheckItem": item]
+                )
+            }
+        }
+
+        HapticManager.successImpact()
     }
 }

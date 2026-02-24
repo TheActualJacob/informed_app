@@ -1,0 +1,12 @@
+{
+  "/Users/jacob/Documents/Projects/informed/informed/Extensions/ColorPalette.swift" : {
+    "abi-baseline-json" : "/Users/jacob/Documents/Projects/informed/build/informed.build/Release-iphonesimulator/InformedWidgetExtension.build/Objects-normal/arm64/InformedWidgetExtension.abi.json",
+    "const-values" : "/Users/jacob/Documents/Projects/informed/build/informed.build/Release-iphonesimulator/InformedWidgetExtension.build/Objects-normal/arm64/InformedWidgetExtension-primary.swiftconstvalues",
+    "dependencies" : "/Users/jacob/Documents/Projects/informed/build/informed.build/Release-iphonesimulator/InformedWidgetExtension.build/Objects-normal/arm64/InformedWidgetExtension-primary.d",
+    "diagnostics" : "/Users/jacob/Documents/Projects/informed/build/informed.build/Release-iphonesimulator/InformedWidgetExtension.build/Objects-normal/arm64/InformedWidgetExtension-primary.dia",
+    "objc-header" : "/Users/jacob/Documents/Projects/informed/build/informed.build/Release-iphonesimulator/InformedWidgetExtension.build/Objects-normal/arm64/InformedWidgetExtension-Swift.h",
+    "swiftdoc" : "/Users/jacob/Documents/Projects/informed/build/informed.build/Release-iphonesimulator/InformedWidgetExtension.build/Objects-normal/arm64/InformedWidgetExtension.swiftdoc",
+    "swiftmodule" : "/Users/jacob/Documents/Projects/informed/build/informed.build/Release-iphonesimulator/InformedWidgetExtension.build/Objects-normal/arm64/InformedWidgetExtension.swiftmodule",
+    "swiftsourceinfo" : "/Users/jacob/Documents/Projects/informed/build/informed.build/Release-iphonesimulator/InformedWidgetExtension.build/Objects-normal/arm64/InformedWidgetExtension.swiftsourceinfo"
+  }
+}

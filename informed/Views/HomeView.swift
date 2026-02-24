@@ -10,6 +10,7 @@ import SwiftUI
 struct HomeView: View {
     @StateObject var viewModel = HomeViewModel()
     @EnvironmentObject var userManager: UserManager
+    @EnvironmentObject var reelManager: SharedReelManager
     @FocusState private var isSearchFocused: Bool
     
     var body: some View {
@@ -131,7 +132,7 @@ struct HomeView: View {
                                 }
                             }
                         }
-                        .padding(.bottom, viewModel.processingLink != nil ? 140 : 100)
+                        .padding(.bottom, (viewModel.processingLink != nil || reelManager.activeProcessingURL != nil) ? 140 : 100)
                     }
                     .refreshable {
                         HapticManager.lightImpact()
@@ -145,12 +146,15 @@ struct HomeView: View {
                 }
                 
                 // ── Processing Banner ─────────────────────────────────────
-                if let processingLink = viewModel.processingLink {
+                // Show for in-app fact checks (processingLink) OR share-extension
+                // fact checks that are still running (reelManager.activeProcessingURL).
+                let bannerLink = viewModel.processingLink ?? reelManager.activeProcessingURL
+                if let link = bannerLink {
                     VStack(spacing: 0) {
                         Spacer()
                         ProcessingBanner(
-                            link: processingLink,
-                            thumbnailURL: viewModel.processingThumbnailURL
+                            link: link,
+                            thumbnailURL: viewModel.processingLink != nil ? viewModel.processingThumbnailURL : nil
                         )
                         .padding(.horizontal, Theme.Spacing.xl)
                         .padding(.bottom, Theme.Spacing.xl)
@@ -159,7 +163,7 @@ struct HomeView: View {
                 }
             }
             .onTapGesture { isSearchFocused = false }
-            .animation(Theme.Animation.spring, value: viewModel.processingLink != nil)
+            .animation(Theme.Animation.spring, value: viewModel.processingLink != nil || reelManager.activeProcessingURL != nil)
             .animation(Theme.Animation.smooth, value: viewModel.errorMessage != nil)
             .animation(Theme.Animation.smooth, value: viewModel.isSearchMode)
             .navigationBarHidden(true)

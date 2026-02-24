@@ -12,12 +12,26 @@ import SwiftUI
 struct SharedReelsView: View {
     @EnvironmentObject var reelManager: SharedReelManager
     @EnvironmentObject var userManager: UserManager
-    
+
+    // Deep-link: set by ContentView when user taps a completed Live Activity
+    @State private var deepLinkItem: FactCheckItem? = nil
+    @State private var showDeepLink = false
+
     var body: some View {
         NavigationView {
             ZStack {
                 Color.backgroundLight.ignoresSafeArea()
-                
+
+                // Hidden NavigationLink — fired programmatically by deep-link
+                if let item = deepLinkItem {
+                    NavigationLink(
+                        destination: FactDetailView(item: item),
+                        isActive: $showDeepLink
+                    ) { EmptyView() }
+                    .opacity(0)
+                    .frame(width: 0, height: 0)
+                }
+
                 if reelManager.reels.isEmpty && !reelManager.isSyncing {
                     emptyStateView
                 } else if reelManager.isSyncing && reelManager.reels.isEmpty {
@@ -55,12 +69,30 @@ struct SharedReelsView: View {
             }
             .navigationTitle("Shared Reels")
             .navigationBarTitleDisplayMode(.large)
+            .onChange(of: reelManager.pendingDeepLinkItem) { _, item in
+                guard let item else { return }
+                deepLinkItem = item
+                reelManager.pendingDeepLinkItem = nil
+                // Small delay so the NavigationLink has time to mount
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    showDeepLink = true
+                }
+            }
             .onAppear {
+                // Handle deep-link that arrived before this view was mounted
+                if let item = reelManager.pendingDeepLinkItem {
+                    deepLinkItem = item
+                    reelManager.pendingDeepLinkItem = nil
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        showDeepLink = true
+                    }
+                }
+
                 // Auto-sync from backend when view appears
                 Task {
                     await reelManager.syncHistoryFromBackend()
                 }
-                
+
                 // Dismiss any completed Live Activities since user is now viewing the results
                 if #available(iOS 16.1, *) {
                     Task {
@@ -135,13 +167,10 @@ struct SharedReelsView: View {
     
     @available(iOS 16.1, *)
     private func dismissCompletedActivities() async {
-        // Get all completed reels
-        let completedReelIds = reelManager.reels
-            .filter { $0.status == .completed }
+        let terminalIds = reelManager.reels
+            .filter { $0.status == .completed || $0.status == .failed }
             .map { $0.id }
-        
-        // Dismiss their Live Activities if they exist
-        for submissionId in completedReelIds {
+        for submissionId in terminalIds {
             await ReelProcessingActivityManager.shared.endActivity(
                 submissionId: submissionId,
                 dismissalPolicy: .immediate

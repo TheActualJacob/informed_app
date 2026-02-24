@@ -1,0 +1,5 @@
+---
+triple:          'arm64-apple-darwin'
+binary-path:     '/Users/jacob/Documents/Projects/informed/build/Release-iphonesimulator/InformedWidgetExtension.appex/InformedWidgetExtension'
+relocations:     []
+...

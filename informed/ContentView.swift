@@ -2,20 +2,19 @@ import SwiftUI
 import ActivityKit
 
 // MARK: - Main Content View
-// This is now a lightweight container that composes the modular views
 
 struct ContentView: View {
     @EnvironmentObject var userManager: UserManager
+    @EnvironmentObject var reelManager: SharedReelManager
     @State private var selectedTab: Int = 0
-    
+
     init() {
-        // Configure tab bar appearance
         let appearance = UITabBarAppearance()
         appearance.configureWithDefaultBackground()
         UITabBar.appearance().standardAppearance = appearance
         UITabBar.appearance().scrollEdgeAppearance = appearance
     }
-    
+
     var body: some View {
         TabView(selection: $selectedTab) {
             HomeView()
@@ -24,21 +23,21 @@ struct ContentView: View {
                     Text("Home")
                 }
                 .tag(0)
-            
+
             FeedView()
                 .tabItem {
                     Image(systemName: "photo.on.rectangle.angled")
                     Text("Discover")
                 }
                 .tag(1)
-            
+
             SharedReelsView()
                 .tabItem {
                     Image(systemName: "square.and.arrow.down.fill")
                     Text("My Reels")
                 }
                 .tag(2)
-            
+
             AccountView()
                 .tabItem {
                     Image(systemName: "person.circle.fill")
@@ -48,7 +47,6 @@ struct ContentView: View {
         }
         .accentColor(.brandBlue)
         .onChange(of: selectedTab) { oldValue, newValue in
-            // When user switches to My Reels tab, dismiss completed activities
             if newValue == 2 {
                 if #available(iOS 16.1, *) {
                     Task {
@@ -59,27 +57,38 @@ struct ContentView: View {
             }
         }
         .onAppear {
-            // Listen for navigation requests from notifications
+            // Navigate to My Reels (from notifications / Live Activity taps)
             NotificationCenter.default.addObserver(
                 forName: NSNotification.Name("NavigateToMyReels"),
                 object: nil,
                 queue: .main
-            ) { _ in
-                // Switch to My Reels tab
+            ) { notification in
                 selectedTab = 2
+                if let submissionId = notification.userInfo?["submissionId"] as? String {
+                    reelManager.pendingDeepLinkId = submissionId
+                }
+            }
+
+            // Open a specific fact-check detail view directly
+            NotificationCenter.default.addObserver(
+                forName: NSNotification.Name("ShowFactCheckDetail"),
+                object: nil,
+                queue: .main
+            ) { notification in
+                selectedTab = 2
+                if let item = notification.userInfo?["factCheckItem"] as? FactCheckItem {
+                    reelManager.pendingDeepLinkItem = item
+                }
             }
         }
     }
-    
+
     @available(iOS 16.1, *)
     private func dismissCompletedActivitiesForMyReels() async {
-        // Get SharedReelManager instance
-        let completedReelIds = SharedReelManager.shared.reels
-            .filter { $0.status == .completed }
+        let terminalIds = SharedReelManager.shared.reels
+            .filter { $0.status == .completed || $0.status == .failed }
             .map { $0.id }
-        
-        // Dismiss their Live Activities
-        for submissionId in completedReelIds {
+        for submissionId in terminalIds {
             await ReelProcessingActivityManager.shared.endActivity(
                 submissionId: submissionId,
                 dismissalPolicy: .immediate

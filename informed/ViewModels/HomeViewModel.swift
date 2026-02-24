@@ -217,9 +217,14 @@ class HomeViewModel: ObservableObject {
         
         print("🔍 Starting fact check for: \(link)")
         
+        // Generate one submissionId shared by both the Live Activity and the
+        // SharedReel that will be stored. Without this, dismissAllCompletedLiveActivities
+        // (which calls endActivity(submissionId: reel.id)) would never find the
+        // activity, leaving a ghost island visible the next time the app opens.
+        let submissionId = UUID().uuidString
+        currentSubmissionId = submissionId
+
         if #available(iOS 16.1, *) {
-            let submissionId = UUID().uuidString
-            currentSubmissionId = submissionId
             Task { @MainActor in
                 await ReelProcessingActivityManager.shared.startActivity(
                     submissionId: submissionId,
@@ -290,7 +295,7 @@ class HomeViewModel: ObservableObject {
             )
             
             let newReel = SharedReel(
-                id: UUID().uuidString,
+                id: submissionId,   // same ID as the Live Activity so cleanup finds it
                 url: link,
                 submittedAt: Date(),
                 status: .completed,
@@ -302,12 +307,20 @@ class HomeViewModel: ObservableObject {
             SharedReelManager.shared.reels.insert(newReel, at: 0)
             SharedReelManager.shared.saveReels()
             
-            if #available(iOS 16.1, *), let submissionId = currentSubmissionId {
+            if #available(iOS 16.1, *) {
+                // Use the outer submissionId directly (always set at function start).
+                let sid = submissionId
                 Task { @MainActor in
+                    // Show "Complete" state in the island for ~3 seconds, then end it.
                     await ReelProcessingActivityManager.shared.completeActivity(
-                        submissionId: submissionId,
+                        submissionId: sid,
                         title: factCheckData.title,
                         verdict: factCheckData.verdict
+                    )
+                    try? await Task.sleep(nanoseconds: 3_000_000_000)
+                    await ReelProcessingActivityManager.shared.endActivity(
+                        submissionId: sid,
+                        dismissalPolicy: .default
                     )
                 }
                 currentSubmissionId = nil

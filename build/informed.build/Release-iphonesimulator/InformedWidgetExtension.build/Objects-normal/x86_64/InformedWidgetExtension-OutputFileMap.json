@@ -1,0 +1,41 @@
+{
+  "" : {
+    "const-values" : "/Users/jacob/Documents/Projects/informed/build/informed.build/Release-iphonesimulator/InformedWidgetExtension.build/Objects-normal/x86_64/InformedWidgetExtension-primary.swiftconstvalues",
+    "dependencies" : "/Users/jacob/Documents/Projects/informed/build/informed.build/Release-iphonesimulator/InformedWidgetExtension.build/Objects-normal/x86_64/InformedWidgetExtension-primary.d",
+    "diagnostics" : "/Users/jacob/Documents/Projects/informed/build/informed.build/Release-iphonesimulator/InformedWidgetExtension.build/Objects-normal/x86_64/InformedWidgetExtension-primary.dia",
+    "emit-module-dependencies" : "/Users/jacob/Documents/Projects/informed/build/informed.build/Release-iphonesimulator/InformedWidgetExtension.build/Objects-normal/x86_64/InformedWidgetExtension-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/jacob/Documents/Projects/informed/build/informed.build/Release-iphonesimulator/InformedWidgetExtension.build/Objects-normal/x86_64/InformedWidgetExtension-primary-emit-module.dia",
+    "pch" : "/Users/jacob/Documents/Projects/informed/build/informed.build/Release-iphonesimulator/InformedWidgetExtension.build/Objects-normal/x86_64/InformedWidgetExtension-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/jacob/Documents/Projects/informed/build/informed.build/Release-iphonesimulator/InformedWidgetExtension.build/Objects-normal/x86_64/InformedWidgetExtension-primary.swiftdeps"
+  },
+  "/Users/jacob/Documents/Projects/informed/InformedWidget/InformedWidgetBundle.swift" : {
+    "index-unit-output-path" : "/informed.build/Release-iphonesimulator/InformedWidgetExtension.build/Objects-normal/x86_64/InformedWidgetBundle.o",
+    "llvm-bc" : "/Users/jacob/Documents/Projects/informed/build/informed.build/Release-iphonesimulator/InformedWidgetExtension.build/Objects-normal/x86_64/InformedWidgetBundle.bc",
+    "object" : "/Users/jacob/Documents/Projects/informed/build/informed.build/Release-iphonesimulator/InformedWidgetExtension.build/Objects-normal/x86_64/InformedWidgetBundle.o"
+  },
+  "/Users/jacob/Documents/Projects/informed/build/informed.build/Release-iphonesimulator/InformedWidgetExtension.build/DerivedSources/GeneratedAssetSymbols.swift" : {
+    "index-unit-output-path" : "/informed.build/Release-iphonesimulator/InformedWidgetExtension.build/Objects-normal/x86_64/GeneratedAssetSymbols.o",
+    "llvm-bc" : "/Users/jacob/Documents/Projects/informed/build/informed.build/Release-iphonesimulator/InformedWidgetExtension.build/Objects-normal/x86_64/GeneratedAssetSymbols.bc",
+    "object" : "/Users/jacob/Documents/Projects/informed/build/informed.build/Release-iphonesimulator/InformedWidgetExtension.build/Objects-normal/x86_64/GeneratedAssetSymbols.o"
+  },
+  "/Users/jacob/Documents/Projects/informed/informed/Extensions/ColorPalette.swift" : {
+    "index-unit-output-path" : "/informed.build/Release-iphonesimulator/InformedWidgetExtension.build/Objects-normal/x86_64/ColorPalette.o",
+    "llvm-bc" : "/Users/jacob/Documents/Projects/informed/build/informed.build/Release-iphonesimulator/InformedWidgetExtension.build/Objects-normal/x86_64/ColorPalette.bc",
+    "object" : "/Users/jacob/Documents/Projects/informed/build/informed.build/Release-iphonesimulator/InformedWidgetExtension.build/Objects-normal/x86_64/ColorPalette.o"
+  },
+  "/Users/jacob/Documents/Projects/informed/informed/Models/ReelProcessingActivity.swift" : {
+    "index-unit-output-path" : "/informed.build/Release-iphonesimulator/InformedWidgetExtension.build/Objects-normal/x86_64/ReelProcessingActivity.o",
+    "llvm-bc" : "/Users/jacob/Documents/Projects/informed/build/informed.build/Release-iphonesimulator/InformedWidgetExtension.build/Objects-normal/x86_64/ReelProcessingActivity.bc",
+    "object" : "/Users/jacob/Documents/Projects/informed/build/informed.build/Release-iphonesimulator/InformedWidgetExtension.build/Objects-normal/x86_64/ReelProcessingActivity.o"
+  },
+  "/Users/jacob/Documents/Projects/informed/informed/Utilities/HapticManager.swift" : {
+    "index-unit-output-path" : "/informed.build/Release-iphonesimulator/InformedWidgetExtension.build/Objects-normal/x86_64/HapticManager.o",
+    "llvm-bc" : "/Users/jacob/Documents/Projects/informed/build/informed.build/Release-iphonesimulator/InformedWidgetExtension.build/Objects-normal/x86_64/HapticManager.bc",
+    "object" : "/Users/jacob/Documents/Projects/informed/build/informed.build/Release-iphonesimulator/InformedWidgetExtension.build/Objects-normal/x86_64/HapticManager.o"
+  },
+  "/Users/jacob/Documents/Projects/informed/informed/Views/ReelProcessingLiveActivity.swift" : {
+    "index-unit-output-path" : "/informed.build/Release-iphonesimulator/InformedWidgetExtension.build/Objects-normal/x86_64/ReelProcessingLiveActivity.o",
+    "llvm-bc" : "/Users/jacob/Documents/Projects/informed/build/informed.build/Release-iphonesimulator/InformedWidgetExtension.build/Objects-normal/x86_64/ReelProcessingLiveActivity.bc",
+    "object" : "/Users/jacob/Documents/Projects/informed/build/informed.build/Release-iphonesimulator/InformedWidgetExtension.build/Objects-normal/x86_64/ReelProcessingLiveActivity.o"
+  }
+}

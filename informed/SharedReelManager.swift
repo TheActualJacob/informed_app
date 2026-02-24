@@ -148,7 +148,15 @@ class SharedReelManager: ObservableObject {
     @Published var lastUploadSuccess: Bool = false
     @Published var isSyncing: Bool = false
     @Published var lastSyncDate: Date?
-    
+
+    // Deep-link state: set by ContentView when user taps a completed Live Activity
+    @Published var pendingDeepLinkId: String? = nil
+    @Published var pendingDeepLinkItem: FactCheckItem? = nil
+
+    /// URL of the share-extension submission currently being processed.
+    /// Drives the ProcessingBanner in HomeView when a fact check was started outside the app.
+    @Published var activeProcessingURL: String? = nil
+
     private var currentUserId: String?
     private var lastActivityCheckTime: Date? // For debouncing Live Activity checks
     
@@ -412,9 +420,13 @@ class SharedReelManager: ObservableObject {
                     
                     print("📊 [ProgressPolling] Poll \(pollCount): \(statusResponse.status) - \(statusResponse.progressPercentage)%")
                     
-                    // Update Live Activity with real backend data including time estimate
+                    // Derive the ProcessingStatus from the backend response
+                    let processingStatus = statusResponse.toProcessingStatus()
+                    
+                    // Update Live Activity with real backend data including status and time estimate
                     await ReelProcessingActivityManager.shared.updateProgress(
                         submissionId: submissionId,
+                        status: processingStatus,
                         progress: statusResponse.normalizedProgress,
                         message: statusResponse.currentStage,
                         estimatedSecondsRemaining: statusResponse.estimatedSecondsRemaining
@@ -662,6 +674,12 @@ class SharedReelManager: ObservableObject {
         // Clear processed fact-checks from App Group
         sharedDefaults.removeObject(forKey: "completed_fact_checks")
         print("🧹 Cleared completed_fact_checks from App Group")
+
+        // Hide the processing banner if nothing is pending anymore
+        let pendingCount = (sharedDefaults.array(forKey: "pending_submissions") as? [[String: Any]])?.count ?? 0
+        if pendingCount == 0 {
+            activeProcessingURL = nil
+        }
     }
     
     // MARK: - Add Fact-Check to Feed
@@ -873,6 +891,7 @@ class SharedReelManager: ObservableObject {
         guard let submissions = sharedDefaults.array(forKey: "pending_submissions") as? [[String: Any]] else {
             print("📭 [LiveActivity] No pending_submissions array found in App Group")
             print("   Raw value: \(String(describing: sharedDefaults.object(forKey: "pending_submissions")))")
+            activeProcessingURL = nil   // no pending submissions → hide banner
             return
         }
         
@@ -907,34 +926,40 @@ class SharedReelManager: ObservableObject {
                 continue
             }
             
-            print("     ✓ Fresh submission, keeping")
-            freshSubmissions.append(submission)
-            
-            // Try to start Live Activity for fresh submissions
             guard let submissionId = submission["id"] as? String else {
                 print("⚠️ [LiveActivity] Submission missing ID, skipping")
                 continue
             }
             
-            print("🔍 [LiveActivity] Checking submission: \(submissionId)")
-            
             guard let url = submission["url"] as? String else {
-                print("⚠️ [LiveActivity]   Missing URL, skipping")
+                print("⚠️ [LiveActivity] Submission missing URL, skipping")
                 continue
             }
-            
-            print("   ✓ Has URL: \(url.prefix(50))...")
             
             let status = submission["status"] as? String
             print("   Status in App Group: '\(status ?? "nil")'")
             
-            guard status == "processing" else {
-                print("   ✗ Status is not 'processing', skipping")
+            // If the local reels store already marks this as completed or failed,
+            // drop it from pending_submissions entirely — do NOT add to freshSubmissions.
+            let localReel = reels.first(where: { $0.id == submissionId })
+            if localReel?.status == .completed || localReel?.status == .failed {
+                print("   ✗ Submission \(submissionId) already \(localReel!.status.rawValue) locally — dropping from App Group")
                 continue
             }
             
-            print("   ✓ Status is 'processing'")
+            // Only keep submissions that are actively processing
+            guard status == "processing" else {
+                print("   ✗ Status is '\(status ?? "nil")' (not 'processing') — dropping from App Group")
+                continue
+            }
             
+            // All checks passed — this is a genuinely live submission, keep it
+            print("     ✓ Fresh submission, keeping: \(submissionId)")
+            print("   ✓ Has URL: \(url.prefix(50))...")
+            freshSubmissions.append(submission)
+            
+            print("   ✓ Status is 'processing'")
+
             // Check if a system Live Activity already exists for this submission
             let existingActivity = Activity<ReelProcessingActivityAttributes>.activities.first {
                 $0.attributes.submissionId == submissionId
@@ -976,7 +1001,14 @@ class SharedReelManager: ObservableObject {
         // Save cleaned up submissions back to App Group
         sharedDefaults.set(freshSubmissions, forKey: "pending_submissions")
         sharedDefaults.synchronize()
-        
+
+        // Drive the in-app processing banner for share-extension fact checks.
+        // Pick the URL of the first submission still in flight, or nil when all are done.
+        let firstPendingURL = freshSubmissions.compactMap { $0["url"] as? String }.first
+        if activeProcessingURL != firstPendingURL {
+            activeProcessingURL = firstPendingURL
+        }
+
         print("✅ [LiveActivity] checkAndStartPendingLiveActivities complete")
         print("   - Cleaned up: \(submissions.count - freshSubmissions.count) stale submissions")
         print("   - Remaining: \(freshSubmissions.count) fresh submissions")

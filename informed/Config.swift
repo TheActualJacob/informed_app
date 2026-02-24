@@ -7,7 +7,7 @@ struct Config {
     
     /// The base URL for the backend API
     /// Change this value when your backend server IP/port changes
-    static let backendURL = "http://192.168.1.54:5001"
+    static let backendURL = "https://informed-production.up.railway.app"
     
     // MARK: - App Group
     
