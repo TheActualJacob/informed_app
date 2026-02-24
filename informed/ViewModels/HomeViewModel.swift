@@ -217,14 +217,9 @@ class HomeViewModel: ObservableObject {
         
         print("🔍 Starting fact check for: \(link)")
         
-        // Generate one submissionId shared by both the Live Activity and the
-        // SharedReel that will be stored. Without this, dismissAllCompletedLiveActivities
-        // (which calls endActivity(submissionId: reel.id)) would never find the
-        // activity, leaving a ghost island visible the next time the app opens.
-        let submissionId = UUID().uuidString
-        currentSubmissionId = submissionId
-
         if #available(iOS 16.1, *) {
+            let submissionId = UUID().uuidString
+            currentSubmissionId = submissionId
             Task { @MainActor in
                 await ReelProcessingActivityManager.shared.startActivity(
                     submissionId: submissionId,
@@ -294,8 +289,14 @@ class HomeViewModel: ObservableObject {
                 platform: factCheckData.platform
             )
             
+            // Re-use the same submissionId that was given to the Live Activity so
+            // SharedReel.id == Live Activity submissionId. This is critical: the
+            // dismissAllCompletedLiveActivities sweep looks up reels by id, so a
+            // mismatched id means the activity can never be found and ended, leaving
+            // a ghost stuck at 10%.
+            let reelId = currentSubmissionId ?? UUID().uuidString
             let newReel = SharedReel(
-                id: submissionId,   // same ID as the Live Activity so cleanup finds it
+                id: reelId,
                 url: link,
                 submittedAt: Date(),
                 status: .completed,
@@ -307,22 +308,26 @@ class HomeViewModel: ObservableObject {
             SharedReelManager.shared.reels.insert(newReel, at: 0)
             SharedReelManager.shared.saveReels()
             
-            if #available(iOS 16.1, *) {
-                // Use the outer submissionId directly (always set at function start).
-                let sid = submissionId
+            if #available(iOS 16.1, *), let submissionId = currentSubmissionId {
+                // Capture and clear before the async Task so a rapid second fact-check
+                // cannot accidentally re-use or orphan this id.
+                currentSubmissionId = nil
                 Task { @MainActor in
-                    // Show "Complete" state in the island for ~3 seconds, then end it.
+                    // Show the "Complete" banner for 3 seconds…
                     await ReelProcessingActivityManager.shared.completeActivity(
-                        submissionId: sid,
+                        submissionId: submissionId,
                         title: factCheckData.title,
                         verdict: factCheckData.verdict
                     )
                     try? await Task.sleep(nanoseconds: 3_000_000_000)
+                    // …then fully tear it down so no ghost lingers.
                     await ReelProcessingActivityManager.shared.endActivity(
-                        submissionId: sid,
+                        submissionId: submissionId,
                         dismissalPolicy: .default
                     )
+                    print("🏁 [HomeViewModel] Live Activity fully ended for \(submissionId)")
                 }
+            } else {
                 currentSubmissionId = nil
             }
             

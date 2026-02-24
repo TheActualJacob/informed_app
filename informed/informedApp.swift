@@ -114,6 +114,7 @@ struct informedApp: App {
 
     @available(iOS 16.1, *)
     private func dismissAllCompletedLiveActivities() async {
+        // 1. End activities whose matching reel is already in a terminal state.
         let terminalIds = reelManager.reels
             .filter { $0.status == .completed || $0.status == .failed }
             .map { $0.id }
@@ -123,7 +124,8 @@ struct informedApp: App {
                 dismissalPolicy: .immediate
             )
         }
-        // Also end any system activities we've lost track of that are in a terminal state
+
+        // 2. End system activities that are already in an ended/dismissed state.
         for activity in Activity<ReelProcessingActivityAttributes>.activities {
             if activity.activityState == .ended || activity.activityState == .dismissed {
                 await activity.end(
@@ -132,7 +134,32 @@ struct informedApp: App {
                 )
             }
         }
-        print("✅ [App] Dismissed completed/failed Live Activities on foreground")
+
+        // 3. Orphan sweep: end any *active* system activity whose submissionId has no
+        //    matching pending/processing reel. This catches ghost activities created by
+        //    the in-app fact-check path before the SharedReel.id unification fix, as well
+        //    as any activity the system re-surfaced after the app was force-quit.
+        let activeProcessingIds = Set(
+            reelManager.reels
+                .filter { $0.status == .pending || $0.status == .processing }
+                .map { $0.id }
+        )
+        for activity in Activity<ReelProcessingActivityAttributes>.activities
+        where activity.activityState == .active {
+            let sid = activity.attributes.submissionId
+            // If there's no matching in-flight reel AND it's not already tracked by
+            // the manager (i.e. it truly has no owner), end it immediately.
+            if !activeProcessingIds.contains(sid),
+               ReelProcessingActivityManager.shared.currentActivities[sid] == nil {
+                print("🧹 [App] Orphan sweep: ending ghost activity for \(sid)")
+                await activity.end(
+                    ActivityContent(state: activity.content.state, staleDate: nil),
+                    dismissalPolicy: .immediate
+                )
+            }
+        }
+
+        print("✅ [App] Dismissed completed/failed/orphan Live Activities on foreground")
     }
 
     // MARK: - Periodic Checking
