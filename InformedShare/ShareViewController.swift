@@ -285,7 +285,6 @@ class ShareViewController: UIViewController {
                             )
                             
                             let title = json["title"] as? String ?? "Fact-Check Complete"
-                            let verdict = json["verdict"] as? String ?? "View Results"
                             self.sendCompletionNotification(url: url, title: title)
                             
                             print("✅ Fact-check completed synchronously and saved")

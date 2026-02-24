@@ -39,7 +39,7 @@ class NotificationManager: NSObject, ObservableObject {
             
             if granted {
                 print("✅ Notification permission granted")
-                await registerForRemoteNotifications()
+                registerForRemoteNotifications()
             } else {
                 print("❌ Notification permission denied")
             }
@@ -58,8 +58,8 @@ class NotificationManager: NSObject, ObservableObject {
         notificationPermissionGranted = settings.authorizationStatus == .authorized
     }
     
-    private func registerForRemoteNotifications() async {
-        await UIApplication.shared.registerForRemoteNotifications()
+    private func registerForRemoteNotifications() {
+        UIApplication.shared.registerForRemoteNotifications()
     }
     
     // MARK: - Device Token Management
@@ -117,7 +117,7 @@ class NotificationManager: NSObject, ObservableObject {
         do {
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
             
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (_, response) = try await URLSession.shared.data(for: request)
             
             if let httpResponse = response as? HTTPURLResponse,
                (200...299).contains(httpResponse.statusCode) {

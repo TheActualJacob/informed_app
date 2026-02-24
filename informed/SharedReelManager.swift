@@ -256,15 +256,14 @@ class SharedReelManager: ObservableObject {
             queue: .main
         ) { [weak self] _ in
             guard let self = self else { return }
-            
-            // Check if user actually changed
-            let newUserId = UserManager.shared.currentUserId
-            if self.currentUserId != newUserId {
-                print("👤 User changed from \(self.currentUserId ?? "nil") to \(newUserId ?? "nil")")
-                self.currentUserId = newUserId
-                
-                // Load reels for new user
-                self.loadStoredReels()
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                let newUserId = UserManager.shared.currentUserId
+                if self.currentUserId != newUserId {
+                    print("👤 User changed from \(self.currentUserId ?? "nil") to \(newUserId ?? "nil")")
+                    self.currentUserId = newUserId
+                    self.loadStoredReels()
+                }
             }
         }
     }
@@ -557,7 +556,9 @@ class SharedReelManager: ObservableObject {
             queue: .main
         ) { [weak self] notification in
             if let factCheckId = notification.userInfo?["fact_check_id"] as? String {
-                self?.markReelAsCompleted(factCheckId: factCheckId)
+                Task { @MainActor [weak self] in
+                    self?.markReelAsCompleted(factCheckId: factCheckId)
+                }
             }
         }
     }

@@ -185,10 +185,10 @@ struct informedApp: App {
         checkForPendingSharedURL()
         
         // Then check every 1 second, but auto-stop when nothing is pending
-        checkTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+        checkTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak reelManager] _ in
             checkForPendingSharedURL()
             // Stop polling once there are no more pending share-extension submissions
-            if reelManager.activeProcessingURL == nil {
+            if reelManager?.activeProcessingURL == nil {
                 stopPeriodicChecking()
             }
         }

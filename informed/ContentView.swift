@@ -63,9 +63,12 @@ struct ContentView: View {
                 object: nil,
                 queue: .main
             ) { notification in
-                selectedTab = 2
-                if let submissionId = notification.userInfo?["submissionId"] as? String {
-                    reelManager.pendingDeepLinkId = submissionId
+                let submissionId = notification.userInfo?["submissionId"] as? String
+                DispatchQueue.main.async {
+                    selectedTab = 2
+                    if let submissionId {
+                        reelManager.pendingDeepLinkId = submissionId
+                    }
                 }
             }
 
@@ -75,9 +78,12 @@ struct ContentView: View {
                 object: nil,
                 queue: .main
             ) { notification in
-                selectedTab = 2
-                if let item = notification.userInfo?["factCheckItem"] as? FactCheckItem {
-                    reelManager.pendingDeepLinkItem = item
+                let item = notification.userInfo?["factCheckItem"] as? FactCheckItem
+                DispatchQueue.main.async {
+                    selectedTab = 2
+                    if let item {
+                        reelManager.pendingDeepLinkItem = item
+                    }
                 }
             }
         }

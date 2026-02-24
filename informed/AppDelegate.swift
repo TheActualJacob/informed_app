@@ -29,9 +29,6 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             setupLiveActivityHandling()
         }
         
-        // Enable background fetch for checking submissions
-        application.setMinimumBackgroundFetchInterval(UIApplication.backgroundFetchIntervalMinimum)
-        
         // Setup Darwin notification observer for Share Extension communication
         setupDarwinNotificationObserver()
         
@@ -243,7 +240,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
                 SharedReelManager.shared.markReelAsCompleted(factCheckId: factCheckId)
                 
                 // Fetch the fact-check data from backend and add to feed
-                if let instagramURL = userInfo["instagram_url"] as? String {
+                if userInfo["instagram_url"] as? String != nil {
                     await fetchAndDisplayFactCheck(factCheckId: factCheckId, userInfo: userInfo)
                 }
             }
@@ -300,29 +297,6 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         }
         
         completionHandler(.newData)
-    }
-    
-    // MARK: - Background Notification Delivery
-    
-    // This is called when a notification is delivered while app is in background/suspended
-    func application(
-        _ application: UIApplication,
-        didReceive notification: UILocalNotification
-    ) {
-        print("📬 Local notification received in background!")
-        
-        if let userInfo = notification.userInfo as? [String: Any],
-           let action = userInfo["action"] as? String,
-           action == "start_processing" {
-            
-            print("🎬 START PROCESSING notification in background - starting Live Activity!")
-            
-            Task { @MainActor in
-                if #available(iOS 16.1, *) {
-                    await SharedReelManager.shared.checkAndStartPendingLiveActivities()
-                }
-            }
-        }
     }
     
     // MARK: - Live Activity Handling

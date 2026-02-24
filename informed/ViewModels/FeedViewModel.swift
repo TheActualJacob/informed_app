@@ -46,7 +46,7 @@ class FeedViewModel: ObservableObject {
         
         // Check if user is logged in first
         guard let userId = UserManager.shared.currentUserId,
-              let sessionId = UserManager.shared.currentSessionId else {
+              let _ = UserManager.shared.currentSessionId else {
             if UserManager.shared.currentUserId != nil {
                 errorMessage = "Session expired. Please log out and log back in."
                 print("⚠️ Cannot load feed: User ID exists but session ID is missing")
@@ -132,12 +132,7 @@ class FeedViewModel: ObservableObject {
             print("📊 Tracked share for reel: \(reel.id)")
             
             // Update local engagement count
-            if let index = publicReels.firstIndex(where: { $0.id == reel.id }) {
-                var updatedReel = publicReels[index]
-                var updatedEngagement = updatedReel.engagement
-                // Note: We can't directly mutate because they're structs
-                // The backend will have the updated count on next refresh
-            }
+            // Note: structs can't be mutated in-place; backend returns updated count on next refresh
         } catch {
             print("⚠️ Failed to track share: \(error)")
         }
