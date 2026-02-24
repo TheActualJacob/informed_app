@@ -88,7 +88,7 @@ struct SharedReelsView: View {
                     }
                 }
 
-                // Auto-sync from backend when view appears
+                // Auto-sync from backend when view appears so new completions show up
                 Task {
                     await reelManager.syncHistoryFromBackend()
                 }
@@ -262,7 +262,10 @@ struct ReelStatusCard: View {
                         
                         Spacer()
                         
-                        let credibilityScore = calculateCredibilityScore(from: factCheckData.claimAccuracyRating)
+                        let credibilityScore: Double = {
+                            let s = factCheckData.claimAccuracyRating.replacingOccurrences(of: "%", with: "")
+                            return Double(s).map { $0 / 100.0 } ?? 0.5
+                        }()
                         let credibilityLevel: CredibilityLevel = {
                             if credibilityScore >= 0.8 { return .high }
                             if credibilityScore >= 0.5 { return .medium }
@@ -280,7 +283,10 @@ struct ReelStatusCard: View {
                     
                     // Mini progress bar - match FactResultCard format
                     GeometryReader { geo in
-                        let credibilityScore = calculateCredibilityScore(from: factCheckData.claimAccuracyRating)
+                        let credibilityScore: Double = {
+                            let s = factCheckData.claimAccuracyRating.replacingOccurrences(of: "%", with: "")
+                            return Double(s).map { $0 / 100.0 } ?? 0.5
+                        }()
                         let credibilityLevel: CredibilityLevel = {
                             if credibilityScore >= 0.8 { return .high }
                             if credibilityScore >= 0.5 { return .medium }
@@ -295,6 +301,25 @@ struct ReelStatusCard: View {
                         }
                     }
                     .frame(height: 6)
+                    
+                    // AI Generation Badge (only show when flagged)
+                    if factCheckData.aiGenerated == "true" {
+                        HStack(spacing: 5) {
+                            Image(systemName: "wand.and.stars")
+                                .font(.system(size: 11, weight: .semibold))
+                            Text("Possibly AI-generated")
+                                .font(.system(size: 12, weight: .semibold))
+                            if let prob = factCheckData.aiProbability {
+                                Text("(\(Int(prob * 100))%)")
+                                    .font(.system(size: 11))
+                            }
+                        }
+                        .foregroundColor(Color.orange)
+                        .padding(.vertical, 5)
+                        .padding(.horizontal, 10)
+                        .background(Color.orange.opacity(0.12))
+                        .clipShape(Capsule())
+                    }
                 }
                 .padding(Theme.Spacing.xl)
                 

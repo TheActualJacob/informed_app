@@ -277,19 +277,26 @@ class HomeViewModel: ObservableObject {
                 platformName = "Instagram"; platformIcon = "camera.fill"
             }
             
+            // Use thumbnailUrl only — do NOT fall back to videoLink because videoLink is
+            // a social-page URL (instagram.com/reel/…) that LinkPreviewView's
+            // hasRealThumbnail guard will reject.  A nil thumbnail shows the platform
+            // placeholder until loadPersonalizedFeed() returns with the real CDN URL.
+            let thumbnailURL: URL? = factCheckData.thumbnailUrl.flatMap { URL(string: $0) }
             let newItem = FactCheckItem(
                 sourceName: platformName,
                 sourceIcon: platformIcon,
                 timeAgo: "Just now",
                 title: factCheckData.title,
                 summary: factCheckData.summary,
-                thumbnailURL: URL(string: factCheckData.thumbnailUrl ?? factCheckData.videoLink),
+                thumbnailURL: thumbnailURL,
                 credibilityScore: calculateCredibilityScore(from: factCheckData.claimAccuracyRating),
                 sources: factCheckData.sources.joined(separator: ", "),
                 verdict: factCheckData.verdict,
                 factCheck: factCheck,
                 originalLink: link,
-                datePosted: factCheckData.date
+                datePosted: factCheckData.date,
+                aiGenerated: factCheckData.aiGenerated,
+                aiProbability: factCheckData.aiProbability
             )
             
             PersistenceService.shared.saveFactCheck(newItem)
@@ -304,7 +311,9 @@ class HomeViewModel: ObservableObject {
                 explanation: factCheckData.explanation,
                 sources: factCheckData.sources,
                 datePosted: factCheckData.date,
-                platform: factCheckData.platform
+                platform: factCheckData.platform,
+                aiGenerated: factCheckData.aiGenerated,
+                aiProbability: factCheckData.aiProbability
             )
             
             // Re-use the same submissionId that was given to the Live Activity so
@@ -361,6 +370,10 @@ class HomeViewModel: ObservableObject {
 
             await loadPersonalizedFeed()
 
+            // Patch any social-page thumbnail URLs that slipped through in PersistenceService
+            // history and in SharedReel.factCheckData (covers both home and My Reels cards).
+            SharedReelManager.shared.scheduleThumbnailRefresh()
+
         } catch let networkError as NetworkError {
             let msg = networkError.errorDescription ?? "An error occurred"
             self.errorMessage = msg
@@ -396,6 +409,8 @@ class HomeViewModel: ObservableObject {
 
     // MARK: - External Feed Update
 
+    /// Called when a fact-check completes outside of HomeViewModel (e.g. Share Extension).
+    /// Refreshes the personalized feed so the new item appears.
     func refreshFeedAfterExternalFactCheck() {
         Task { await loadPersonalizedFeed() }
     }
@@ -409,7 +424,7 @@ class HomeViewModel: ObservableObject {
         }
         return 0.5
     }
-    
+
     // MARK: - Static Category Fallback
     
     static let staticCategories: [CategoryItem] = [

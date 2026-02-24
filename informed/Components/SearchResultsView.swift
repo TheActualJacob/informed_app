@@ -91,11 +91,8 @@ struct SearchResultsView: View {
                         Text("Searching…")
                             .foregroundColor(.secondary)
                     } else {
-                        Text("\(totalCount > 0 ? "\(totalCount)" : "No") result\(totalCount == 1 ? "" : "s") for ")
-                            .foregroundColor(.secondary) +
-                        Text("\"\(query)\"")
-                            .foregroundColor(.primary)
-                            .fontWeight(.semibold)
+                        Text("\(totalCount > 0 ? "\(totalCount)" : "No") result\(totalCount == 1 ? "" : "s") for \"\(query)\"")
+                            .foregroundColor(.secondary)
                     }
                 }
                 .font(.system(size: 14))
@@ -232,6 +229,25 @@ struct SearchReelRow: View {
                 
                 // Verdict badge
                 VerdictBadge(verdict: reel.verdict)
+                
+                // AI Generation Badge (only show when flagged)
+                if reel.aiGenerated == "true" {
+                    HStack(spacing: 4) {
+                        Image(systemName: "wand.and.stars")
+                            .font(.system(size: 10, weight: .semibold))
+                        Text("Possibly AI-generated")
+                            .font(.system(size: 11, weight: .semibold))
+                        if let prob = reel.aiProbability {
+                            Text("(\(Int(prob * 100))%)")
+                                .font(.system(size: 10))
+                        }
+                    }
+                    .foregroundColor(.orange)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color.orange.opacity(0.12))
+                    .clipShape(Capsule())
+                }
             }
             
             Spacer(minLength: 0)

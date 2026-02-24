@@ -127,9 +127,32 @@ struct informedApp: App {
         print("🔬 [GHOST_DIAG]   Terminal reels: \(terminalReels.map { $0.id.prefix(8) })")
         print("🔬 [GHOST_DIAG]   Pending/processing reels: \(pendingReels.map { $0.id.prefix(8) })")
 
+        // ── FIX: also read the App Group's pending_submissions so that in-flight
+        // share-extension reels (whose placeholder SharedReel hasn't been inserted
+        // into reelManager.reels yet) are NOT treated as orphans. ──
+        let appGroupPendingIds: Set<String> = {
+            guard let defaults = UserDefaults(suiteName: "group.com.jacob.informed"),
+                  let subs = defaults.array(forKey: "pending_submissions") as? [[String: Any]] else {
+                return []
+            }
+            let now = Date().timeIntervalSince1970
+            return Set(subs.compactMap { sub -> String? in
+                guard let id = sub["id"] as? String,
+                      let ts = sub["submitted_at"] as? TimeInterval,
+                      (now - ts) < 300,              // younger than 5 min
+                      (sub["status"] as? String) == "processing" else { return nil }
+                return id
+            })
+        }()
+        print("🔬 [GHOST_DIAG]   App Group in-flight IDs: \(appGroupPendingIds.map { $0.prefix(8) })")
+
         // 1. End activities whose matching reel is already in a terminal state.
         let terminalIds = terminalReels.map { $0.id }
         for submissionId in terminalIds {
+            // Don't end if it's also listed as in-flight in the App Group — that would
+            // mean it was completed locally from a prior sync but a new submission with
+            // the same UUID is now in flight (extremely unlikely, but safe to guard).
+            if appGroupPendingIds.contains(submissionId) { continue }
             print("🔬 [GHOST_DIAG]   Ending terminal reel activity sid=\(submissionId.prefix(8))")
             await ReelProcessingActivityManager.shared.endActivity(
                 submissionId: submissionId,
@@ -149,8 +172,8 @@ struct informedApp: App {
         }
 
         // 3. Orphan sweep: end any *active* system activity whose submissionId has no
-        //    matching pending/processing reel.
-        let activeProcessingIds = Set(pendingReels.map { $0.id })
+        //    matching pending/processing reel AND is not in the App Group's pending list.
+        let activeProcessingIds = Set(pendingReels.map { $0.id }).union(appGroupPendingIds)
         for activity in Activity<ReelProcessingActivityAttributes>.activities
         where activity.activityState == .active {
             let sid = activity.attributes.submissionId
@@ -161,7 +184,7 @@ struct informedApp: App {
                     dismissalPolicy: .immediate
                 )
             } else {
-                print("🔬 [GHOST_DIAG]   ✅ Keeping active activity sid=\(sid.prefix(8)) — has matching pending reel")
+                print("🔬 [GHOST_DIAG]   ✅ Keeping active activity sid=\(sid.prefix(8)) — has matching pending reel or App Group entry")
             }
         }
 
@@ -188,6 +211,7 @@ struct informedApp: App {
         checkTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak reelManager] _ in
             checkForPendingSharedURL()
             // Stop polling once there are no more pending share-extension submissions
+            // Timer fires on the main thread, so accessing @MainActor-isolated property is safe.
             if reelManager?.activeProcessingURL == nil {
                 stopPeriodicChecking()
             }
@@ -309,18 +333,26 @@ struct informedApp: App {
             userInfo: ["submissionId": submissionId]
         )
 
-        // 3. If the reel is completed, fire ShowFactCheckDetail after a brief delay
-        //    so SharedReelsView has time to mount before being asked to navigate
-        if let reel = reelManager.reels.first(where: { $0.id == submissionId }),
-           reel.status == .completed,
-           let factCheckData = reel.factCheckData {
-            let item = factCheckData.toFactCheckItem(originalLink: reel.url)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                NotificationCenter.default.post(
-                    name: NSNotification.Name("ShowFactCheckDetail"),
-                    object: nil,
-                    userInfo: ["factCheckItem": item]
-                )
+        // 3. Sync from backend then open the detail view.
+        //    We always sync first because the reel may still be a processing
+        //    placeholder locally (the Share Extension path completes asynchronously).
+        //    After the sync, SharedReelsView's onChange(pendingDeepLinkId) will fire
+        //    and navigate to the detail if factCheckData is available.
+        Task { @MainActor in
+            // Run a quick sync so the completed reel data appears in reels[].
+            await reelManager.syncHistoryFromBackend()
+
+            // Try to find the completed reel now that we have fresh data.
+            if let reel = reelManager.reels.first(where: { $0.id == submissionId }),
+               reel.status == .completed,
+               let factCheckData = reel.factCheckData {
+                // Signal SharedReelsView to open the detail view.
+                let item = factCheckData.toFactCheckItem(originalLink: reel.url)
+                reelManager.pendingDeepLinkItem = item
+            } else {
+                // Reel is still not complete or has no factCheckData — just land
+                // on My Reels so the user can see its status.
+                print("⚠️ [openFactCheck] Reel \(submissionId.prefix(8)) not completed after sync — staying on My Reels list")
             }
         }
 

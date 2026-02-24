@@ -67,6 +67,8 @@ struct FactCheckItem: Identifiable, Equatable {
     let factCheck: FactCheck
     let originalLink: String?  // Original video/post link
     let datePosted: String?    // Date the content was posted
+    let aiGenerated: String?   // "true" or "false"; nil = detection skipped
+    let aiProbability: Double? // 0.0-1.0 confidence; nil = detection skipped
 
     // Computed property for detailed analysis
     var detailedAnalysis: String {
@@ -133,18 +135,10 @@ struct ReelUser: Codable, Identifiable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         
         // Handle null userId by defaulting to "anonymous"
-        if let userId = try? container.decodeIfPresent(String.self, forKey: .id) {
-            id = userId ?? "anonymous"
-        } else {
-            id = "anonymous"
-        }
+        id = (try? container.decodeIfPresent(String.self, forKey: .id)) ?? "anonymous"
         
         // Handle null username by defaulting to "Anonymous"
-        if let usernameValue = try? container.decodeIfPresent(String.self, forKey: .username) {
-            username = usernameValue ?? "Anonymous"
-        } else {
-            username = "Anonymous"
-        }
+        username = (try? container.decodeIfPresent(String.self, forKey: .username)) ?? "Anonymous"
     }
 }
 
@@ -176,6 +170,8 @@ struct PublicReel: Identifiable, Codable {
     let uploadedBy: ReelUser
     let engagement: ReelEngagement
     let platform: String? // "instagram" or "tiktok"
+    let aiGenerated: String?   // "true" or "false"; nil = detection skipped
+    let aiProbability: Double? // 0.0-1.0 confidence; nil = detection skipped
     
     enum CodingKeys: String, CodingKey {
         case id = "uniqueID"
@@ -184,6 +180,7 @@ struct PublicReel: Identifiable, Codable {
         case explanation, summary, sources, checkedAt, datePosted
         case category
         case uploadedBy, engagement, platform
+        case aiGenerated, aiProbability
     }
     
     // Custom decoder to handle datePosted as either String or Int
@@ -206,6 +203,8 @@ struct PublicReel: Identifiable, Codable {
         uploadedBy = try container.decode(ReelUser.self, forKey: .uploadedBy)
         engagement = try container.decode(ReelEngagement.self, forKey: .engagement)
         platform = try container.decodeIfPresent(String.self, forKey: .platform)
+        aiGenerated = try container.decodeIfPresent(String.self, forKey: .aiGenerated)
+        aiProbability = try container.decodeIfPresent(Double.self, forKey: .aiProbability)
         
         // Handle datePosted as either String or Int
         if let dateString = try? container.decodeIfPresent(String.self, forKey: .datePosted) {
@@ -285,7 +284,9 @@ struct PublicReel: Identifiable, Codable {
             verdict: verdict,
             factCheck: factCheck,
             originalLink: videoLink,
-            datePosted: datePosted
+            datePosted: datePosted,
+            aiGenerated: aiGenerated,
+            aiProbability: aiProbability
         )
     }
 }
@@ -350,6 +351,8 @@ struct UserReel: Identifiable, Codable {
     let errorMessage: String?
     let platform: String? // "instagram" or "tiktok"
     let errorType: String? // For enhanced error handling (age_restricted, unavailable, invalid_url, etc.)
+    let aiGenerated: String?   // "true" or "false"; nil = detection skipped
+    let aiProbability: Double? // 0.0-1.0 confidence; nil = detection skipped
     
     enum CodingKeys: String, CodingKey {
         case id = "uniqueID"
@@ -357,6 +360,7 @@ struct UserReel: Identifiable, Codable {
         case claim, verdict, claimAccuracyRating, explanation, summary, sources
         case engagement, errorMessage, platform
         case errorType = "error_type"
+        case aiGenerated, aiProbability
     }
     
     var timeAgo: String {

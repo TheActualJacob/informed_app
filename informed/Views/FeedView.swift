@@ -259,6 +259,25 @@ struct PublicReelCard: View {
                     }
                 }
                 .frame(height: 6)
+                
+                // AI Generation Badge (only show when flagged)
+                if reel.aiGenerated == "true" {
+                    HStack(spacing: 5) {
+                        Image(systemName: "wand.and.stars")
+                            .font(.system(size: 11, weight: .semibold))
+                        Text("Possibly AI-generated")
+                            .font(.system(size: 12, weight: .semibold))
+                        if let prob = reel.aiProbability {
+                            Text("(\(Int(prob * 100))%)")
+                                .font(.system(size: 11))
+                        }
+                    }
+                    .foregroundColor(Color.orange)
+                    .padding(.vertical, 5)
+                    .padding(.horizontal, 10)
+                    .background(Color.orange.opacity(0.12))
+                    .clipShape(Capsule())
+                }
             }
             .padding(Theme.Spacing.xl)
             .background(Color.cardBackground)
@@ -377,6 +396,56 @@ struct PublicReelDetailView: View {
                 }
                 .padding(Theme.Spacing.lg)
                 .background(reel.credibilityLevel.color.opacity(0.08))
+                .cornerRadius(Theme.CornerRadius.md)
+                
+                // AI Detection
+                VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+                    Text("AI Detection")
+                        .font(.headline)
+                    
+                    if let aiGen = reel.aiGenerated {
+                        HStack(spacing: Theme.Spacing.md) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("AI-Generated Video")
+                                    .font(.caption)
+                                    .fontWeight(.bold)
+                                    .foregroundColor(.secondary)
+                                HStack(spacing: 5) {
+                                    Image(systemName: aiGen == "true" ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                                        .font(.system(size: 16, weight: .semibold))
+                                        .foregroundColor(aiGen == "true" ? .orange : .brandGreen)
+                                    Text(aiGen == "true" ? "Yes" : "No")
+                                        .font(.system(size: 18, weight: .bold))
+                                        .foregroundColor(aiGen == "true" ? .orange : .brandGreen)
+                                }
+                            }
+                            
+                            Spacer()
+                            
+                            if let prob = reel.aiProbability {
+                                VStack(alignment: .trailing, spacing: 4) {
+                                    Text("Confidence")
+                                        .font(.caption)
+                                        .fontWeight(.bold)
+                                        .foregroundColor(.secondary)
+                                    Text("\(Int(prob * 100))%")
+                                        .font(.system(size: 18, weight: .bold))
+                                        .foregroundColor(aiGen == "true" ? .orange : .brandGreen)
+                                }
+                            }
+                        }
+                    } else {
+                        HStack(spacing: 8) {
+                            Image(systemName: "questionmark.circle.fill")
+                                .foregroundColor(.secondary)
+                            Text("AI detection was not performed for this video.")
+                                .font(.body)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+                .padding(Theme.Spacing.lg)
+                .background(Color.orange.opacity(0.07))
                 .cornerRadius(Theme.CornerRadius.md)
                 
                 // Summary

@@ -72,6 +72,25 @@ struct FactResultCard: View {
                 }
             }
             .frame(height: 6)
+            
+            // AI Generation Badge (only show when flagged)
+            if item.aiGenerated == "true" {
+                HStack(spacing: 5) {
+                    Image(systemName: "wand.and.stars")
+                        .font(.system(size: 11, weight: .semibold))
+                    Text("Possibly AI-generated")
+                        .font(.system(size: 12, weight: .semibold))
+                    if let prob = item.aiProbability {
+                        Text("(\(Int(prob * 100))%)")
+                            .font(.system(size: 11))
+                    }
+                }
+                .foregroundColor(Color.orange)
+                .padding(.vertical, 5)
+                .padding(.horizontal, 10)
+                .background(Color.orange.opacity(0.12))
+                .clipShape(Capsule())
+            }
         }
         .padding(Theme.Spacing.xl)
         .background(Color.cardBackground)

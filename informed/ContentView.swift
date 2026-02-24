@@ -54,6 +54,10 @@ struct ContentView: View {
                         await dismissCompletedActivitiesForMyReels()
                     }
                 }
+                // Sync so newly completed reels appear immediately on tab switch
+                Task {
+                    await SharedReelManager.shared.syncHistoryFromBackend()
+                }
             }
         }
         .onAppear {

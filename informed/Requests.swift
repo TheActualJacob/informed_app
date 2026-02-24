@@ -61,6 +61,8 @@ struct FactCheckData: Codable {
     let sources: [String]
     let platform: String?  // "instagram" or "tiktok"
     let errorType: String?  // For enhanced error handling (age_restricted, unavailable, invalid_url, etc.)
+    let aiGenerated: String?   // "true" or "false"; nil = detection skipped
+    let aiProbability: Double? // 0.0-1.0 confidence; nil = detection skipped
     
     enum CodingKeys: String, CodingKey {
         case title, description, date, videoLink, claim, verdict, explanation, summary, sources
@@ -68,5 +70,6 @@ struct FactCheckData: Codable {
         case thumbnailUrl = "thumbnail_url"
         case platform
         case errorType = "error_type"
+        case aiGenerated, aiProbability
     }
 }

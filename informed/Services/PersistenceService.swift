@@ -115,7 +115,9 @@ class PersistenceService {
                     verdict: item.verdict,
                     factCheck: item.factCheck,
                     originalLink: item.originalLink,
-                    datePosted: item.datePosted
+                    datePosted: item.datePosted,
+                    aiGenerated: item.aiGenerated,
+                    aiProbability: item.aiProbability
                 )
             }
             
@@ -201,6 +203,8 @@ struct FactCheckCodable: Codable {
     let factCheck: FactCheck
     let originalLink: String?
     let datePosted: String?
+    let aiGenerated: String?
+    let aiProbability: Double?
     
     init(from item: FactCheckItem) {
         self.sourceName = item.sourceName
@@ -215,6 +219,8 @@ struct FactCheckCodable: Codable {
         self.factCheck = item.factCheck
         self.originalLink = item.originalLink
         self.datePosted = item.datePosted
+        self.aiGenerated = item.aiGenerated
+        self.aiProbability = item.aiProbability
     }
     
     func toFactCheckItem() -> FactCheckItem {
@@ -230,7 +236,9 @@ struct FactCheckCodable: Codable {
             verdict: verdict,
             factCheck: factCheck,
             originalLink: originalLink,
-            datePosted: datePosted
+            datePosted: datePosted,
+            aiGenerated: aiGenerated,
+            aiProbability: aiProbability
         )
     }
 }
