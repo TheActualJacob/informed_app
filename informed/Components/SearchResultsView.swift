@@ -180,16 +180,7 @@ struct SearchReelRow: View {
             // Thumbnail
             Group {
                 if hasRealThumbnail, let urlStr = reel.thumbnailUrl, let url = URL(string: urlStr) {
-                    AsyncImage(url: url) { phase in
-                        switch phase {
-                        case .success(let image):
-                            image.resizable().aspectRatio(contentMode: .fill)
-                        case .failure:
-                            ThumbnailPlaceholder(isTikTok: isTikTok)
-                        default:
-                            Color.secondary.opacity(0.15).shimmering()
-                        }
-                    }
+                    ThumbnailImage(url: url, isTikTok: isTikTok)
                 } else {
                     ThumbnailPlaceholder(isTikTok: isTikTok)
                 }

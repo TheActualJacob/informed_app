@@ -18,19 +18,9 @@ struct SharedReelsView: View {
     @State private var showDeepLink = false
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ZStack {
                 Color.backgroundLight.ignoresSafeArea()
-
-                // Hidden NavigationLink — fired programmatically by deep-link
-                if let item = deepLinkItem {
-                    NavigationLink(
-                        destination: FactDetailView(item: item),
-                        isActive: $showDeepLink
-                    ) { EmptyView() }
-                    .opacity(0)
-                    .frame(width: 0, height: 0)
-                }
 
                 if reelManager.reels.isEmpty && !reelManager.isSyncing {
                     emptyStateView
@@ -69,6 +59,11 @@ struct SharedReelsView: View {
             }
             .navigationTitle("Shared Reels")
             .navigationBarTitleDisplayMode(.large)
+            .navigationDestination(isPresented: $showDeepLink) {
+                if let item = deepLinkItem {
+                    FactDetailView(item: item)
+                }
+            }
             .onChange(of: reelManager.pendingDeepLinkItem) { _, item in
                 guard let item else { return }
                 deepLinkItem = item
@@ -187,18 +182,6 @@ struct ReelStatusCard: View {
     
     var body: some View {
         ZStack {
-            // Hidden NavigationLink
-            if reel.status == .completed, let factCheckData = reel.factCheckData {
-                NavigationLink(
-                    destination: FactDetailView(item: factCheckData.toFactCheckItem(originalLink: reel.url)),
-                    isActive: $showDetail
-                ) {
-                    EmptyView()
-                }
-                .opacity(0)
-                .frame(width: 0, height: 0)
-            }
-            
             // Visible card content
             if reel.status == .completed {
                 Button(action: {
@@ -207,6 +190,11 @@ struct ReelStatusCard: View {
                     cardContent
                 }
                 .buttonStyle(PlainButtonStyle())
+                .navigationDestination(isPresented: $showDetail) {
+                    if let factCheckData = reel.factCheckData {
+                        FactDetailView(item: factCheckData.toFactCheckItem(originalLink: reel.url))
+                    }
+                }
             } else {
                 cardContent
             }

@@ -37,15 +37,8 @@ struct FactDetailView: View {
                 ZStack(alignment: .topLeading) {
                     GeometryReader { geo in
                         Group {
-                            if hasRealThumbnail {
-                                AsyncImage(url: item.thumbnailURL) { phase in
-                                    switch phase {
-                                    case .success(let image):
-                                        image.resizable().aspectRatio(contentMode: .fill)
-                                    default:
-                                        heroPlaceholder
-                                    }
-                                }
+                            if hasRealThumbnail, let url = item.thumbnailURL {
+                                ThumbnailImage(url: url, isTikTok: isTikTok)
                             } else {
                                 heroPlaceholder
                             }

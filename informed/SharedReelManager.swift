@@ -504,8 +504,27 @@ class SharedReelManager: ObservableObject {
                                 .array(forKey: "pending_submissions") as? [[String: Any]])?.count ?? 0
                             if stillPending == 0 { self.activeProcessingURL = nil }
                         }
-                        // Sync completed fact-checks from App Group
+                        // Drive the Dynamic Island to its completed state immediately.
+                        // completeActivity must be called here — syncCompletedFactChecksFromAppGroup
+                        // only processes entries in completed_fact_checks (written by the Share
+                        // Extension's synchronous response) and returns early when that key is
+                        // absent, so the Live Activity would stay stuck mid-progress without this.
+                        await ReelProcessingActivityManager.shared.completeActivity(
+                            submissionId: submissionId,
+                            title: "Fact-Check Complete",
+                            verdict: "Tap to view results"
+                        )
+                        // Sync App Group in case the Share Extension also wrote completed data
+                        // (picks up real title/verdict for the UI, no-op if key is absent).
                         syncCompletedFactChecksFromAppGroup()
+                        // Dismiss the Live Activity after a short display window.
+                        Task {
+                            try? await Task.sleep(nanoseconds: 3_000_000_000)
+                            await ReelProcessingActivityManager.shared.endActivity(
+                                submissionId: submissionId,
+                                dismissalPolicy: .default
+                            )
+                        }
                         break
                     } else if statusResponse.status.lowercased() == "failed" {
                         print("❌ [ProgressPolling] Submission failed")

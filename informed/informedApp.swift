@@ -210,10 +210,12 @@ struct informedApp: App {
         // Then check every 1 second, but auto-stop when nothing is pending
         checkTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak reelManager] _ in
             checkForPendingSharedURL()
-            // Stop polling once there are no more pending share-extension submissions
-            // Timer fires on the main thread, so accessing @MainActor-isolated property is safe.
-            if reelManager?.activeProcessingURL == nil {
-                stopPeriodicChecking()
+            // Stop polling once there are no more pending share-extension submissions.
+            // Dispatch to main actor explicitly to satisfy the Sendable requirement.
+            Task { @MainActor in
+                if reelManager?.activeProcessingURL == nil {
+                    stopPeriodicChecking()
+                }
             }
         }
     }

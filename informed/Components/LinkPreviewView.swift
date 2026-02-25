@@ -7,6 +7,80 @@
 
 import SwiftUI
 
+// MARK: - Thumbnail Image Loader
+//
+// Replaces AsyncImage to avoid two problems:
+//  1. AsyncImage honours HTTP failure responses cached by URLSession — a previously
+//     expired CDN URL (403) stays "failed" for the whole session even after the URL
+//     is refreshed.
+//  2. AsyncImage doesn't expose a way to force a reload when the URL identity changes
+//     inside the same SwiftUI view tree.
+//
+// This loader:
+//  • Uses .returnCacheDataElseLoad so valid cached images show instantly.
+//  • On a load failure it retries once with .reloadIgnoringLocalCacheData so a
+//    stale 403 cached response never permanently blocks a valid CDN URL.
+//  • Exposes an `.id(url)` on the Task so SwiftUI recreates it whenever the URL
+//    changes.
+
+struct ThumbnailImage: View {
+    let url: URL
+    let isTikTok: Bool
+
+    @State private var image: UIImage? = nil
+    @State private var failed = false
+
+    var body: some View {
+        Group {
+            if let img = image {
+                Image(uiImage: img)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+            } else if failed {
+                ThumbnailPlaceholder(isTikTok: isTikTok)
+            } else {
+                Color.secondary.opacity(0.15)
+            }
+        }
+        .task(id: url) {
+            await load(url: url)
+        }
+    }
+
+    private func load(url: URL) async {
+        // Reset state when URL changes
+        image = nil
+        failed = false
+
+        if let img = await fetchImage(url: url, ignoreCache: false) {
+            image = img
+            return
+        }
+        // First attempt failed — retry ignoring any cached (possibly stale) response
+        if let img = await fetchImage(url: url, ignoreCache: true) {
+            image = img
+            return
+        }
+        failed = true
+    }
+
+    private func fetchImage(url: URL, ignoreCache: Bool) async -> UIImage? {
+        var request = URLRequest(url: url)
+        request.cachePolicy = ignoreCache ? .reloadIgnoringLocalCacheData : .returnCacheDataElseLoad
+        request.timeoutInterval = 15
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse,
+                  (200...299).contains(http.statusCode) else { return nil }
+            return UIImage(data: data)
+        } catch {
+            return nil
+        }
+    }
+}
+
+// MARK: - Link Preview View
+
 struct LinkPreviewView: View {
     let item: FactCheckItem
     
@@ -75,17 +149,8 @@ struct LinkPreviewView: View {
     
     @ViewBuilder
     private var thumbnailView: some View {
-        if hasRealThumbnail {
-            AsyncImage(url: item.thumbnailURL) { phase in
-                switch phase {
-                case .success(let image):
-                    image.resizable().aspectRatio(contentMode: .fill)
-                case .failure:
-                    ThumbnailPlaceholder(isTikTok: isTikTok)
-                default:
-                    Color.secondary.opacity(0.15)
-                }
-            }
+        if hasRealThumbnail, let url = item.thumbnailURL {
+            ThumbnailImage(url: url, isTikTok: isTikTok)
         } else {
             ThumbnailPlaceholder(isTikTok: isTikTok)
         }
