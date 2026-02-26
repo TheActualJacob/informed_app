@@ -42,7 +42,7 @@ struct SharedReel: Identifiable, Codable {
     var status: FactCheckStatus
     var resultId: String?
     var errorMessage: String?
-    var platform: String?  // "instagram" or "tiktok"
+    var platform: String?  // "instagram", "tiktok", "youtube_shorts", "threads", "twitter"
     
     // Store complete fact check data
     var factCheckData: StoredFactCheckData?
@@ -62,16 +62,8 @@ struct SharedReel: Identifiable, Codable {
     
     // Detect platform from URL if not explicitly set
     var detectedPlatform: String {
-        if let platform = platform {
-            return platform
-        }
-        // Detect from URL
-        if url.contains("tiktok.com") || url.contains("vm.tiktok.com") {
-            return "tiktok"
-        } else if url.contains("instagram.com") {
-            return "instagram"
-        }
-        return "instagram" // Default fallback
+        if let platform = platform { return platform }
+        return detectedPlatformFromURL(url)
     }
 }
 
@@ -80,70 +72,105 @@ struct StoredFactCheckData: Codable {
     let title: String
     let summary: String
     let thumbnailURL: String?
-    let claim: String
-    let verdict: String
-    let claimAccuracyRating: String
-    let explanation: String
-    let sources: [String]
+    /// 1–3 claims. Old persisted records migrate via custom init(from:).
+    let claims: [ClaimEntry]
     let datePosted: String?
-    let platform: String?  // "instagram" or "tiktok"
-    let aiGenerated: String?   // "true" or "false"; nil = detection skipped
-    let aiProbability: Double? // 0.0-1.0 confidence; nil = detection skipped
-    
+    let platform: String?
+    let aiGenerated: String?
+    let aiProbability: Double?
+
+    // Primary-claim shortcuts (backward compat)
+    var claim: String               { claims.first?.claim ?? "" }
+    var verdict: String             { claims.first?.verdict ?? "" }
+    var claimAccuracyRating: String { claims.first?.claimAccuracyRating ?? "50%" }
+    var explanation: String         { claims.first?.explanation ?? "" }
+    var sources: [String]           { claims.first?.sources ?? [] }
+
+    // Flat-field init (used by old code paths / Share Extension)
+    init(title: String, summary: String, thumbnailURL: String?,
+         claim: String, verdict: String, claimAccuracyRating: String,
+         explanation: String, sources: [String],
+         datePosted: String?, platform: String?,
+         aiGenerated: String? = nil, aiProbability: Double? = nil) {
+        self.title = title; self.summary = summary; self.thumbnailURL = thumbnailURL
+        self.claims = [ClaimEntry(claim: claim, verdict: verdict,
+                                  claimAccuracyRating: claimAccuracyRating,
+                                  explanation: explanation, summary: summary, sources: sources)]
+        self.datePosted = datePosted; self.platform = platform
+        self.aiGenerated = aiGenerated; self.aiProbability = aiProbability
+    }
+
+    // Multi-claim init
+    init(title: String, summary: String, thumbnailURL: String?,
+         claims: [ClaimEntry], datePosted: String?, platform: String?,
+         aiGenerated: String? = nil, aiProbability: Double? = nil) {
+        self.title = title; self.summary = summary; self.thumbnailURL = thumbnailURL
+        self.claims = claims.isEmpty
+            ? [ClaimEntry(claim: "", verdict: "", claimAccuracyRating: "50%",
+                          explanation: "", summary: summary, sources: [])]
+            : claims
+        self.datePosted = datePosted; self.platform = platform
+        self.aiGenerated = aiGenerated; self.aiProbability = aiProbability
+    }
+
+    // MARK: Custom Codable — migrates old flat JSON on disk to claims array
+
+    enum CodingKeys: String, CodingKey {
+        case title, summary, thumbnailURL, claims, datePosted, platform
+        case aiGenerated, aiProbability
+        // Legacy flat keys written by old app versions
+        case claim, verdict, explanation, sources
+        case claimAccuracyRating   // was stored camelCase by old app
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        title         = try c.decode(String.self, forKey: .title)
+        summary       = (try? c.decodeIfPresent(String.self, forKey: .summary)) ?? ""
+        thumbnailURL  = try c.decodeIfPresent(String.self, forKey: .thumbnailURL)
+        datePosted    = try c.decodeIfPresent(String.self, forKey: .datePosted)
+        platform      = try c.decodeIfPresent(String.self, forKey: .platform)
+        aiGenerated   = try c.decodeIfPresent(String.self, forKey: .aiGenerated)
+        aiProbability = try c.decodeIfPresent(Double.self, forKey: .aiProbability)
+        // Prefer new claims array; fall back to flat fields from old stored JSON
+        if let arr = try? c.decodeIfPresent([ClaimEntry].self, forKey: .claims), !arr.isEmpty {
+            claims = arr
+        } else {
+            let cl  = (try? c.decodeIfPresent(String.self,   forKey: .claim))               ?? ""
+            let v   = (try? c.decodeIfPresent(String.self,   forKey: .verdict))             ?? ""
+            let car = (try? c.decodeIfPresent(String.self,   forKey: .claimAccuracyRating)) ?? "50%"
+            let exp = (try? c.decodeIfPresent(String.self,   forKey: .explanation))         ?? ""
+            let src = (try? c.decodeIfPresent([String].self, forKey: .sources))             ?? []
+            claims  = [ClaimEntry(claim: cl, verdict: v, claimAccuracyRating: car,
+                                  explanation: exp, summary: summary, sources: src)]
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(title,         forKey: .title)
+        try c.encode(summary,       forKey: .summary)
+        try c.encodeIfPresent(thumbnailURL,  forKey: .thumbnailURL)
+        try c.encode(claims,        forKey: .claims)
+        try c.encodeIfPresent(datePosted,    forKey: .datePosted)
+        try c.encodeIfPresent(platform,      forKey: .platform)
+        try c.encodeIfPresent(aiGenerated,   forKey: .aiGenerated)
+        try c.encodeIfPresent(aiProbability, forKey: .aiProbability)
+    }
+
     // Convert to FactCheckItem for display
     func toFactCheckItem(originalLink: String) -> FactCheckItem {
-        let factCheck = FactCheck(
-            claim: claim,
-            verdict: verdict,
-            claimAccuracyRating: claimAccuracyRating,
-            explanation: explanation,
-            summary: summary,
-            sources: sources
-        )
-        
-        // Determine platform-specific display
-        let platformName: String
-        let platformIcon: String
-        if let platform = platform {
-            if platform.lowercased() == "tiktok" {
-                platformName = "TikTok"
-                platformIcon = "music.note"  // TikTok-like icon
-            } else {
-                platformName = "Instagram"
-                platformIcon = "camera.fill"
-            }
-        } else {
-            // Fallback detection from URL
-            if originalLink.contains("tiktok") {
-                platformName = "TikTok"
-                platformIcon = "music.note"
-            } else {
-                platformName = "Instagram"
-                platformIcon = "camera.fill"
-            }
-        }
-        
-        let score: Double = {
-            let numericString = claimAccuracyRating.replacingOccurrences(of: "%", with: "")
-            if let pct = Double(numericString) { return pct / 100.0 }
-            return 0.5
-        }()
-        
+        let resolvedPlatform = platform ?? detectedPlatformFromURL(originalLink)
+        let (platformName, platformIcon) = platformInfo(for: resolvedPlatform)
         return FactCheckItem(
-            sourceName: platformName,
-            sourceIcon: platformIcon,
-            timeAgo: "Recently",
-            title: title,
-            summary: summary,
-            thumbnailURL: thumbnailURL != nil ? URL(string: thumbnailURL!) : nil,
-            credibilityScore: score,
+            sourceName: platformName, sourceIcon: platformIcon,
+            timeAgo: "Recently", title: title, summary: summary,
+            thumbnailURL: thumbnailURL.flatMap { URL(string: $0) },
+            credibilityScore: calculateCredibilityScore(from: claimAccuracyRating),
             sources: sources.joined(separator: ", "),
-            verdict: verdict,
-            factCheck: factCheck,
-            originalLink: originalLink,
-            datePosted: datePosted,
-            aiGenerated: aiGenerated,
-            aiProbability: aiProbability
+            verdict: verdict, claims: claims,
+            originalLink: originalLink, datePosted: datePosted,
+            aiGenerated: aiGenerated, aiProbability: aiProbability
         )
     }
 }
@@ -225,24 +252,19 @@ class SharedReelManager: ObservableObject {
     }
     
     // MARK: - Storage
-    
-    /// Get user-specific storage key
-    private func getStorageKey() -> String {
-        if let userId = UserManager.shared.currentUserId {
-            return "stored_shared_reels_\(userId)"
-        }
+
+    /// Per-user storage key — preserves each account's reels independently on this device.
+    private func storageKey(for userId: String?) -> String {
+        if let uid = userId { return "stored_shared_reels_\(uid)" }
         return "stored_shared_reels_anonymous"
     }
-    
+
     private func loadStoredReels() {
-        let storageKey = getStorageKey()
-        if let data = UserDefaults.standard.data(forKey: storageKey),
+        let key = storageKey(for: currentUserId)
+        if let data = UserDefaults.standard.data(forKey: key),
            let decoded = try? JSONDecoder().decode([SharedReel].self, from: data) {
             // Drop stale processing/pending placeholders older than 5 minutes.
-            // These are created by checkAndStartPendingLiveActivities and should
-            // never survive across app launches if the real backend result hasn't
-            // arrived — syncHistoryFromBackend will supply the ground truth.
-            let cutoff = Date().addingTimeInterval(-300) // 5 minutes ago
+            let cutoff = Date().addingTimeInterval(-300)
             let cleaned = decoded.filter { reel in
                 if reel.status == .processing || reel.status == .pending {
                     return reel.submittedAt > cutoff
@@ -250,22 +272,19 @@ class SharedReelManager: ObservableObject {
                 return true
             }
             let dropped = decoded.count - cleaned.count
-            if dropped > 0 {
-                print("🧹 Dropped \(dropped) stale processing/pending reel(s) on load")
-            }
+            if dropped > 0 { print("🧹 Dropped \(dropped) stale processing/pending reel(s) on load") }
             self.reels = cleaned
-            print("📱 Loaded \(cleaned.count) stored reels for user \(UserManager.shared.currentUserId ?? "anonymous")")
+            print("📱 Loaded \(cleaned.count) stored reels for user \(currentUserId ?? "anonymous")")
         } else {
             self.reels = []
-            print("📱 No stored reels found for current user")
+            print("📱 No stored reels found for user \(currentUserId ?? "anonymous")")
         }
     }
-    
+
     func saveReels() {
-        let storageKey = getStorageKey()
-        // Never persist transient processing/pending placeholders (those without
-        // factCheckData) — they are in-memory guards only and must not survive
-        // across launches where syncHistoryFromBackend is the authoritative source.
+        // Use currentUserId (maintained by this class) — never read UserManager.shared
+        // here as it may have already advanced to a different user mid-flight.
+        let key = storageKey(for: currentUserId)
         let reelsToSave = reels.filter { reel in
             if (reel.status == .processing || reel.status == .pending) && reel.factCheckData == nil {
                 return false
@@ -273,20 +292,139 @@ class SharedReelManager: ObservableObject {
             return true
         }
         if let encoded = try? JSONEncoder().encode(reelsToSave) {
-            UserDefaults.standard.set(encoded, forKey: storageKey)
-            print("💾 Saved \(reelsToSave.count) reels for user \(UserManager.shared.currentUserId ?? "anonymous")")
+            UserDefaults.standard.set(encoded, forKey: key)
+            print("💾 Saved \(reelsToSave.count) reels for user \(currentUserId ?? "anonymous")")
         }
     }
-    
-    /// Clear reels for current user (called when switching users)
+
+    /// Called by UserManager.saveUser() synchronously before isAuthenticated flips,
+    /// so the correct user's reels are loaded before ContentView/SharedReelsView appear.
+    func reloadReelsForCurrentUser(userId: String?) {
+        guard currentUserId != userId else { return }
+        print("🔄 Reloading reels: \(currentUserId ?? "nil") → \(userId ?? "nil")")
+        // Wipe immediately so the old user's reels are never visible on screen.
+        reels = []
+        lastSyncDate = nil
+        currentUserId = userId
+        // Repopulate from this user's local storage right away.
+        loadStoredReels()
+        // Then fetch full history from backend to fill any gaps
+        // (e.g. reels submitted on another device or after a data loss).
+        if userId != nil {
+            Task { await restoreReelsFromBackend() }
+        }
+    }
+
+    /// Fetches the user's complete reel history from /api/my-reels (with fallback
+    /// to /api/user-reels) and merges it with local storage. Additive only.
+    func restoreReelsFromBackend() async {
+        guard let userId = currentUserId,
+              let sessionId = UserManager.shared.currentSessionId else { return }
+
+        print("☁️ Restoring full reel history from backend for user \(userId)…")
+
+        // Try /api/my-reels first; fall back to /api/user-reels if not yet deployed.
+        let endpoints = [Config.Endpoints.myReels, Config.Endpoints.userReels]
+        var backendReels: [UserReel] = []
+
+        for endpoint in endpoints {
+            guard var components = URLComponents(string: endpoint) else { continue }
+            components.queryItems = [
+                URLQueryItem(name: "userId", value: userId),
+                URLQueryItem(name: "sessionId", value: sessionId),
+                URLQueryItem(name: "limit", value: "200")
+            ]
+            guard let url = components.url else { continue }
+
+            do {
+                let (data, response) = try await URLSession.shared.data(from: url)
+                guard let http = response as? HTTPURLResponse else { continue }
+                guard (200...299).contains(http.statusCode) else {
+                    print("⚠️ \(endpoint) returned HTTP \(http.statusCode) — trying next endpoint")
+                    continue
+                }
+                let decoded = try JSONDecoder().decode(UserReelsResponse.self, from: data)
+                backendReels = decoded.reels
+                print("☁️ Got \(backendReels.count) reels from \(endpoint)")
+                break // success — no need to try fallback
+            } catch {
+                print("⚠️ \(endpoint) request failed: \(error) — trying next endpoint")
+            }
+        }
+
+        guard !backendReels.isEmpty else {
+            print("☁️ All endpoints returned 0 reels — local storage unchanged")
+            return
+        }
+
+        // Guard: discard if user changed while request was in flight.
+        guard currentUserId == userId else {
+            print("⚠️ User changed during restoreReelsFromBackend — discarding")
+            return
+        }
+
+        // Convert backend UserReel → SharedReel
+        let formatter = ISO8601DateFormatter()
+        let restored: [SharedReel] = backendReels.map { r in
+            let status: FactCheckStatus
+            switch r.status.lowercased() {
+            case "completed":  status = .completed
+            case "processing": status = .processing
+            case "failed":     status = .failed
+            default:           status = .pending
+            }
+            let date = formatter.date(from: r.submittedAt) ?? Date()
+            var storedData: StoredFactCheckData? = nil
+            if status == .completed, !r.claims.isEmpty {
+                storedData = StoredFactCheckData(
+                    title: r.title,
+                    summary: r.summary ?? r.claims[0].summary,
+                    thumbnailURL: r.thumbnailUrl,
+                    claims: r.claims,
+                    datePosted: nil,
+                    platform: r.platform,
+                    aiGenerated: r.aiGenerated,
+                    aiProbability: r.aiProbability
+                )
+            } else if status == .completed,
+               let claim = r.claim, let verdict = r.verdict,
+               let rating = r.claimAccuracyRating, let summary = r.summary {
+                storedData = StoredFactCheckData(
+                    title: r.title, summary: summary, thumbnailURL: r.thumbnailUrl,
+                    claim: claim, verdict: verdict, claimAccuracyRating: rating,
+                    explanation: r.explanation ?? "", sources: r.sources ?? [],
+                    datePosted: nil, platform: r.platform,
+                    aiGenerated: r.aiGenerated, aiProbability: r.aiProbability
+                )
+            }
+            return SharedReel(
+                id: r.id, url: r.link, submittedAt: date,
+                status: status, resultId: r.title,
+                errorMessage: r.errorMessage, factCheckData: storedData
+            )
+        }
+
+        // Merge: backend reels are authoritative for their IDs;
+        // keep any local reels the backend doesn't know about.
+        let backendIds = Set(restored.map { $0.id })
+        let localOnlyReels = reels.filter { !backendIds.contains($0.id) }
+        reels = (localOnlyReels + restored).sorted { $0.submittedAt > $1.submittedAt }
+        saveReels()
+        print("☁️ Restored \(restored.count) reels from backend (\(localOnlyReels.count) local-only kept)")
+    }
+
+    /// Removes all reels stored for the current user.
     func clearReelsForCurrentUser() {
         reels.removeAll()
         saveReels()
         lastSyncDate = nil
-        print("🗑️ Cleared reels for user")
+        print("🗑️ Cleared reels for user \(currentUserId ?? "anonymous")")
     }
-    
-    /// Setup observer to detect user changes
+
+    /// Observes account changes as a safety net for logout.
+    /// Login transitions are handled synchronously by reloadReelsForCurrentUser()
+    /// in UserManager.saveUser() — this observer only needs to handle logout
+    /// (newUserId = nil) where there is no saveUser() call.
     private func setupUserChangeObserver() {
         NotificationCenter.default.addObserver(
             forName: NSNotification.Name("UserDidChange"),
@@ -294,14 +432,17 @@ class SharedReelManager: ObservableObject {
             queue: .main
         ) { [weak self] _ in
             guard let self = self else { return }
-            // Run on main queue synchronously (we're already on .main via queue: .main)
-            // so there is zero window where old reels can be merged by a concurrent sync.
-            let newUserId = UserManager.shared.currentUserId
-            if self.currentUserId != newUserId {
-                print("👤 User changed from \(self.currentUserId ?? "nil") to \(newUserId ?? "nil")")
-                // Immediately wipe in-memory reels before loading the new user's data.
-                // This closes the race window where syncHistoryFromBackend could merge
-                // the previous user's reels into the new user's list.
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                let newUserId = UserManager.shared.currentUserId
+                // If currentUserId already matches (reloadReelsForCurrentUser ran first),
+                // do nothing — this is the normal login path.
+                guard self.currentUserId != newUserId else {
+                    print("👤 UserDidChange: already up to date (\(newUserId ?? "nil")) — no action")
+                    return
+                }
+                // Only reach here on logout (newUserId = nil) or edge cases.
+                print("👤 UserDidChange safety-net: \(self.currentUserId ?? "nil") → \(newUserId ?? "nil")")
                 self.reels = []
                 self.lastSyncDate = nil
                 self.currentUserId = newUserId
@@ -377,50 +518,57 @@ class SharedReelManager: ObservableObject {
         }
         
         do {
-            // Use the existing sendFactCheck function from Requests.swift
-            let request = FactCheckRequest(link: instagramURL, userId: userId, sessionId: sessionId)
+            let request = FactCheckRequest(link: instagramURL, userId: userId,
+                                           sessionId: sessionId, submissionId: newReel.id)
             print("📤 Sending fact check request for shared reel...")
-            
-            let factCheckData = try await sendFactCheck(request)
-            print("✅ Successfully received fact check for shared reel")
-            
-            // Create stored fact check data
+
+            let submission = try await sendFactCheck(request)
+            print("✅ Submission response: status=\(submission.status)")
+
+            if submission.status == "processing" || submission.status == "submitting" {
+                // Async 202 flow — start polling; result will arrive via syncHistoryFromBackend
+                let backendSid = submission.submissionId
+                if backendSid != newReel.id {
+                    // Backend assigned a different id — re-key the placeholder reel
+                    if let idx = reels.firstIndex(where: { $0.id == newReel.id }) {
+                        reels[idx] = SharedReel(id: backendSid, url: newReel.url,
+                                                submittedAt: newReel.submittedAt,
+                                                status: .processing)
+                        saveReels()
+                    }
+                }
+                startProgressPolling(submissionId: backendSid)
+                await MainActor.run { isUploading = false; lastUploadSuccess = true }
+                return true
+            }
+
+            // Legacy sync response — submission.legacyData contains the full result
+            guard let legacy = submission.legacyData else {
+                // status=="completed" but no data — do a sync to fetch it
+                scheduleThumbnailRefresh()
+                await MainActor.run { isUploading = false; lastUploadSuccess = true }
+                return true
+            }
+
+            let resolvedClaims = legacy.resolvedClaims
             let storedData = StoredFactCheckData(
-                title: factCheckData.title,
-                summary: factCheckData.summary,
-                thumbnailURL: factCheckData.thumbnailUrl,
-                claim: factCheckData.claim,
-                verdict: factCheckData.verdict,
-                claimAccuracyRating: factCheckData.claimAccuracyRating,
-                explanation: factCheckData.explanation,
-                sources: factCheckData.sources,
-                datePosted: factCheckData.date,
-                platform: factCheckData.platform,
-                aiGenerated: factCheckData.aiGenerated,
-                aiProbability: factCheckData.aiProbability
+                title: legacy.title,
+                summary: resolvedClaims[0].summary,
+                thumbnailURL: legacy.thumbnailUrl,
+                claims: resolvedClaims,
+                datePosted: legacy.date,
+                platform: legacy.platform,
+                aiGenerated: legacy.aiGenerated,
+                aiProbability: legacy.aiProbability
             )
-            
-            // Update the reel status with complete data
-            updateReelStatus(id: newReel.id, status: .completed, resultId: factCheckData.title, factCheckData: storedData)
-            
-            // If we have a homeViewModel, refresh the personalized feed
+            updateReelStatus(id: newReel.id, status: .completed,
+                             resultId: legacy.title, factCheckData: storedData)
             if let viewModel = homeViewModel {
-                // Refresh the personalized feed so the new result appears
                 viewModel.refreshFeedAfterExternalFactCheck()
-                
-                // Clear processing state
-                viewModel.processingLink = nil
-                viewModel.processingThumbnailURL = nil
+                viewModel.processingLink = nil; viewModel.processingThumbnailURL = nil
             }
-            
-            // Schedule a background sync to resolve any placeholder/social-page thumbnail URLs
             scheduleThumbnailRefresh()
-            
-            await MainActor.run {
-                lastUploadSuccess = true
-                isUploading = false
-            }
-            
+            await MainActor.run { lastUploadSuccess = true; isUploading = false }
             return true
             
         } catch {
@@ -909,12 +1057,22 @@ class SharedReelManager: ObservableObject {
                     
                     // Create stored fact check data if available
                     var storedData: StoredFactCheckData? = nil
-                    if status == .completed,
+                    if status == .completed, !userReel.claims.isEmpty {
+                        storedData = StoredFactCheckData(
+                            title: userReel.title,
+                            summary: userReel.summary ?? userReel.claims[0].summary,
+                            thumbnailURL: userReel.thumbnailUrl,
+                            claims: userReel.claims,
+                            datePosted: nil,
+                            platform: userReel.platform,
+                            aiGenerated: userReel.aiGenerated,
+                            aiProbability: userReel.aiProbability
+                        )
+                    } else if status == .completed,
                        let claim = userReel.claim,
                        let verdict = userReel.verdict,
                        let rating = userReel.claimAccuracyRating,
                        let summary = userReel.summary {
-                        
                         storedData = StoredFactCheckData(
                             title: userReel.title,
                             summary: summary,
@@ -949,10 +1107,20 @@ class SharedReelManager: ObservableObject {
                     return
                 }
 
-                // Update reels, keeping only local processing/pending reels that are:
-                //  • younger than 5 minutes, AND
-                //  • still listed in the App Group's pending_submissions
-                // This prevents stale placeholder reels from surviving a sync.
+                // Always reload persisted reels for this user before merging,
+                // as a safety net in case reels is still [] from a timing race.
+                self.loadStoredReels()
+
+                // If backend returned nothing, local reels are already loaded — done.
+                guard !syncedReels.isEmpty else {
+                    lastSyncDate = Date()
+                    isSyncing = false
+                    print("✅ Backend returned 0 reels — using \(reels.count) local reel(s)")
+                    return
+                }
+
+                // Merge: keep in-flight local pending/processing reels the backend
+                // doesn't know about yet, then layer backend results on top.
                 let cutoff = Date().addingTimeInterval(-300)
                 let appGroupPendingIds: Set<String> = {
                     guard let defaults = UserDefaults(suiteName: "group.com.jacob.informed"),
@@ -973,8 +1141,10 @@ class SharedReelManager: ObservableObject {
 
                 lastSyncDate = Date()
                 isSyncing = false
-
                 print("✅ Synced \(syncedReels.count) reels from backend")
+
+                // Refresh home feed so newly-completed reels appear immediately
+                homeViewModel?.refreshFeedAfterExternalFactCheck()
             }
             
         } catch {

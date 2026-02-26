@@ -17,8 +17,12 @@ struct SearchBarView: View {
               url.scheme != nil,
               url.host != nil else { return false }
         let lower = text.lowercased()
-        return lower.contains("instagram.com") || lower.contains("instagr.am") ||
-               lower.contains("tiktok.com") || lower.contains("vm.tiktok.com")
+        let isInstagram = lower.contains("instagram.com") || lower.contains("instagr.am")
+        let isTikTok    = lower.contains("tiktok.com") || lower.contains("vm.tiktok.com")
+        let isYouTube   = lower.contains("youtube.com/shorts") || lower.contains("youtu.be")
+        let isThreads   = lower.contains("threads.net") || lower.contains("threads.com")
+        let isTwitter   = lower.contains("twitter.com") || lower.contains("x.com")
+        return isInstagram || isTikTok || isYouTube || isThreads || isTwitter
     }
     
     private var isTextSearch: Bool {
@@ -50,7 +54,7 @@ struct SearchBarView: View {
                 .font(.system(size: 18, weight: .medium))
                 .animation(Theme.Animation.quick, value: leadingIcon)
             
-            TextField("Search or paste a Reel/TikTok link…", text: $text)
+            TextField("Search or paste a link (Instagram, TikTok, YouTube, X, Threads)…", text: $text)
                 .foregroundColor(.primary)
                 .focused($isFocused)
                 .submitLabel(.search)

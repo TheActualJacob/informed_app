@@ -241,12 +241,12 @@ struct PublicReelCard: View {
                     Spacer()
                     
                     HStack(spacing: 4) {
-                        Image(systemName: reel.credibilityLevel.icon)
-                        Text(reel.credibilityLevel.rawValue)
+                        Image(systemName: reel.averageCredibilityLevel.icon)
+                        Text(reel.averageCredibilityLevel.rawValue)
                     }
                     .font(.caption)
                     .fontWeight(.bold)
-                    .foregroundColor(reel.credibilityLevel.color)
+                    .foregroundColor(reel.averageCredibilityLevel.color)
                 }
                 
                 // Mini progress bar - match FactResultCard format
@@ -254,14 +254,14 @@ struct PublicReelCard: View {
                     ZStack(alignment: .leading) {
                         Capsule().fill(Color.secondary.opacity(0.2))
                         Capsule()
-                            .fill(reel.credibilityLevel.color)
-                            .frame(width: geo.size.width * reel.credibilityScore)
+                            .fill(reel.averageCredibilityLevel.color)
+                            .frame(width: geo.size.width * reel.averageCredibilityScore)
                     }
                 }
                 .frame(height: 6)
                 
-                // AI Generation Badge (only show when flagged)
-                if reel.aiGenerated == "true" {
+                // AI Generation Badge (only show when flagged and AI detection applies)
+                if reel.aiGenerated == "true" && !isTextOnlyPlatform(reel.detectedPlatform) {
                     HStack(spacing: 5) {
                         Image(systemName: "wand.and.stars")
                             .font(.system(size: 11, weight: .semibold))
@@ -309,247 +309,122 @@ struct PublicReelDetailView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Spacing.xxl) {
-                
-                // Title Area
+
+                // Title + credibility badge + link preview + attribution
                 VStack(alignment: .leading, spacing: Theme.Spacing.md) {
                     HStack {
-                        Label(reel.credibilityLevel.rawValue, systemImage: reel.credibilityLevel.icon)
-                            .font(.caption)
-                            .fontWeight(.bold)
-                            .padding(.vertical, 6)
-                            .padding(.horizontal, Theme.Spacing.md)
-                            .background(reel.credibilityLevel.color.opacity(0.1))
-                            .foregroundColor(reel.credibilityLevel.color)
+                        Label(reel.averageCredibilityLevel.rawValue, systemImage: reel.averageCredibilityLevel.icon)
+                            .font(.caption).fontWeight(.bold)
+                            .padding(.vertical, 6).padding(.horizontal, Theme.Spacing.md)
+                            .background(reel.averageCredibilityLevel.color.opacity(0.1))
+                            .foregroundColor(reel.averageCredibilityLevel.color)
                             .cornerRadius(Theme.CornerRadius.sm)
-                        
                         Spacer()
-                        
-                        Text(reel.timeAgo)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                        Text(reel.timeAgo).font(.caption).foregroundColor(.secondary)
                     }
-                    
+
                     Text(reel.title)
                         .font(.system(size: 26, weight: .bold, design: .serif))
                         .foregroundColor(.primary)
                         .fixedSize(horizontal: false, vertical: true)
-                    
-                    // Link Preview - Always show to display the video/content (matching Home format)
+
                     LinkPreviewView(item: reel.toFactCheckItem())
-                    
-                    // User attribution
+
                     HStack {
-                        Image(systemName: "person.circle.fill")
-                            .foregroundColor(.brandBlue)
+                        Image(systemName: "person.circle.fill").foregroundColor(.brandBlue)
                         Text("Shared by \(reel.uploadedBy.username)")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
+                            .font(.subheadline).foregroundColor(.secondary)
                     }
                 }
-                
+
                 Divider()
-                
-                // Animated Chart
-                VStack(alignment: .center, spacing: 0) {
-                    DonutChart(score: reel.credibilityScore, color: reel.credibilityLevel.color)
-                }
-                .frame(maxWidth: .infinity)
-                
-                // The Claim
-                VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-                    Text("The Claim")
-                        .font(.headline)
-                        .foregroundColor(.primary)
-                    Text(reel.claim)
-                        .font(.body)
-                        .foregroundColor(.primary.opacity(0.8))
-                        .lineSpacing(4)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .padding(Theme.Spacing.lg)
-                .background(Color.blue.opacity(0.08))
-                .cornerRadius(Theme.CornerRadius.md)
-                
-                // Verdict Badge
-                HStack(spacing: Theme.Spacing.md) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Verdict")
-                            .font(.caption)
-                            .fontWeight(.bold)
-                            .foregroundColor(.secondary)
-                        Text(reel.verdict)
-                            .font(.system(size: 18, weight: .bold, design: .default))
-                            .foregroundColor(reel.credibilityLevel.color)
-                    }
-                    
-                    Spacer()
-                    
-                    VStack(alignment: .trailing, spacing: 4) {
-                        Text("Accuracy Rating")
-                            .font(.caption)
-                            .fontWeight(.bold)
-                            .foregroundColor(.secondary)
-                        Text(reel.claimAccuracyRating)
-                            .font(.system(size: 18, weight: .bold, design: .default))
-                            .foregroundColor(reel.credibilityLevel.color)
-                    }
-                }
-                .padding(Theme.Spacing.lg)
-                .background(reel.credibilityLevel.color.opacity(0.08))
-                .cornerRadius(Theme.CornerRadius.md)
-                
-                // AI Detection
-                VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-                    Text("AI Detection")
-                        .font(.headline)
-                    
-                    if let aiGen = reel.aiGenerated {
-                        HStack(spacing: Theme.Spacing.md) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("AI-Generated Video")
-                                    .font(.caption)
-                                    .fontWeight(.bold)
-                                    .foregroundColor(.secondary)
-                                HStack(spacing: 5) {
-                                    Image(systemName: aiGen == "true" ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
-                                        .font(.system(size: 16, weight: .semibold))
-                                        .foregroundColor(aiGen == "true" ? .orange : .brandGreen)
-                                    Text(aiGen == "true" ? "Yes" : "No")
-                                        .font(.system(size: 18, weight: .bold))
-                                        .foregroundColor(aiGen == "true" ? .orange : .brandGreen)
-                                }
-                            }
-                            
-                            Spacer()
-                            
-                            if let prob = reel.aiProbability {
-                                VStack(alignment: .trailing, spacing: 4) {
-                                    Text("Confidence")
-                                        .font(.caption)
-                                        .fontWeight(.bold)
-                                        .foregroundColor(.secondary)
-                                    Text("\(Int(prob * 100))%")
-                                        .font(.system(size: 18, weight: .bold))
-                                        .foregroundColor(aiGen == "true" ? .orange : .brandGreen)
-                                }
-                            }
-                        }
-                    } else {
-                        HStack(spacing: 8) {
-                            Image(systemName: "questionmark.circle.fill")
-                                .foregroundColor(.secondary)
-                            Text("AI detection was not performed for this video.")
-                                .font(.body)
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                }
-                .padding(Theme.Spacing.lg)
-                .background(Color.orange.opacity(0.07))
-                .cornerRadius(Theme.CornerRadius.md)
-                
-                // Summary
-                VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-                    Text("Summary")
-                        .font(.headline)
-                    Text(reel.summary)
-                        .font(.body)
-                        .foregroundColor(.primary.opacity(0.8))
-                        .lineSpacing(6)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .padding(Theme.Spacing.lg)
-                .background(Color.green.opacity(0.08))
-                .cornerRadius(Theme.CornerRadius.md)
-                
-                // Explanation
-                VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-                    Text("Explanation")
-                        .font(.headline)
-                    
-                    if !reel.explanation.isEmpty {
-                        Text(reel.explanation)
-                            .font(.body)
-                            .foregroundColor(.primary.opacity(0.8))
-                            .lineSpacing(6)
-                            .fixedSize(horizontal: false, vertical: true)
-                    } else {
-                        Text("No detailed explanation available for this fact check.")
-                            .font(.body)
-                            .foregroundColor(.gray.opacity(0.8))
-                            .italic()
-                    }
-                }
-                .padding(Theme.Spacing.lg)
-                .background(Color.cardBackground)
-                .cornerRadius(Theme.CornerRadius.md)
-                
-                // Sources
-                if !reel.sources.isEmpty {
+
+                // Credibility donut — averaged across all claims
+                DonutChart(score: reel.averageCredibilityScore, color: reel.averageCredibilityLevel.color)
+                    .frame(maxWidth: .infinity)
+
+                // AI Detection — right after the chart
+                if !isTextOnlyPlatform(reel.detectedPlatform) || reel.aiGenerated != nil {
                     VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-                        Text("Sources")
-                            .font(.headline)
-                        
-                        VStack(alignment: .leading, spacing: 10) {
-                            ForEach(reel.sources.indices, id: \.self) { index in
-                                Button(action: {
-                                    HapticManager.lightImpact()
-                                    if let url = URL(string: reel.sources[index]) {
-                                        UIApplication.shared.open(url)
+                        Text("AI Detection").font(.headline)
+                        if let aiGen = reel.aiGenerated {
+                            HStack(spacing: Theme.Spacing.md) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("AI-Generated Video")
+                                        .font(.caption).fontWeight(.bold).foregroundColor(.secondary)
+                                    HStack(spacing: 5) {
+                                        Image(systemName: aiGen == "true" ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                                            .font(.system(size: 16, weight: .semibold))
+                                            .foregroundColor(aiGen == "true" ? .orange : .brandGreen)
+                                        Text(aiGen == "true" ? "Yes" : "No")
+                                            .font(.system(size: 18, weight: .bold))
+                                            .foregroundColor(aiGen == "true" ? .orange : .brandGreen)
                                     }
-                                }) {
-                                    HStack {
-                                        Image(systemName: "link")
-                                            .foregroundColor(.brandBlue)
-                                        
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            if let url = URL(string: reel.sources[index]), let host = url.host {
-                                                Text(host.replacingOccurrences(of: "www.", with: ""))
-                                                    .font(.subheadline)
-                                                    .fontWeight(.semibold)
-                                                    .foregroundColor(.brandBlue)
-                                            } else {
-                                                Text("Source \(index + 1)")
-                                                    .font(.subheadline)
-                                                    .fontWeight(.semibold)
-                                                    .foregroundColor(.brandBlue)
-                                            }
-                                            
-                                            Text(reel.sources[index])
-                                                .font(.caption)
-                                                .foregroundColor(.gray)
-                                                .lineLimit(1)
-                                        }
-                                        
-                                        Spacer()
-                                        
-                                        Image(systemName: "arrow.up.right")
-                                            .font(.caption)
-                                            .foregroundColor(.brandBlue.opacity(0.7))
-                                    }
-                                    .padding(Theme.Spacing.md)
-                                    .background(Color.brandBlue.opacity(0.05))
-                                    .cornerRadius(Theme.CornerRadius.sm)
                                 }
+                                Spacer()
+                                if let prob = reel.aiProbability {
+                                    VStack(alignment: .trailing, spacing: 4) {
+                                        Text("Confidence")
+                                            .font(.caption).fontWeight(.bold).foregroundColor(.secondary)
+                                        Text("\(Int(prob * 100))%")
+                                            .font(.system(size: 18, weight: .bold))
+                                            .foregroundColor(aiGen == "true" ? .orange : .brandGreen)
+                                    }
+                                }
+                            }
+                        } else {
+                            HStack(spacing: 8) {
+                                Image(systemName: "questionmark.circle.fill").foregroundColor(.secondary)
+                                Text("AI detection was not performed for this content.")
+                                    .font(.body).foregroundColor(.secondary)
                             }
                         }
                     }
                     .padding(Theme.Spacing.lg)
-                    .background(Color.cardBackground)
+                    .background(Color.orange.opacity(0.07))
                     .cornerRadius(Theme.CornerRadius.md)
                 }
-                
+
+                Divider()
+
+                // Multi-claim swipe hint
+                if reel.claims.count > 1 {
+                    HStack(spacing: 10) {
+                        Image(systemName: "hand.draw.fill")
+                            .font(.system(size: 16))
+                            .foregroundColor(.brandBlue)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("\(reel.claims.count) claims fact-checked")
+                                .font(.caption).fontWeight(.bold).foregroundColor(.primary)
+                            Text("Swipe left to see each one")
+                                .font(.caption2).foregroundColor(.secondary)
+                        }
+                        Spacer()
+                        HStack(spacing: 4) {
+                            ForEach(0..<reel.claims.count, id: \.self) { i in
+                                Capsule()
+                                    .fill(reel.claims[i].credibilityLevel.color)
+                                    .frame(width: 18, height: 5)
+                            }
+                        }
+                        Image(systemName: "chevron.right")
+                            .font(.caption).foregroundColor(.secondary)
+                    }
+                    .padding(.vertical, 10).padding(.horizontal, 14)
+                    .background(Color.brandBlue.opacity(0.07))
+                    .overlay(RoundedRectangle(cornerRadius: Theme.CornerRadius.md).stroke(Color.brandBlue.opacity(0.2), lineWidth: 1))
+                    .cornerRadius(Theme.CornerRadius.md)
+                }
+
+                // Claims pager — swipeable when 2-3 claims present
+                ClaimsPagerView(claims: reel.claims)
+
                 // Share Button
                 Button(action: {
                     HapticManager.lightImpact()
-                    if let viewModel = viewModel {
-                        Task { await viewModel.trackShare(for: reel) }
-                    }
+                    if let viewModel = viewModel { Task { await viewModel.trackShare(for: reel) } }
                     if let url = URL(string: reel.videoLink) {
-                        let activityVC = UIActivityViewController(
-                            activityItems: [url],
-                            applicationActivities: nil
-                        )
+                        let activityVC = UIActivityViewController(activityItems: [url], applicationActivities: nil)
                         if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
                            let rootVC = windowScene.windows.first?.rootViewController {
                             rootVC.present(activityVC, animated: true)
@@ -560,17 +435,9 @@ struct PublicReelDetailView: View {
                         Image(systemName: "square.and.arrow.up")
                         Text("Share This Fact Check")
                     }
-                    .font(.headline)
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-                    .background(
-                        LinearGradient(
-                            colors: [.brandTeal, .brandBlue],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
+                    .font(.headline).foregroundColor(.white)
+                    .frame(maxWidth: .infinity).padding(.vertical, 16)
+                    .background(LinearGradient(colors: [.brandTeal, .brandBlue], startPoint: .leading, endPoint: .trailing))
                     .cornerRadius(Theme.CornerRadius.md)
                 }
             }
@@ -578,11 +445,7 @@ struct PublicReelDetailView: View {
         }
         .background(Color.backgroundLight)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                Text("")
-            }
-        }
+        .toolbar { ToolbarItem(placement: .principal) { Text("") } }
         .toolbarBackground(.hidden, for: .navigationBar)
     }
 }

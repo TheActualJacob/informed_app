@@ -1,0 +1,487 @@
+//
+//  FactCheckModels.swift
+//  informed
+//
+//  Data models for fact-checking functionality
+//
+
+import Foundation
+import SwiftUI
+
+// MARK: - Credibility Level
+
+enum CredibilityLevel: String {
+    case high = "Verified"
+    case medium = "Debated"
+    case low = "Misleading"
+
+    var color: Color {
+        switch self {
+        case .high: return .brandGreen
+        case .medium: return .brandYellow
+        case .low: return .brandRed
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .high: return "checkmark.seal.fill"
+        case .medium: return "exclamationmark.triangle.fill"
+        case .low: return "xmark.octagon.fill"
+        }
+    }
+}
+
+// MARK: - Claim Entry  (new multi-claim model)
+
+/// One fact-checked claim within a reel.  The API now always returns a `claims`
+/// array (1-3 elements).  Old rows are automatically back-filled as a single-
+/// element array, so `claims` is never empty on completed reels.
+struct ClaimEntry: Codable, Equatable {
+    let claim: String
+    let verdict: String
+    let claimAccuracyRating: String
+    let explanation: String
+    let summary: String
+    let sources: [String]
+    let category: String?
+
+    enum CodingKeys: String, CodingKey {
+        case claim, verdict, explanation, summary, sources, category
+        case claimAccuracyRating
+    }
+
+    init(claim: String,
+         verdict: String,
+         claimAccuracyRating: String,
+         explanation: String,
+         summary: String,
+         sources: [String],
+         category: String? = nil) {
+        self.claim = claim
+        self.verdict = verdict
+        self.claimAccuracyRating = claimAccuracyRating
+        self.explanation = explanation
+        self.summary = summary
+        self.sources = sources
+        self.category = category
+    }
+
+    var credibilityScore: Double { calculateCredibilityScore(from: claimAccuracyRating) }
+
+    var credibilityLevel: CredibilityLevel {
+        if credibilityScore >= 0.8 { return .high }
+        if credibilityScore >= 0.5 { return .medium }
+        return .low
+    }
+
+    /// Bridge to the legacy `FactCheck` type so existing card/detail views compile unchanged.
+    var asFactCheck: FactCheck {
+        FactCheck(claim: claim, verdict: verdict,
+                  claimAccuracyRating: claimAccuracyRating,
+                  explanation: explanation, summary: summary, sources: sources)
+    }
+}
+
+// MARK: - Fact Check (legacy bridge)
+
+struct FactCheck: Codable {
+    let claim: String
+    let verdict: String
+    let claimAccuracyRating: String
+    let explanation: String
+    let summary: String
+    let sources: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case claim, verdict, explanation, summary, sources
+        case claimAccuracyRating = "claim_accuracy_rating"
+    }
+}
+
+// MARK: - Fact Check Item
+
+struct FactCheckItem: Identifiable, Equatable {
+    static func == (lhs: FactCheckItem, rhs: FactCheckItem) -> Bool { lhs.id == rhs.id }
+    let id = UUID()
+    let sourceName: String
+    let sourceIcon: String
+    let timeAgo: String
+    let title: String
+    let summary: String
+    let thumbnailURL: URL?
+    let credibilityScore: Double
+    let sources: String
+    let verdict: String
+    /// All fact-checked claims (1-3). Index 0 is always the primary claim.
+    let claims: [ClaimEntry]
+    let originalLink: String?
+    let datePosted: String?
+    let aiGenerated: String?
+    let aiProbability: Double?
+
+    /// Legacy alias - returns primary claim as old FactCheck type.
+    var factCheck: FactCheck { claims[0].asFactCheck }
+    var detailedAnalysis: String { claims[0].explanation }
+
+    var credibilityLevel: CredibilityLevel {
+        if credibilityScore >= 0.8 { return .high }
+        if credibilityScore >= 0.5 { return .medium }
+        return .low
+    }
+
+    var displaySourceName: String {
+        if sourceName == "Fact Check API", let link = originalLink {
+            return platformInfo(for: detectedPlatformFromURL(link)).name
+        }
+        return sourceName
+    }
+
+    var displaySourceIcon: String {
+        if sourceIcon == "checkmark.seal.fill", let link = originalLink {
+            return platformInfo(for: detectedPlatformFromURL(link)).icon
+        }
+        return sourceIcon
+    }
+}
+
+// MARK: - Helper Functions
+
+func platformInfo(for platform: String) -> (name: String, icon: String) {
+    switch platform.lowercased() {
+    case "tiktok":          return ("TikTok",   "music.note")
+    case "youtube_shorts":  return ("YouTube",  "play.rectangle.fill")
+    case "threads":         return ("Threads",  "bubble.left.and.bubble.right.fill")
+    case "twitter":         return ("X / Twitter", "bird.fill")
+    default:                return ("Instagram", "camera.fill")
+    }
+}
+
+func isTextOnlyPlatform(_ platform: String?) -> Bool {
+    guard let p = platform?.lowercased() else { return false }
+    return p == "twitter" || p == "threads"
+}
+
+func detectedPlatformFromURL(_ url: String) -> String {
+    let lower = url.lowercased()
+    if lower.contains("tiktok.com") || lower.contains("vm.tiktok.com") { return "tiktok" }
+    if lower.contains("youtube.com/shorts") || lower.contains("youtu.be") { return "youtube_shorts" }
+    if lower.contains("threads.net") || lower.contains("threads.com") { return "threads" }
+    if lower.contains("twitter.com") || lower.contains("x.com") { return "twitter" }
+    if lower.contains("instagram.com") { return "instagram" }
+    return "instagram"
+}
+
+func calculateCredibilityScore(from rating: String) -> Double {
+    let s = rating.replacingOccurrences(of: "%", with: "")
+    if let pct = Double(s) { return pct / 100.0 }
+    return 0.5
+}
+
+// MARK: - Public Reel Models
+
+struct ReelUser: Codable, Identifiable {
+    let id: String
+    let username: String
+
+    enum CodingKeys: String, CodingKey {
+        case id = "userId"
+        case username
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id       = (try? c.decodeIfPresent(String.self, forKey: .id))       ?? "anonymous"
+        username = (try? c.decodeIfPresent(String.self, forKey: .username)) ?? "Anonymous"
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id,       forKey: .id)
+        try c.encode(username, forKey: .username)
+    }
+}
+
+struct ReelEngagement: Codable {
+    let viewCount: Int
+    let shareCount: Int
+}
+
+struct PublicReel: Identifiable, Codable {
+    let id: String
+    let title: String
+    let description: String
+    let thumbnailUrl: String?
+    let videoLink: String
+    /// All fact-checked claims (1-3).
+    let claims: [ClaimEntry]
+    let checkedAt: String
+    let datePosted: String?
+    let uploadedBy: ReelUser
+    let engagement: ReelEngagement
+    let platform: String?
+    let aiGenerated: String?
+    let aiProbability: Double?
+
+    // Primary-claim convenience accessors
+    var claim: String               { claims[0].claim }
+    var verdict: String             { claims[0].verdict }
+    var claimAccuracyRating: String { claims[0].claimAccuracyRating }
+    var explanation: String         { claims[0].explanation }
+    var summary: String             { claims[0].summary }
+    var sources: [String]           { claims[0].sources }
+    var category: String?           { claims[0].category }
+
+    enum CodingKeys: String, CodingKey {
+        case id = "uniqueID"
+        case title, description, thumbnailUrl, videoLink
+        case claims
+        case claim, verdict, claimAccuracyRating
+        case explanation, summary, sources, category
+        case checkedAt, datePosted
+        case uploadedBy, engagement, platform
+        case aiGenerated, aiProbability
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+
+        id           = try c.decode(String.self,       forKey: .id)
+        title        = try c.decode(String.self,       forKey: .title)
+        description  = try c.decode(String.self,       forKey: .description)
+        thumbnailUrl = try c.decodeIfPresent(String.self, forKey: .thumbnailUrl)
+        videoLink    = try c.decode(String.self,       forKey: .videoLink)
+        checkedAt    = try c.decode(String.self,       forKey: .checkedAt)
+        uploadedBy   = try c.decode(ReelUser.self,     forKey: .uploadedBy)
+        engagement   = try c.decode(ReelEngagement.self, forKey: .engagement)
+        platform     = try c.decodeIfPresent(String.self, forKey: .platform)
+        aiGenerated  = try c.decodeIfPresent(String.self, forKey: .aiGenerated)
+        aiProbability = try c.decodeIfPresent(Double.self, forKey: .aiProbability)
+
+        if let ds = try? c.decodeIfPresent(String.self, forKey: .datePosted) {
+            datePosted = ds
+        } else if let di = try? c.decodeIfPresent(Int.self, forKey: .datePosted) {
+            datePosted = String(di)
+        } else {
+            datePosted = nil
+        }
+
+        if let decoded = try? c.decodeIfPresent([ClaimEntry].self, forKey: .claims), !decoded.isEmpty {
+            claims = decoded
+        } else {
+            let cl  = (try? c.decodeIfPresent(String.self, forKey: .claim))               ?? ""
+            let v   = (try? c.decodeIfPresent(String.self, forKey: .verdict))             ?? ""
+            let car = (try? c.decodeIfPresent(String.self, forKey: .claimAccuracyRating)) ?? "50%"
+            let exp = (try? c.decodeIfPresent(String.self, forKey: .explanation))         ?? ""
+            let sum = (try? c.decodeIfPresent(String.self, forKey: .summary))             ?? ""
+            let src = (try? c.decodeIfPresent([String].self, forKey: .sources))           ?? []
+            let cat = try? c.decodeIfPresent(String.self, forKey: .category)
+            claims = [ClaimEntry(claim: cl, verdict: v, claimAccuracyRating: car,
+                                 explanation: exp, summary: sum, sources: src, category: cat)]
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id,           forKey: .id)
+        try c.encode(title,        forKey: .title)
+        try c.encode(description,  forKey: .description)
+        try c.encodeIfPresent(thumbnailUrl, forKey: .thumbnailUrl)
+        try c.encode(videoLink,    forKey: .videoLink)
+        try c.encode(claims,       forKey: .claims)
+        try c.encode(checkedAt,    forKey: .checkedAt)
+        try c.encodeIfPresent(datePosted, forKey: .datePosted)
+        try c.encode(uploadedBy,   forKey: .uploadedBy)
+        try c.encode(engagement,   forKey: .engagement)
+        try c.encodeIfPresent(platform,     forKey: .platform)
+        try c.encodeIfPresent(aiGenerated,  forKey: .aiGenerated)
+        try c.encodeIfPresent(aiProbability, forKey: .aiProbability)
+    }
+
+    var timeAgo: String {
+        let f = ISO8601DateFormatter()
+        if let d = f.date(from: checkedAt) {
+            let r = RelativeDateTimeFormatter(); r.unitsStyle = .abbreviated
+            return r.localizedString(for: d, relativeTo: Date())
+        }
+        return "Recently"
+    }
+
+    var credibilityScore: Double { calculateCredibilityScore(from: claimAccuracyRating) }
+
+    var detectedPlatform: String { platform ?? detectedPlatformFromURL(videoLink) }
+    var platformDisplayName: String { platformInfo(for: detectedPlatform).name }
+    var platformIcon: String        { platformInfo(for: detectedPlatform).icon }
+
+    var credibilityLevel: CredibilityLevel {
+        if credibilityScore >= 0.8 { return .high }
+        if credibilityScore >= 0.5 { return .medium }
+        return .low
+    }
+
+    func toFactCheckItem() -> FactCheckItem {
+        FactCheckItem(
+            sourceName: platformDisplayName,
+            sourceIcon: platformIcon,
+            timeAgo: timeAgo,
+            title: title,
+            summary: summary,
+            thumbnailURL: thumbnailUrl.flatMap { URL(string: $0) },
+            credibilityScore: credibilityScore,
+            sources: sources.joined(separator: ", "),
+            verdict: verdict,
+            claims: claims,
+            originalLink: videoLink,
+            datePosted: datePosted,
+            aiGenerated: aiGenerated,
+            aiProbability: aiProbability
+        )
+    }
+}
+
+struct PublicFeedResponse: Codable {
+    let reels: [PublicReel]
+    let pagination: PaginationInfo
+}
+
+// MARK: - Category Models
+
+struct CategoryItem: Identifiable, Codable {
+    var id: String { name }
+    let name: String
+    let count: Int
+}
+
+struct CategoryResponse: Codable {
+    let categories: [CategoryItem]
+}
+
+// MARK: - Search Response
+
+struct SearchResponse: Codable {
+    let reels: [PublicReel]
+    let totalCount: Int
+    let query: String
+}
+
+// MARK: - Personalized Feed Response
+
+struct PersonalizedFeedResponse: Codable {
+    let reels: [PublicReel]
+    let totalCount: Int
+    let source: String
+}
+
+struct PaginationInfo: Codable {
+    let currentPage: Int
+    let totalPages: Int
+    let totalCount: Int
+    let hasMore: Bool
+    let nextCursor: String?
+}
+
+// MARK: - User Reel History Models
+
+struct UserReel: Identifiable, Codable {
+    let id: String
+    let title: String
+    let link: String
+    let status: String
+    let thumbnailUrl: String?
+    let submittedAt: String
+    /// All fact-checked claims (1-3). Empty for non-completed reels.
+    let claims: [ClaimEntry]
+    let engagement: ReelEngagement?
+    let errorMessage: String?
+    let platform: String?
+    let errorType: String?
+    let aiGenerated: String?
+    let aiProbability: Double?
+
+    // Primary-claim convenience accessors (optional)
+    var claim: String?               { claims.first?.claim }
+    var verdict: String?             { claims.first?.verdict }
+    var claimAccuracyRating: String? { claims.first?.claimAccuracyRating }
+    var explanation: String?         { claims.first?.explanation }
+    var summary: String?             { claims.first?.summary }
+    var sources: [String]?           { claims.first?.sources }
+
+    enum CodingKeys: String, CodingKey {
+        case id = "uniqueID"
+        case title, link, status, thumbnailUrl, submittedAt
+        case claims
+        case claim, verdict, claimAccuracyRating, explanation, summary, sources
+        case engagement, errorMessage, platform
+        case errorType = "error_type"
+        case aiGenerated, aiProbability
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id           = try c.decode(String.self,  forKey: .id)
+        title        = try c.decode(String.self,  forKey: .title)
+        link         = try c.decode(String.self,  forKey: .link)
+        status       = try c.decode(String.self,  forKey: .status)
+        thumbnailUrl = try c.decodeIfPresent(String.self, forKey: .thumbnailUrl)
+        submittedAt  = try c.decode(String.self,  forKey: .submittedAt)
+        engagement   = try c.decodeIfPresent(ReelEngagement.self, forKey: .engagement)
+        errorMessage = try c.decodeIfPresent(String.self, forKey: .errorMessage)
+        platform     = try c.decodeIfPresent(String.self, forKey: .platform)
+        errorType    = try c.decodeIfPresent(String.self, forKey: .errorType)
+        aiGenerated  = try c.decodeIfPresent(String.self, forKey: .aiGenerated)
+        aiProbability = try c.decodeIfPresent(Double.self, forKey: .aiProbability)
+
+        if let decoded = try? c.decodeIfPresent([ClaimEntry].self, forKey: .claims), !decoded.isEmpty {
+            claims = decoded
+        } else if let cl  = try? c.decodeIfPresent(String.self, forKey: .claim),
+                  let v   = try? c.decodeIfPresent(String.self, forKey: .verdict),
+                  let car = try? c.decodeIfPresent(String.self, forKey: .claimAccuracyRating),
+                  let sum = try? c.decodeIfPresent(String.self, forKey: .summary) {
+            let exp = (try? c.decodeIfPresent(String.self,   forKey: .explanation)) ?? ""
+            let src = (try? c.decodeIfPresent([String].self, forKey: .sources))     ?? []
+            claims = [ClaimEntry(claim: cl, verdict: v, claimAccuracyRating: car,
+                                 explanation: exp, summary: sum, sources: src)]
+        } else {
+            claims = []
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id,          forKey: .id)
+        try c.encode(title,       forKey: .title)
+        try c.encode(link,        forKey: .link)
+        try c.encode(status,      forKey: .status)
+        try c.encodeIfPresent(thumbnailUrl,  forKey: .thumbnailUrl)
+        try c.encode(submittedAt, forKey: .submittedAt)
+        try c.encode(claims,      forKey: .claims)
+        try c.encodeIfPresent(engagement,    forKey: .engagement)
+        try c.encodeIfPresent(errorMessage,  forKey: .errorMessage)
+        try c.encodeIfPresent(platform,      forKey: .platform)
+        try c.encodeIfPresent(errorType,     forKey: .errorType)
+        try c.encodeIfPresent(aiGenerated,   forKey: .aiGenerated)
+        try c.encodeIfPresent(aiProbability, forKey: .aiProbability)
+    }
+
+    var timeAgo: String {
+        let f = ISO8601DateFormatter()
+        if let d = f.date(from: submittedAt) {
+            let r = RelativeDateTimeFormatter(); r.unitsStyle = .abbreviated
+            return r.localizedString(for: d, relativeTo: Date())
+        }
+        return "Recently"
+    }
+
+    var displayURL: String {
+        link.count > 50 ? String(link.prefix(47)) + "..." : link
+    }
+
+    var detectedPlatform: String { platform ?? detectedPlatformFromURL(link) }
+    var platformDisplayName: String { platformInfo(for: detectedPlatform).name }
+    var platformIcon: String        { platformInfo(for: detectedPlatform).icon }
+}
+
+struct UserReelsResponse: Codable {
+    let reels: [UserReel]
+    let totalCount: Int
+}

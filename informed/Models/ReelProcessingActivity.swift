@@ -16,20 +16,22 @@ import Combine
 struct SubmissionStatusResponse: Codable {
     let submissionId: String
     let status: String // "submitting", "downloading", "processing", "analyzing", "fact_checking", "completed", "failed"
-    let progressPercentage: Int // 0-100
+    let progressPercentage: Int
     let currentStage: String
     let estimatedSecondsRemaining: Int
-    let createdAt: String
-    let updatedAt: String
-    
+    let createdAt: String?
+    let updatedAt: String?
+    let errorMessage: String?
+
     enum CodingKeys: String, CodingKey {
-        case submissionId = "submission_id"
+        case submissionId              = "submission_id"
         case status
-        case progressPercentage = "progress_percentage"
-        case currentStage = "current_stage"
+        case progressPercentage        = "progress_percentage"
+        case currentStage              = "current_stage"
         case estimatedSecondsRemaining = "estimated_seconds_remaining"
-        case createdAt = "created_at"
-        case updatedAt = "updated_at"
+        case createdAt                 = "created_at"
+        case updatedAt                 = "updated_at"
+        case errorMessage              = "error_message"
     }
     
     /// Converts backend status string to ProcessingStatus enum

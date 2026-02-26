@@ -73,8 +73,9 @@ struct FactResultCard: View {
             }
             .frame(height: 6)
             
-            // AI Generation Badge (only show when flagged)
-            if item.aiGenerated == "true" {
+            // AI Generation Badge (only show when flagged and AI detection applies)
+            let detectedPlat = detectedPlatformFromURL(item.originalLink ?? "")
+            if item.aiGenerated == "true" && !isTextOnlyPlatform(detectedPlat) {
                 HStack(spacing: 5) {
                     Image(systemName: "wand.and.stars")
                         .font(.system(size: 11, weight: .semibold))

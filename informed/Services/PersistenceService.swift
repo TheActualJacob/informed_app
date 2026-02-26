@@ -113,7 +113,7 @@ class PersistenceService {
                     credibilityScore: item.credibilityScore,
                     sources: item.sources,
                     verdict: item.verdict,
-                    factCheck: item.factCheck,
+                    claims: item.claims,
                     originalLink: item.originalLink,
                     datePosted: item.datePosted,
                     aiGenerated: item.aiGenerated,
@@ -200,12 +200,15 @@ struct FactCheckCodable: Codable {
     let credibilityScore: Double
     let sources: String
     let verdict: String
-    let factCheck: FactCheck
+    /// New storage format — 1-3 claims.
+    let claims: [ClaimEntry]
+    /// Legacy field kept only for migrating old data on disk — not written in new saves.
+    let factCheck: FactCheck?
     let originalLink: String?
     let datePosted: String?
     let aiGenerated: String?
     let aiProbability: Double?
-    
+
     init(from item: FactCheckItem) {
         self.sourceName = item.sourceName
         self.sourceIcon = item.sourceIcon
@@ -216,29 +219,37 @@ struct FactCheckCodable: Codable {
         self.credibilityScore = item.credibilityScore
         self.sources = item.sources
         self.verdict = item.verdict
-        self.factCheck = item.factCheck
+        self.claims = item.claims
+        self.factCheck = nil  // no longer persisted; only claims is written
         self.originalLink = item.originalLink
         self.datePosted = item.datePosted
         self.aiGenerated = item.aiGenerated
         self.aiProbability = item.aiProbability
     }
-    
+
     func toFactCheckItem() -> FactCheckItem {
+        // Prefer new claims array; migrate from legacy factCheck field for old disk data
+        let resolvedClaims: [ClaimEntry]
+        if !claims.isEmpty {
+            resolvedClaims = claims
+        } else if let fc = factCheck {
+            resolvedClaims = [ClaimEntry(claim: fc.claim, verdict: fc.verdict,
+                                         claimAccuracyRating: fc.claimAccuracyRating,
+                                         explanation: fc.explanation,
+                                         summary: summary, sources: fc.sources)]
+        } else {
+            resolvedClaims = [ClaimEntry(claim: "", verdict: verdict,
+                                         claimAccuracyRating: "\(Int(credibilityScore * 100))%",
+                                         explanation: "", summary: summary, sources: [])]
+        }
         return FactCheckItem(
-            sourceName: sourceName,
-            sourceIcon: sourceIcon,
-            timeAgo: timeAgo,
-            title: title,
-            summary: summary,
+            sourceName: sourceName, sourceIcon: sourceIcon,
+            timeAgo: timeAgo, title: title, summary: summary,
             thumbnailURL: thumbnailURLString.flatMap { URL(string: $0) },
-            credibilityScore: credibilityScore,
-            sources: sources,
-            verdict: verdict,
-            factCheck: factCheck,
-            originalLink: originalLink,
-            datePosted: datePosted,
-            aiGenerated: aiGenerated,
-            aiProbability: aiProbability
+            credibilityScore: credibilityScore, sources: sources,
+            verdict: verdict, claims: resolvedClaims,
+            originalLink: originalLink, datePosted: datePosted,
+            aiGenerated: aiGenerated, aiProbability: aiProbability
         )
     }
 }

@@ -1,4 +1,4 @@
-//
+ //
 //  FeedViewModel.swift
 //  informed
 //
@@ -184,7 +184,41 @@ class FeedViewModel: ObservableObject {
         }
         
         let decoder = JSONDecoder()
+
+        // Debug: log raw JSON to diagnose reels with missing claim data
+        if let rawJSON = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let reelsArray = rawJSON["reels"] as? [[String: Any]] {
+            print("📡 [FeedViewModel] Raw feed response: \(reelsArray.count) reels")
+            for (i, r) in reelsArray.enumerated() {
+                let uid         = r["uniqueID"]  as? String ?? "?"
+                let title       = (r["title"]    as? String ?? "?")
+                let claimsArr   = r["claims"]    as? [[String: Any]] ?? []
+                let flatClaim   = r["claim"]     as? String
+                let flatVerdict = r["verdict"]   as? String
+                let flatRating  = r["claim_accuracy_rating"] as? String
+                let flatSummary = r["summary"]   as? String
+                print("  [\(i)] \(uid.prefix(8)) | \(title.prefix(40))")
+                print("        claims[]=\(claimsArr.count) flat: claim=\(flatClaim != nil) verdict=\(flatVerdict != nil) rating=\(flatRating ?? "nil") summary=\(flatSummary != nil)")
+                if !claimsArr.isEmpty {
+                    let c0 = claimsArr[0]
+                    print("        claims[0] keys: \(c0.keys.sorted())")
+                    print("        claims[0] verdict=\(c0["verdict"] ?? "nil") rating=\(c0["claimAccuracyRating"] ?? "nil") summary=\((c0["summary"] as? String)?.prefix(40) ?? "nil")")
+                }
+                // Full raw dump for last 3 reels
+                if i >= reelsArray.count - 3 {
+                    print("        FULL[\(i)]: \(r)")
+                }
+            }
+        }
+
         let feedResponse = try decoder.decode(PublicFeedResponse.self, from: data)
+
+        // Debug: log what actually decoded
+        for (i, reel) in feedResponse.reels.enumerated() {
+            let c = reel.claims.first
+            print("  decoded[\(i)] claims=\(reel.claims.count) verdict='\(c?.verdict ?? "EMPTY")' rating='\(c?.claimAccuracyRating ?? "EMPTY")' summary='\(c?.summary.prefix(30) ?? "EMPTY")' expl=\(c?.explanation.isEmpty == false ? "✅" : "❌empty")")
+        }
+
         return feedResponse
     }
     

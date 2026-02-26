@@ -208,7 +208,7 @@ struct ReelStatusCard: View {
                 VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
                     // Header - match FactResultCard format with platform-specific icon
                     HStack {
-                        Image(systemName: reel.detectedPlatform == "tiktok" ? "music.note" : reel.detectedPlatform == "tiktok" ? "music.note" : reel.detectedPlatform == "tiktok" ? "music.note" : reel.detectedPlatform == "tiktok" ? "music.note" : "camera.fill")
+                        Image(systemName: platformInfo(for: reel.detectedPlatform).icon)
                             .foregroundColor(.brandBlue)
                             .padding(Theme.Spacing.sm)
                             .background(Color.brandBlue.opacity(0.1))
@@ -290,8 +290,8 @@ struct ReelStatusCard: View {
                     }
                     .frame(height: 6)
                     
-                    // AI Generation Badge (only show when flagged)
-                    if factCheckData.aiGenerated == "true" {
+                    // AI Generation Badge (only show when flagged and AI detection applies)
+                    if factCheckData.aiGenerated == "true" && !isTextOnlyPlatform(reel.detectedPlatform) {
                         HStack(spacing: 5) {
                             Image(systemName: "wand.and.stars")
                                 .font(.system(size: 11, weight: .semibold))

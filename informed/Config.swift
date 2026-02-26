@@ -52,6 +52,9 @@ struct Config {
         
         // Real-time progress tracking
         static let submissionStatus = Config.endpoint("/api/submission-status")
+
+        // Full history restore on login
+        static let myReels = Config.endpoint("/api/my-reels")
         
         // Vector & Category endpoints
         static let categories = Config.endpoint("/api/categories")

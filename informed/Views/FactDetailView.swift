@@ -11,8 +11,7 @@ import SafariServices
 struct FactDetailView: View {
     let item: FactCheckItem
     @Environment(\.presentationMode) var presentationMode
-    @State private var showSafari = false
-    
+
     private var hasRealThumbnail: Bool {
         guard let url = item.thumbnailURL else { return false }
         let s = url.absoluteString.lowercased()
@@ -21,24 +20,30 @@ struct FactDetailView: View {
                            s.contains("tiktok.com/@") ||
                            s.contains("vm.tiktok.com") ||
                            (s.contains("instagram.com") && !s.contains("cdninstagram") && !s.contains("fbcdn")) ||
-                           (s.contains("tiktok.com") && !s.contains("tiktokcdn") && !s.contains("muscdn"))
+                           (s.contains("tiktok.com") && !s.contains("tiktokcdn") && !s.contains("muscdn")) ||
+                           s.contains("youtube.com/shorts") ||
+                           s.contains("youtu.be") ||
+                           s.contains("threads.net") ||
+                           s.contains("threads.com") ||
+                           (s.contains("twitter.com") && !s.contains("pbs.twimg")) ||
+                           (s.contains("x.com") && !s.contains("pbs.twimg"))
         return !isSocialPage
     }
-    
-    private var isTikTok: Bool {
-        (item.originalLink ?? "").lowercased().contains("tiktok")
+
+    private var platform: String {
+        detectedPlatformFromURL((item.originalLink ?? "").lowercased())
     }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
 
-                // Hero Section
+                // MARK: Hero
                 ZStack(alignment: .topLeading) {
                     GeometryReader { geo in
                         Group {
                             if hasRealThumbnail, let url = item.thumbnailURL {
-                                ThumbnailImage(url: url, isTikTok: isTikTok)
+                                ThumbnailImage(url: url, platform: platform)
                             } else {
                                 heroPlaceholder
                             }
@@ -55,7 +60,6 @@ struct FactDetailView: View {
                     }
                     .frame(height: 300)
 
-                    // Top Bar: Back & Share
                     HStack {
                         Button(action: {
                             HapticManager.lightImpact()
@@ -93,9 +97,10 @@ struct FactDetailView: View {
                 }
             }
 
+            // MARK: Content card
             VStack(alignment: .leading, spacing: Theme.Spacing.xxl) {
 
-                // Title Area
+                // Title + credibility badge + link preview
                 VStack(alignment: .leading, spacing: Theme.Spacing.md) {
                     HStack {
                         Label(item.credibilityLevel.rawValue, systemImage: item.credibilityLevel.icon)
@@ -106,9 +111,9 @@ struct FactDetailView: View {
                             .background(item.credibilityLevel.color.opacity(0.1))
                             .foregroundColor(item.credibilityLevel.color)
                             .cornerRadius(Theme.CornerRadius.sm)
-                        
+
                         Spacer()
-                        
+
                         Text(item.timeAgo)
                             .font(.caption)
                             .foregroundColor(.secondary)
@@ -118,188 +123,30 @@ struct FactDetailView: View {
                         .font(.system(size: 26, weight: .bold, design: .serif))
                         .foregroundColor(.primary)
                         .fixedSize(horizontal: false, vertical: true)
-                    
-                    // Link Preview - Always show to display the video/content
+
                     LinkPreviewView(item: item)
                 }
 
                 Divider()
 
-                // Animated Chart
-                VStack(alignment: .center, spacing: 0) {
-                    DonutChart(score: item.credibilityScore, color: item.credibilityLevel.color)
+                // Credibility donut — averaged across all claims
+                DonutChart(score: item.averageCredibilityScore, color: item.averageCredibilityLevel.color)
+                    .frame(maxWidth: .infinity)
+
+                // AI Detection — shown here, right after the chart
+                if !isTextOnlyPlatform(platform) || item.aiGenerated != nil {
+                    aiDetectionCard
                 }
-                .frame(maxWidth: .infinity)
 
-                // The Claim
-                VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-                    Text("The Claim")
-                        .font(.headline)
-                        .foregroundColor(.primary)
-                    Text(item.factCheck.claim)
-                        .font(.body)
-                        .foregroundColor(.primary.opacity(0.8))
-                        .lineSpacing(4)
-                        .fixedSize(horizontal: false, vertical: true)
+                Divider()
+
+                // Multi-claim swipe hint — shown before the pager so users see it immediately
+                if item.claims.count > 1 {
+                    swipeHintBanner
                 }
-                .padding(Theme.Spacing.lg)
-                .background(Color.blue.opacity(0.08))
-                .cornerRadius(Theme.CornerRadius.md)
 
-                // Verdict Badge
-                HStack(spacing: Theme.Spacing.md) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Verdict")
-                            .font(.caption)
-                            .fontWeight(.bold)
-                            .foregroundColor(.secondary)
-                        Text(item.factCheck.verdict)
-                            .font(.system(size: 18, weight: .bold, design: .default))
-                            .foregroundColor(item.credibilityLevel.color)
-                    }
-                    
-                    Spacer()
-                    
-                    VStack(alignment: .trailing, spacing: 4) {
-                        Text("Accuracy Rating")
-                            .font(.caption)
-                            .fontWeight(.bold)
-                            .foregroundColor(.secondary)
-                        Text(item.factCheck.claimAccuracyRating)
-                            .font(.system(size: 18, weight: .bold, design: .default))
-                            .foregroundColor(item.credibilityLevel.color)
-                    }
-                }
-                .padding(Theme.Spacing.lg)
-                .background(item.credibilityLevel.color.opacity(0.08))
-                .cornerRadius(Theme.CornerRadius.md)
-
-                // AI Detection
-                VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-                    Text("AI Detection")
-                        .font(.headline)
-                    
-                    if let aiGen = item.aiGenerated {
-                        HStack(spacing: Theme.Spacing.md) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("AI-Generated Video")
-                                    .font(.caption)
-                                    .fontWeight(.bold)
-                                    .foregroundColor(.secondary)
-                                HStack(spacing: 5) {
-                                    Image(systemName: aiGen == "true" ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
-                                        .font(.system(size: 16, weight: .semibold))
-                                        .foregroundColor(aiGen == "true" ? .orange : .brandGreen)
-                                    Text(aiGen == "true" ? "Yes" : "No")
-                                        .font(.system(size: 18, weight: .bold))
-                                        .foregroundColor(aiGen == "true" ? .orange : .brandGreen)
-                                }
-                            }
-                            
-                            Spacer()
-                            
-                            if let prob = item.aiProbability {
-                                VStack(alignment: .trailing, spacing: 4) {
-                                    Text("Confidence")
-                                        .font(.caption)
-                                        .fontWeight(.bold)
-                                        .foregroundColor(.secondary)
-                                    Text("\(Int(prob * 100))%")
-                                        .font(.system(size: 18, weight: .bold))
-                                        .foregroundColor(aiGen == "true" ? .orange : .brandGreen)
-                                }
-                            }
-                        }
-                    } else {
-                        HStack(spacing: 8) {
-                            Image(systemName: "questionmark.circle.fill")
-                                .foregroundColor(.secondary)
-                            Text("AI detection was not performed for this video.")
-                                .font(.body)
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                }
-                .padding(Theme.Spacing.lg)
-                .background(Color.orange.opacity(0.07))
-                .cornerRadius(Theme.CornerRadius.md)
-
-                // Summary
-                VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-                    Text("Summary")
-                        .font(.headline)
-                    Text(item.factCheck.summary)
-                        .font(.body)
-                        .foregroundColor(.primary.opacity(0.8))
-                        .lineSpacing(6)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .padding(Theme.Spacing.lg)
-                .background(Color.green.opacity(0.08))
-                .cornerRadius(Theme.CornerRadius.md)
-
-                // Explanation
-                VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-                    Text("Explanation")
-                        .font(.headline)
-                    
-                    if !item.factCheck.explanation.isEmpty {
-                        Text(item.factCheck.explanation)
-                            .font(.body)
-                            .foregroundColor(.primary.opacity(0.8))
-                            .lineSpacing(6)
-                            .fixedSize(horizontal: false, vertical: true)
-                    } else {
-                        Text("No detailed explanation available for this fact check.")
-                            .font(.body)
-                            .foregroundColor(.gray.opacity(0.8))
-                            .italic()
-                    }
-                }
-                .padding(Theme.Spacing.lg)
-                .background(Color.cardBackground)
-                .cornerRadius(Theme.CornerRadius.md)
-
-                // Sources
-                VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-                    Text("Sources")
-                        .font(.headline)
-
-                    VStack(alignment: .leading, spacing: 10) {
-                        ForEach(item.factCheck.sources.indices, id: \.self) { index in
-                            Button(action: {
-                                HapticManager.lightImpact()
-                                if let url = URL(string: item.factCheck.sources[index]) {
-                                    UIApplication.shared.open(url)
-                                }
-                            }) {
-                                HStack(spacing: Theme.Spacing.sm) {
-                                    Image(systemName: "link.circle.fill")
-                                        .font(.caption)
-                                        .foregroundColor(.brandBlue)
-
-                                    Text(extractDomainName(from: item.factCheck.sources[index]))
-                                        .font(.caption)
-                                        .foregroundColor(.brandBlue)
-                                        .lineLimit(1)
-
-                                    Spacer()
-
-                                    Image(systemName: "arrow.up.right")
-                                        .font(.caption2)
-                                        .foregroundColor(.brandBlue.opacity(0.6))
-                                }
-                                .padding(.vertical, Theme.Spacing.sm)
-                                .padding(.horizontal, Theme.Spacing.md)
-                                .background(Color.brandBlue.opacity(0.05))
-                                .cornerRadius(Theme.CornerRadius.sm)
-                            }
-                        }
-                    }
-                }
-                .padding(Theme.Spacing.lg)
-                .background(Color.cardBackground)
-                .cornerRadius(Theme.CornerRadius.md)
+                // Claims pager — swipeable when 2-3 claims are present
+                ClaimsPagerView(claims: item.claims)
             }
             .padding(Theme.Spacing.xl)
             .background(Color.backgroundLight)
@@ -308,25 +155,145 @@ struct FactDetailView: View {
             .padding(.bottom, 40)
         }
         .edgesIgnoringSafeArea(.top)
-        .navigationBarHidden(true)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) { Text("") }
+        }
+        .toolbarBackground(.hidden, for: .navigationBar)
+        // Swipe right anywhere outside the claims pager to go back
+        .gesture(
+            DragGesture(minimumDistance: 30, coordinateSpace: .local)
+                .onEnded { value in
+                    let isRightSwipe = value.translation.width > 80
+                        && abs(value.translation.height) < 80
+                    if isRightSwipe {
+                        HapticManager.lightImpact()
+                        presentationMode.wrappedValue.dismiss()
+                    }
+                }
+        )
     }
-    
+
+    // MARK: - Swipe Hint Banner
+
+    private var swipeHintBanner: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "hand.draw.fill")
+                .font(.system(size: 16))
+                .foregroundColor(.brandBlue)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text("\(item.claims.count) claims fact-checked")
+                    .font(.caption)
+                    .fontWeight(.bold)
+                    .foregroundColor(.primary)
+                Text("Swipe left to see each one")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
+
+            Spacer()
+
+            HStack(spacing: 4) {
+                ForEach(0..<item.claims.count, id: \.self) { i in
+                    Capsule()
+                        .fill(item.claims[i].credibilityLevel.color)
+                        .frame(width: 18, height: 5)
+                }
+            }
+
+            Image(systemName: "chevron.right")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+        .padding(.vertical, 10)
+        .padding(.horizontal, 14)
+        .background(Color.brandBlue.opacity(0.07))
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.CornerRadius.md)
+                .stroke(Color.brandBlue.opacity(0.2), lineWidth: 1)
+        )
+        .cornerRadius(Theme.CornerRadius.md)
+    }
+
+    // MARK: - AI Detection Card
+
+    private var aiDetectionCard: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+            Text("AI Detection")
+                .font(.headline)
+
+            if let aiGen = item.aiGenerated {
+                HStack(spacing: Theme.Spacing.md) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("AI-Generated Content")
+                            .font(.caption)
+                            .fontWeight(.bold)
+                            .foregroundColor(.secondary)
+                        HStack(spacing: 5) {
+                            Image(systemName: aiGen == "true" ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundColor(aiGen == "true" ? .orange : .brandGreen)
+                            Text(aiGen == "true" ? "Yes" : "No")
+                                .font(.system(size: 18, weight: .bold))
+                                .foregroundColor(aiGen == "true" ? .orange : .brandGreen)
+                        }
+                    }
+
+                    Spacer()
+
+                    if let prob = item.aiProbability {
+                        VStack(alignment: .trailing, spacing: 4) {
+                            Text("Confidence")
+                                .font(.caption)
+                                .fontWeight(.bold)
+                                .foregroundColor(.secondary)
+                            Text("\(Int(prob * 100))%")
+                                .font(.system(size: 18, weight: .bold))
+                                .foregroundColor(aiGen == "true" ? .orange : .brandGreen)
+                        }
+                    }
+                }
+            } else {
+                HStack(spacing: 8) {
+                    Image(systemName: "questionmark.circle.fill")
+                        .foregroundColor(.secondary)
+                    Text("AI detection was not performed for this content.")
+                        .font(.body)
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+        .padding(Theme.Spacing.lg)
+        .background(Color.orange.opacity(0.07))
+        .cornerRadius(Theme.CornerRadius.md)
+    }
+
     // MARK: - Hero Placeholder
-    
+
     private var heroPlaceholder: some View {
-        ZStack {
-            LinearGradient(
-                colors: isTikTok
-                    ? [Color(red:0.01,green:0.01,blue:0.01), Color(red:0.12,green:0.12,blue:0.12)]
-                    : [Color(red:0.83,green:0.12,blue:0.53), Color(red:0.40,green:0.05,blue:0.70)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
+        let info = platformInfo(for: platform)
+        let gradientColors: [Color] = {
+            switch platform.lowercased() {
+            case "tiktok":
+                return [Color(red:0.01,green:0.01,blue:0.01), Color(red:0.12,green:0.12,blue:0.12)]
+            case "youtube_shorts":
+                return [Color(red:0.86,green:0.07,blue:0.07), Color(red:0.60,green:0.04,blue:0.04)]
+            case "threads":
+                return [Color(red:0.08,green:0.08,blue:0.08), Color(red:0.22,green:0.22,blue:0.22)]
+            case "twitter":
+                return [Color(red:0.11,green:0.63,blue:0.95), Color(red:0.06,green:0.42,blue:0.72)]
+            default:
+                return [Color(red:0.83,green:0.12,blue:0.53), Color(red:0.40,green:0.05,blue:0.70)]
+            }
+        }()
+        return ZStack {
+            LinearGradient(colors: gradientColors, startPoint: .topLeading, endPoint: .bottomTrailing)
             VStack(spacing: 10) {
-                Image(systemName: isTikTok ? "music.note" : "camera.fill")
+                Image(systemName: info.icon)
                     .font(.system(size: 52, weight: .semibold))
                     .foregroundColor(.white.opacity(0.9))
-                Text(isTikTok ? "TikTok" : "Instagram")
+                Text(info.name)
                     .font(.system(size: 16, weight: .medium))
                     .foregroundColor(.white.opacity(0.7))
             }

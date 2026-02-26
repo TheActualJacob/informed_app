@@ -121,16 +121,16 @@ class HomeViewModel: ObservableObject {
     }
     
     // MARK: - Search Text Handling
-
+    
     private func handleSearchTextChange(_ text: String) {
         // Cancel pending tasks
         debounceTask?.cancel()
         searchDebounceTask?.cancel()
-
+        
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-
+        
         if trimmed.isEmpty {
-            // Only exit search mode when there is no active category browse
+            // exit search mode when there is no active category browse
             if isSearchMode && selectedCategory == nil {
                 isSearchMode = false
                 searchResults = []
@@ -147,7 +147,13 @@ class HomeViewModel: ObservableObject {
             let isSocialLink = lower.contains("instagram.com") ||
                                lower.contains("instagr.am") ||
                                lower.contains("tiktok.com") ||
-                               lower.contains("vm.tiktok.com")
+                               lower.contains("vm.tiktok.com") ||
+                               lower.contains("youtube.com/shorts") ||
+                               lower.contains("youtu.be") ||
+                               lower.contains("threads.net") ||
+                               lower.contains("threads.com") ||
+                               lower.contains("twitter.com") ||
+                               lower.contains("x.com")
             if isSocialLink {
                 // It's a URL — debounce and fact-check
                 if isSearchMode { isSearchMode = false; searchResults = []; isSearching = false }
@@ -163,11 +169,9 @@ class HomeViewModel: ObservableObject {
         // It's a text search query.
         // Only flip isSearchMode once — avoids a double re-render on every keystroke.
         if !isSearchMode { isSearchMode = true }
-        // Show skeleton immediately so there is no blank flash while the debounce waits.
-        isSearching = true
-
+        // Show skeleton immediately so there is no blank flash while the debounce waits
         searchDebounceTask = Task {
-            try? await Task.sleep(nanoseconds: 400_000_000) // 0.4s debounce
+            try? await Task.sleep(nanoseconds: 500_000_000)
             guard !Task.isCancelled else { return }
             await performSearch(query: trimmed)
         }
@@ -239,200 +243,158 @@ class HomeViewModel: ObservableObject {
     func performFactCheck(for link: String, userId: String, sessionId: String) async {
         self.processingLink = link
         self.errorMessage = nil
-        
-        if let url = URL(string: link) {
-            self.processingThumbnailURL = url
-        }
-        
+        if let url = URL(string: link) { self.processingThumbnailURL = url }
         print("🔍 Starting fact check for: \(link)")
 
-        // ── GHOST DIAGNOSTICS ──────────────────────────────────────────
+        // Start Live Activity first, capture its submissionId
+        var submissionId: String = UUID().uuidString
         if #available(iOS 16.1, *) {
-            let sysActivities = Activity<ReelProcessingActivityAttributes>.activities
-            print("🔬 [GHOST_DIAG] performFactCheck START")
-            print("🔬 [GHOST_DIAG]   System activities at entry: \(sysActivities.count)")
-            for a in sysActivities {
-                print("🔬 [GHOST_DIAG]     • sid=\(a.attributes.submissionId) state=\(a.activityState) progress=\(Int((a.content.state.progress)*100))%")
-            }
-            print("🔬 [GHOST_DIAG]   currentSubmissionId at entry: \(currentSubmissionId ?? "nil")")
-            print("🔬 [GHOST_DIAG]   currentActivities keys: \(ReelProcessingActivityManager.shared.currentActivities.keys.map{$0.prefix(8)})")
-        }
-        // ───────────────────────────────────────────────────────────────
-
-        // Start the Live Activity and AWAIT it before launching the network call.
-        if #available(iOS 16.1, *) {
-            let submissionId = UUID().uuidString
             currentSubmissionId = submissionId
             print("🔬 [GHOST_DIAG] Calling startActivity for sid=\(submissionId.prefix(8))…")
             await ReelProcessingActivityManager.shared.startActivity(
-                submissionId: submissionId,
-                reelURL: link,
-                thumbnailURL: nil
+                submissionId: submissionId, reelURL: link, thumbnailURL: nil
             )
-            if #available(iOS 16.1, *) {
-                let tracked = ReelProcessingActivityManager.shared.currentActivities[submissionId] != nil
-                let inSystem = Activity<ReelProcessingActivityAttributes>.activities.contains { $0.attributes.submissionId == submissionId }
-                print("🔬 [GHOST_DIAG] After startActivity: tracked=\(tracked) inSystem=\(inSystem)")
-            }
         }
-        
+
+        // Insert a local .processing placeholder immediately so My Reels shows activity
+        let placeholderReel = SharedReel(
+            id: submissionId, url: link, submittedAt: Date(),
+            status: .processing, resultId: nil, errorMessage: nil, factCheckData: nil
+        )
+        SharedReelManager.shared.reels.insert(placeholderReel, at: 0)
+        SharedReelManager.shared.saveReels()
+
         do {
+            // POST /fact-check — now returns 202 with submission_id immediately
             let factCheckData = try await NetworkService.shared.performFactCheck(
-                link: link,
-                userId: userId,
-                sessionId: sessionId
+                link: link, userId: userId, sessionId: sessionId,
+                submissionId: submissionId
             )
-            
-            let factCheck = FactCheck(
-                claim: factCheckData.claim,
-                verdict: factCheckData.verdict,
-                claimAccuracyRating: factCheckData.claimAccuracyRating,
-                explanation: factCheckData.explanation,
-                summary: factCheckData.summary,
-                sources: factCheckData.sources
-            )
-            
-            let platformName: String
-            let platformIcon: String
-            if let platform = factCheckData.platform {
-                if platform.lowercased() == "tiktok" {
-                    platformName = "TikTok"; platformIcon = "music.note"
-                } else {
-                    platformName = "Instagram"; platformIcon = "camera.fill"
+
+            if factCheckData.isAsyncSubmission {
+                // ── New async flow ──────────────────────────────────────
+                // Backend accepted the submission. The backend may return a different
+                // submission_id than we generated — use it if present.
+                if let backendSid = factCheckData.submissionId, !backendSid.isEmpty {
+                    if backendSid != submissionId {
+                        // Update placeholder reel id to match backend's id
+                        if let idx = SharedReelManager.shared.reels.firstIndex(where: { $0.id == submissionId }) {
+                            var updated = SharedReelManager.shared.reels[idx]
+                            SharedReelManager.shared.reels[idx] = SharedReel(
+                                id: backendSid, url: updated.url, submittedAt: updated.submittedAt,
+                                status: .processing, resultId: nil, errorMessage: nil, factCheckData: nil
+                            )
+                            SharedReelManager.shared.saveReels()
+                        }
+                        submissionId = backendSid
+                        if #available(iOS 16.1, *) {
+                            currentSubmissionId = backendSid
+                        }
+                    }
                 }
-            } else if link.lowercased().contains("tiktok") {
-                platformName = "TikTok"; platformIcon = "music.note"
-            } else {
-                platformName = "Instagram"; platformIcon = "camera.fill"
+
+                // Start progress polling — on completion it will call
+                // syncHistoryFromBackend() which fetches the full result
+                SharedReelManager.shared.startProgressPolling(submissionId: submissionId)
+                // Clear the search field; banner stays until polling completes
+                self.searchText = ""
+                print("✅ Submission accepted (202). Polling for sid=\(submissionId.prefix(8))…")
+                return
             }
-            
-            // Use thumbnailUrl only — do NOT fall back to videoLink because videoLink is
-            // a social-page URL (instagram.com/reel/…) that LinkPreviewView's
-            // hasRealThumbnail guard will reject.  A nil thumbnail shows the platform
-            // placeholder until loadPersonalizedFeed() returns with the real CDN URL.
+
+            // ── Legacy sync flow (backend returned full result immediately) ────
+            let resolvedClaims = factCheckData.resolvedClaims
+            let primaryClaim   = resolvedClaims[0]
+            let resolvedPlatform = factCheckData.platform ?? detectedPlatformFromURL(link)
+            let (platformName, platformIcon) = platformInfo(for: resolvedPlatform)
             let thumbnailURL: URL? = factCheckData.thumbnailUrl.flatMap { URL(string: $0) }
+
             let newItem = FactCheckItem(
-                sourceName: platformName,
-                sourceIcon: platformIcon,
-                timeAgo: "Just now",
-                title: factCheckData.title,
-                summary: factCheckData.summary,
+                sourceName: platformName, sourceIcon: platformIcon,
+                timeAgo: "Just now", title: factCheckData.title,
+                summary: primaryClaim.summary,
                 thumbnailURL: thumbnailURL,
-                credibilityScore: calculateCredibilityScore(from: factCheckData.claimAccuracyRating),
-                sources: factCheckData.sources.joined(separator: ", "),
-                verdict: factCheckData.verdict,
-                factCheck: factCheck,
-                originalLink: link,
-                datePosted: factCheckData.date,
-                aiGenerated: factCheckData.aiGenerated,
-                aiProbability: factCheckData.aiProbability
+                credibilityScore: calculateCredibilityScore(from: primaryClaim.claimAccuracyRating),
+                sources: primaryClaim.sources.joined(separator: ", "),
+                verdict: primaryClaim.verdict, claims: resolvedClaims,
+                originalLink: link, datePosted: factCheckData.date,
+                aiGenerated: factCheckData.aiGenerated, aiProbability: factCheckData.aiProbability
             )
-            
             PersistenceService.shared.saveFactCheck(newItem)
-            
+
             let storedData = StoredFactCheckData(
-                title: factCheckData.title,
-                summary: factCheckData.summary,
-                thumbnailURL: factCheckData.thumbnailUrl,
-                claim: factCheckData.claim,
-                verdict: factCheckData.verdict,
-                claimAccuracyRating: factCheckData.claimAccuracyRating,
-                explanation: factCheckData.explanation,
-                sources: factCheckData.sources,
-                datePosted: factCheckData.date,
-                platform: factCheckData.platform,
-                aiGenerated: factCheckData.aiGenerated,
-                aiProbability: factCheckData.aiProbability
+                title: factCheckData.title, summary: primaryClaim.summary,
+                thumbnailURL: factCheckData.thumbnailUrl, claims: resolvedClaims,
+                datePosted: factCheckData.date, platform: factCheckData.platform,
+                aiGenerated: factCheckData.aiGenerated, aiProbability: factCheckData.aiProbability
             )
-            
-            // Re-use the same submissionId that was given to the Live Activity so
-            // SharedReel.id == Live Activity submissionId. This is critical: the
-            // dismissAllCompletedLiveActivities sweep looks up reels by id, so a
-            // mismatched id means the activity can never be found and ended, leaving
-            // a ghost stuck at 10%.
-            let reelId = currentSubmissionId ?? UUID().uuidString
-            let newReel = SharedReel(
-                id: reelId,
-                url: link,
-                submittedAt: Date(),
-                status: .completed,
-                resultId: factCheckData.title,
-                errorMessage: nil,
-                factCheckData: storedData
+            let completedReel = SharedReel(
+                id: submissionId, url: link, submittedAt: Date(),
+                status: .completed, resultId: factCheckData.title,
+                errorMessage: nil, factCheckData: storedData
             )
-            
-            SharedReelManager.shared.reels.insert(newReel, at: 0)
+            // Replace placeholder with completed reel
+            if let idx = SharedReelManager.shared.reels.firstIndex(where: { $0.id == submissionId }) {
+                SharedReelManager.shared.reels[idx] = completedReel
+            } else {
+                SharedReelManager.shared.reels.insert(completedReel, at: 0)
+            }
             SharedReelManager.shared.saveReels()
-            
-            if #available(iOS 16.1, *), let submissionId = currentSubmissionId {
-                print("🔬 [GHOST_DIAG] Fact check SUCCESS. sid=\(submissionId.prefix(8))")
-                print("🔬 [GHOST_DIAG]   tracked=\(ReelProcessingActivityManager.shared.currentActivities[submissionId] != nil)")
-                // Remove from App Group so the periodic checker can never re-spawn a ghost.
+
+            if #available(iOS 16.1, *) {
                 ReelProcessingActivityManager.removeFromAppGroupPendingSubmissions(submissionId: submissionId)
+                let sid = submissionId
                 currentSubmissionId = nil
                 Task { @MainActor in
-                    print("🔬 [GHOST_DIAG] Calling completeActivity for sid=\(submissionId.prefix(8))…")
                     await ReelProcessingActivityManager.shared.completeActivity(
-                        submissionId: submissionId,
-                        title: factCheckData.title,
-                        verdict: factCheckData.verdict
+                        submissionId: sid, title: factCheckData.title, verdict: primaryClaim.verdict
                     )
-                    print("🔬 [GHOST_DIAG] completeActivity done. Sleeping 3s then ending…")
                     try? await Task.sleep(nanoseconds: 3_000_000_000)
-                    await ReelProcessingActivityManager.shared.endActivity(
-                        submissionId: submissionId,
-                        dismissalPolicy: .default
-                    )
-                    let stillInSystem = Activity<ReelProcessingActivityAttributes>.activities
-                        .contains { $0.attributes.submissionId == submissionId }
-                    print("🔬 [GHOST_DIAG] After endActivity: stillInSystem=\(stillInSystem)")
-                    print("🏁 [HomeViewModel] Live Activity fully ended for \(submissionId.prefix(8))")
+                    await ReelProcessingActivityManager.shared.endActivity(submissionId: sid, dismissalPolicy: .default)
                 }
             } else {
-                print("🔬 [GHOST_DIAG] ⚠️ No currentSubmissionId at success point")
                 currentSubmissionId = nil
             }
 
             self.searchText = ""
             self.processingLink = nil
             self.processingThumbnailURL = nil
-
             await loadPersonalizedFeed()
-
-            // Patch any social-page thumbnail URLs that slipped through in PersistenceService
-            // history and in SharedReel.factCheckData (covers both home and My Reels cards).
             SharedReelManager.shared.scheduleThumbnailRefresh()
 
+        } catch let fcErr as FactCheckError {
+            let msg = getUserFriendlyErrorMessage(errorType: fcErr.errorType ?? "", fallbackMessage: fcErr.localizedDescription)
+            self.errorMessage = msg
+            SharedReelManager.shared.reels.removeAll { $0.id == submissionId }
+            SharedReelManager.shared.saveReels()
+            if #available(iOS 16.1, *) {
+                ReelProcessingActivityManager.removeFromAppGroupPendingSubmissions(submissionId: submissionId)
+                Task { @MainActor in await ReelProcessingActivityManager.shared.failActivity(submissionId: submissionId, errorMessage: msg) }
+                currentSubmissionId = nil
+            }
+            self.processingLink = nil; self.processingThumbnailURL = nil
         } catch let networkError as NetworkError {
             let msg = networkError.errorDescription ?? "An error occurred"
             self.errorMessage = msg
-            if #available(iOS 16.1, *), let submissionId = currentSubmissionId {
+            SharedReelManager.shared.reels.removeAll { $0.id == submissionId }
+            SharedReelManager.shared.saveReels()
+            if #available(iOS 16.1, *) {
                 ReelProcessingActivityManager.removeFromAppGroupPendingSubmissions(submissionId: submissionId)
-                Task { @MainActor in
-                    await ReelProcessingActivityManager.shared.failActivity(submissionId: submissionId, errorMessage: msg)
-                }
+                Task { @MainActor in await ReelProcessingActivityManager.shared.failActivity(submissionId: submissionId, errorMessage: msg) }
                 currentSubmissionId = nil
             }
-            self.processingLink = nil
-            self.processingThumbnailURL = nil
+            self.processingLink = nil; self.processingThumbnailURL = nil
         } catch {
-            var msg = "Failed to check fact: \(error.localizedDescription)"
-            if let nsError = error as NSError?,
-               let data = nsError.userInfo["data"] as? Data,
-               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let errorType = json["error_type"] as? String {
-                msg = getUserFriendlyErrorMessage(errorType: errorType, fallbackMessage: msg)
-            }
+            let msg = "Failed to check fact: \(error.localizedDescription)"
             self.errorMessage = msg
-            if #available(iOS 16.1, *), let submissionId = currentSubmissionId {
+            SharedReelManager.shared.reels.removeAll { $0.id == submissionId }
+            SharedReelManager.shared.saveReels()
+            if #available(iOS 16.1, *) {
                 ReelProcessingActivityManager.removeFromAppGroupPendingSubmissions(submissionId: submissionId)
-                Task { @MainActor in
-                    await ReelProcessingActivityManager.shared.failActivity(submissionId: submissionId, errorMessage: msg)
-                }
+                Task { @MainActor in await ReelProcessingActivityManager.shared.failActivity(submissionId: submissionId, errorMessage: msg) }
                 currentSubmissionId = nil
             }
-            self.processingLink = nil
-            self.processingThumbnailURL = nil
+            self.processingLink = nil; self.processingThumbnailURL = nil
         }
     }
 

@@ -164,7 +164,7 @@ struct SearchReelRow: View {
     let reel: PublicReel
     @Environment(\.colorScheme) var colorScheme
     
-    private var isTikTok: Bool { reel.detectedPlatform == "tiktok" }
+    private var platform: String { reel.detectedPlatform }
     
     private var hasRealThumbnail: Bool {
         guard let urlStr = reel.thumbnailUrl else { return false }
@@ -174,7 +174,13 @@ struct SearchReelRow: View {
                            s.contains("tiktok.com/@") ||
                            s.contains("vm.tiktok.com") ||
                            (s.contains("instagram.com") && !s.contains("cdninstagram") && !s.contains("fbcdn")) ||
-                           (s.contains("tiktok.com") && !s.contains("tiktokcdn") && !s.contains("muscdn"))
+                           (s.contains("tiktok.com") && !s.contains("tiktokcdn") && !s.contains("muscdn")) ||
+                           s.contains("youtube.com/shorts") ||
+                           s.contains("youtu.be") ||
+                           s.contains("threads.net") ||
+                           s.contains("threads.com") ||
+                           (s.contains("twitter.com") && !s.contains("pbs.twimg")) ||
+                           (s.contains("x.com") && !s.contains("pbs.twimg"))
         return !isSocialPage
     }
     
@@ -183,9 +189,9 @@ struct SearchReelRow: View {
             // Thumbnail
             Group {
                 if hasRealThumbnail, let urlStr = reel.thumbnailUrl, let url = URL(string: urlStr) {
-                    ThumbnailImage(url: url, isTikTok: isTikTok)
+                    ThumbnailImage(url: url, platform: platform)
                 } else {
-                    ThumbnailPlaceholder(isTikTok: isTikTok)
+                    ThumbnailPlaceholder(platform: platform)
                 }
             }
             .frame(width: 72, height: 72)
@@ -224,8 +230,8 @@ struct SearchReelRow: View {
                 // Verdict badge
                 VerdictBadge(verdict: reel.verdict)
                 
-                // AI Generation Badge (only show when flagged)
-                if reel.aiGenerated == "true" {
+                // AI Generation Badge (only show when flagged and AI detection applies)
+                if reel.aiGenerated == "true" && !isTextOnlyPlatform(reel.detectedPlatform) {
                     HStack(spacing: 4) {
                         Image(systemName: "wand.and.stars")
                             .font(.system(size: 10, weight: .semibold))

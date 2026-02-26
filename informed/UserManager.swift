@@ -59,11 +59,14 @@ class UserManager: ObservableObject {
         self.currentUsername = username
         self.currentSessionId = sessionId
         self.isAuthenticated = true
-        
+
         print("✅ User saved: \(username) (ID: \(userId), Session: \(sessionId))")
-        
-        // Notify that user changed (if it's a different user)
+
+        // Always reload reels immediately when the active user changes so that
+        // SharedReelManager has the right data before ContentView/SharedReelsView
+        // appear and trigger syncHistoryFromBackend.
         if oldUserId != userId {
+            SharedReelManager.shared.reloadReelsForCurrentUser(userId: userId)
             NotificationCenter.default.post(name: NSNotification.Name("UserDidChange"), object: nil)
             print("📢 Posted UserDidChange notification")
         }

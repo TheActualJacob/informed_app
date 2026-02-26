@@ -25,7 +25,7 @@ import SwiftUI
 
 struct ThumbnailImage: View {
     let url: URL
-    let isTikTok: Bool
+    let platform: String
 
     @State private var image: UIImage? = nil
     @State private var failed = false
@@ -37,7 +37,7 @@ struct ThumbnailImage: View {
                     .resizable()
                     .aspectRatio(contentMode: .fill)
             } else if failed {
-                ThumbnailPlaceholder(isTikTok: isTikTok)
+                ThumbnailPlaceholder(platform: platform)
             } else {
                 Color.secondary.opacity(0.15)
             }
@@ -93,12 +93,19 @@ struct LinkPreviewView: View {
                            s.contains("tiktok.com/@") ||
                            s.contains("vm.tiktok.com") ||
                            (s.contains("instagram.com") && !s.contains("cdninstagram") && !s.contains("fbcdn")) ||
-                           (s.contains("tiktok.com") && !s.contains("tiktokcdn") && !s.contains("muscdn"))
+                           (s.contains("tiktok.com") && !s.contains("tiktokcdn") && !s.contains("muscdn")) ||
+                           s.contains("youtube.com/shorts") ||
+                           s.contains("youtu.be") ||
+                           s.contains("threads.net") ||
+                           s.contains("threads.com") ||
+                           (s.contains("twitter.com") && !s.contains("pbs.twimg")) ||
+                           (s.contains("x.com") && !s.contains("pbs.twimg"))
         return !isSocialPage
     }
     
-    private var isTikTok: Bool {
-        (item.originalLink ?? "").lowercased().contains("tiktok")
+    private var platform: String {
+        let link = (item.originalLink ?? "").lowercased()
+        return detectedPlatformFromURL(link)
     }
     
     var body: some View {
@@ -150,9 +157,9 @@ struct LinkPreviewView: View {
     @ViewBuilder
     private var thumbnailView: some View {
         if hasRealThumbnail, let url = item.thumbnailURL {
-            ThumbnailImage(url: url, isTikTok: isTikTok)
+            ThumbnailImage(url: url, platform: platform)
         } else {
-            ThumbnailPlaceholder(isTikTok: isTikTok)
+            ThumbnailPlaceholder(platform: platform)
         }
     }
 }
@@ -160,19 +167,32 @@ struct LinkPreviewView: View {
 // MARK: - Thumbnail Placeholder
 
 struct ThumbnailPlaceholder: View {
-    let isTikTok: Bool
+    let platform: String
     
     private var gradient: [Color] {
-        isTikTok
-            ? [Color(red: 0.01, green: 0.01, blue: 0.01), Color(red: 0.15, green: 0.15, blue: 0.15)]
-            : [Color(red: 0.83, green: 0.12, blue: 0.53), Color(red: 0.50, green: 0.05, blue: 0.75)]
+        switch platform.lowercased() {
+        case "tiktok":
+            return [Color(red: 0.01, green: 0.01, blue: 0.01), Color(red: 0.15, green: 0.15, blue: 0.15)]
+        case "youtube_shorts":
+            return [Color(red: 0.86, green: 0.07, blue: 0.07), Color(red: 0.60, green: 0.04, blue: 0.04)]
+        case "threads":
+            return [Color(red: 0.08, green: 0.08, blue: 0.08), Color(red: 0.22, green: 0.22, blue: 0.22)]
+        case "twitter":
+            return [Color(red: 0.11, green: 0.63, blue: 0.95), Color(red: 0.06, green: 0.42, blue: 0.72)]
+        default: // instagram
+            return [Color(red: 0.83, green: 0.12, blue: 0.53), Color(red: 0.50, green: 0.05, blue: 0.75)]
+        }
+    }
+    
+    private var icon: String {
+        platformInfo(for: platform).icon
     }
     
     var body: some View {
         ZStack {
             LinearGradient(colors: gradient, startPoint: .topLeading, endPoint: .bottomTrailing)
             VStack(spacing: 3) {
-                Image(systemName: isTikTok ? "music.note" : "camera.fill")
+                Image(systemName: icon)
                     .font(.system(size: 22, weight: .semibold))
                     .foregroundColor(.white)
                 Text("Watch")

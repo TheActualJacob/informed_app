@@ -60,48 +60,54 @@ class NetworkService {
     
     // MARK: - Fact Check API
     
-    func performFactCheck(link: String, userId: String, sessionId: String) async throws -> FactCheckData {
+    func performFactCheck(link: String, userId: String, sessionId: String,
+                          submissionId: String? = nil) async throws -> FactCheckData {
         guard var urlComponents = URLComponents(string: Config.Endpoints.factCheck) else {
             throw NetworkError.invalidURL
         }
-        
-        // Add query parameters
         urlComponents.queryItems = [
-            URLQueryItem(name: "userId", value: userId),
+            URLQueryItem(name: "userId",    value: userId),
             URLQueryItem(name: "sessionId", value: sessionId)
         ]
-        
-        guard let url = urlComponents.url else {
-            throw NetworkError.invalidURL
-        }
-        
+        guard let url = urlComponents.url else { throw NetworkError.invalidURL }
+
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
-        let body = ["link": link]
+        request.timeoutInterval = 30  // only the submission round-trip
+
+        var body: [String: String] = ["link": link]
+        if let sid = submissionId { body["submission_id"] = sid }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        
+
         do {
             let (data, response) = try await session.data(for: request)
-            
+
             guard let httpResponse = response as? HTTPURLResponse else {
                 throw NetworkError.unknown(URLError(.badServerResponse))
             }
-            
+
+            // Check for API-level error response first (error field present)
+            if let errResp = try? JSONDecoder().decode(FactCheckErrorResponse.self, from: data),
+               !errResp.error.isEmpty {
+                throw NetworkError.decodingError(errResp.error)
+            }
+
             guard (200...299).contains(httpResponse.statusCode) else {
                 throw NetworkError.serverError(statusCode: httpResponse.statusCode)
             }
-            
+
+            // Decode — accepts both 202 async response and legacy synchronous response
             do {
-                let factCheckData = try JSONDecoder().decode(FactCheckData.self, from: data)
-                return factCheckData
+                return try JSONDecoder().decode(FactCheckData.self, from: data)
             } catch {
                 throw NetworkError.decodingError(error.localizedDescription)
             }
-            
+
         } catch let urlError as URLError {
             throw mapURLError(urlError)
+        } catch let netErr as NetworkError {
+            throw netErr
         } catch {
             throw NetworkError.unknown(error)
         }
