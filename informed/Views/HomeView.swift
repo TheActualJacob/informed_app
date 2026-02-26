@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct HomeView: View {
-    @StateObject var viewModel = HomeViewModel()
+    @EnvironmentObject var viewModel: HomeViewModel
     @EnvironmentObject var userManager: UserManager
     @EnvironmentObject var reelManager: SharedReelManager
     @FocusState private var isSearchFocused: Bool

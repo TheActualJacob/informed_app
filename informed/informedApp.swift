@@ -14,6 +14,11 @@ struct informedApp: App {
     @StateObject private var userManager = UserManager()
     @StateObject private var notificationManager = NotificationManager.shared
     @StateObject private var reelManager = SharedReelManager.shared
+
+    // App-level ViewModels — kept alive across tab switches so cached data
+    // is always available and never reset when the user navigates away.
+    @StateObject private var homeViewModel = HomeViewModel()
+    @StateObject private var feedViewModel = FeedViewModel()
     
     @State private var showSuccessAlert = false
     @State private var showErrorAlert = false
@@ -29,6 +34,8 @@ struct informedApp: App {
                     .environmentObject(userManager)
                     .environmentObject(notificationManager)
                     .environmentObject(reelManager)
+                    .environmentObject(homeViewModel)
+                    .environmentObject(feedViewModel)
                     .onOpenURL { url in
                         handleIncomingURL(url)
                     }
@@ -91,6 +98,18 @@ struct informedApp: App {
                         // Request notification permissions on first launch
                         if notificationManager.authorizationStatus == .notDetermined {
                             _ = await notificationManager.requestNotificationPermissions()
+                        }
+                        // Background-preload both feeds in parallel so data is warm
+                        // before the user even taps a tab.
+                        if let userId = userManager.currentUserId,
+                           let sessionId = userManager.currentSessionId {
+                            homeViewModel.userId = userId
+                            homeViewModel.sessionId = sessionId
+                            SharedReelManager.shared.homeViewModel = homeViewModel
+                        }
+                        await withTaskGroup(of: Void.self) { group in
+                            group.addTask { await homeViewModel.loadInitialData() }
+                            group.addTask { await feedViewModel.loadFeedIfNeeded() }
                         }
                     }
                     .alert("Success", isPresented: $showSuccessAlert) {

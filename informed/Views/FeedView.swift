@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct FeedView: View {
-    @StateObject private var viewModel = FeedViewModel()
+    @EnvironmentObject private var viewModel: FeedViewModel
     @EnvironmentObject var userManager: UserManager
     
     var body: some View {

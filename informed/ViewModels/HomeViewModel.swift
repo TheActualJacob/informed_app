@@ -60,18 +60,45 @@ class HomeViewModel: ObservableObject {
     // MARK: - Initialization
     
     init() {
-        // Data loads triggered by HomeView.onAppear once userId/sessionId are set
+        // Pre-populate from cache so the UI shows content instantly on first render.
+        // The real network load happens when loadInitialData() is called.
+        let cache = AppDataCache.shared
+        if !cache.personalizedFeed.isEmpty {
+            personalizedFeed = cache.personalizedFeed
+            feedSource       = cache.feedSource
+        }
+        if !cache.categories.isEmpty {
+            categories = cache.categories
+        }
     }
     
     // MARK: - Initial Load
     
+    /// Called from HomeView.onAppear. Only performs a network fetch if the cache is stale.
     func loadInitialData() {
+        let cache = AppDataCache.shared
         Task {
             await withTaskGroup(of: Void.self) { group in
-                group.addTask { await self.loadCategories() }
-                group.addTask { await self.loadPersonalizedFeed() }
+                // Always refresh categories (lightweight) if they are empty
+                if cache.categories.isEmpty {
+                    group.addTask { await self.loadCategories() }
+                }
+                // Only hit the network for the feed if cache is stale
+                if cache.isFeedStale || self.personalizedFeed.isEmpty {
+                    group.addTask { await self.loadPersonalizedFeed() }
+                }
                 group.addTask { await PersistenceService.shared.resolveStaleThumbnails() }
             }
+        }
+    }
+
+    // Convenience called from informedApp background preload —
+    // returns immediately so the await in the TaskGroup doesn't block.
+    func loadInitialData() async {
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { await self.loadCategories() }
+            group.addTask { await self.loadPersonalizedFeed() }
+            group.addTask { await PersistenceService.shared.resolveStaleThumbnails() }
         }
     }
     
@@ -83,10 +110,11 @@ class HomeViewModel: ObservableObject {
         do {
             let cats = try await NetworkService.shared.fetchCategories()
             categories = cats
+            AppDataCache.shared.categories = cats
         } catch {
             print("⚠️ Could not load categories: \(error)")
             // Populate with static fallback so UI still shows
-            categories = Self.staticCategories
+            if categories.isEmpty { categories = Self.staticCategories }
         }
         isCategoriesLoading = false
     }
@@ -95,18 +123,27 @@ class HomeViewModel: ObservableObject {
     
     func loadPersonalizedFeed() async {
         guard !isFeedLoading else { return }
+        // Only show spinner when there is nothing cached to display yet
+        let hasCache = !personalizedFeed.isEmpty
         isFeedLoading = true
+        if hasCache { isFeedLoading = false }   // hide spinner — cache already visible
         do {
             let response = try await NetworkService.shared.fetchPersonalizedFeed(
                 userId: userId,
                 sessionId: sessionId,
                 limit: 20
             )
-            personalizedFeed = response.reels
-            feedSource = response.source
+            withAnimation(.easeInOut(duration: 0.25)) {
+                personalizedFeed = response.reels
+                feedSource       = response.source
+            }
+            let cache = AppDataCache.shared
+            cache.personalizedFeed  = response.reels
+            cache.feedSource        = response.source
+            cache.lastFeedRefresh   = Date()
         } catch {
             print("⚠️ Could not load personalized feed: \(error)")
-            personalizedFeed = []
+            if personalizedFeed.isEmpty { personalizedFeed = [] }
         }
         isFeedLoading = false
     }

@@ -8,16 +8,13 @@
 import SwiftUI
 
 struct HistoryView: View {
-    @State private var history: [FactCheckItem] = []
-    @State private var isLoading = true
+    @State private var history: [FactCheckItem] = PersistenceService.shared.getFactCheckHistory()
     
     var body: some View {
         ZStack {
             Color.backgroundLight.ignoresSafeArea()
             
-            if isLoading {
-                ProgressView("Loading history...")
-            } else if history.isEmpty {
+            if history.isEmpty {
                 emptyStateView
             } else {
                 ScrollView {
@@ -85,9 +82,7 @@ struct HistoryView: View {
     }
     
     private func loadHistory() {
-        isLoading = true
         history = PersistenceService.shared.getFactCheckHistory()
-        isLoading = false
     }
     
     private func clearHistory() {

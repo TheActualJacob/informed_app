@@ -27,10 +27,14 @@ class FeedViewModel: ObservableObject {
     // MARK: - Initialization
     
     init() {
-        // Auto-load feed when view model initializes
-        Task {
-            await loadFeed()
+        // Pre-populate from disk cache so the UI renders immediately.
+        let cache = AppDataCache.shared
+        if !cache.publicReels.isEmpty {
+            publicReels = cache.publicReels
+            hasMore     = true  // allow pull-to-refresh even with cached data
         }
+        // The actual network load is triggered by the app-level TaskGroup in
+        // informedApp.task, so we don't kick it off here.
     }
     
     // MARK: - Public Methods
@@ -57,18 +61,25 @@ class FeedViewModel: ObservableObject {
             return
         }
         
-        isLoading = true
+        // Only show the full-screen spinner when there is nothing to show yet
+        let hasCache = !publicReels.isEmpty
+        if !hasCache { isLoading = true }
         errorMessage = nil
         
         print("✅ Attempting to fetch public feed for user: \(userId)")
         
         do {
             let response = try await fetchPublicFeed(page: 1, limit: pageSize)
-            publicReels = response.reels
-            currentPage = response.pagination.currentPage
-            hasMore = response.pagination.hasMore
-            totalCount = response.pagination.totalCount
-            nextCursor = response.pagination.nextCursor
+            withAnimation(.easeInOut(duration: 0.25)) {
+                publicReels = response.reels
+                currentPage = response.pagination.currentPage
+                hasMore     = response.pagination.hasMore
+                totalCount  = response.pagination.totalCount
+                nextCursor  = response.pagination.nextCursor
+            }
+            let cache = AppDataCache.shared
+            cache.publicReels         = response.reels
+            cache.lastDiscoverRefresh = Date()
             
             print("✅ Loaded \(publicReels.count) public reels")
         } catch let error as NetworkError {
@@ -84,6 +95,15 @@ class FeedViewModel: ObservableObject {
         }
         
         isLoading = false
+    }
+
+    /// Called from the app-level background preload. Only fetches if cache is stale.
+    func loadFeedIfNeeded() async {
+        guard AppDataCache.shared.isDiscoverStale || publicReels.isEmpty else {
+            print("ℹ️ Discover feed cache is fresh — skipping background fetch")
+            return
+        }
+        await loadFeed()
     }
     
     func loadMoreReels() async {
