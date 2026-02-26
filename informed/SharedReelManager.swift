@@ -294,14 +294,18 @@ class SharedReelManager: ObservableObject {
             queue: .main
         ) { [weak self] _ in
             guard let self = self else { return }
-            Task { @MainActor [weak self] in
-                guard let self = self else { return }
-                let newUserId = UserManager.shared.currentUserId
-                if self.currentUserId != newUserId {
-                    print("👤 User changed from \(self.currentUserId ?? "nil") to \(newUserId ?? "nil")")
-                    self.currentUserId = newUserId
-                    self.loadStoredReels()
-                }
+            // Run on main queue synchronously (we're already on .main via queue: .main)
+            // so there is zero window where old reels can be merged by a concurrent sync.
+            let newUserId = UserManager.shared.currentUserId
+            if self.currentUserId != newUserId {
+                print("👤 User changed from \(self.currentUserId ?? "nil") to \(newUserId ?? "nil")")
+                // Immediately wipe in-memory reels before loading the new user's data.
+                // This closes the race window where syncHistoryFromBackend could merge
+                // the previous user's reels into the new user's list.
+                self.reels = []
+                self.lastSyncDate = nil
+                self.currentUserId = newUserId
+                self.loadStoredReels()
             }
         }
     }
@@ -869,7 +873,11 @@ class SharedReelManager: ObservableObject {
             print("⚠️ Cannot sync: No user credentials")
             return
         }
-        
+
+        // Snapshot the user ID at the start of the sync so we can detect
+        // mid-flight user changes and discard stale results.
+        let syncingForUserId = userId
+
         await MainActor.run {
             isSyncing = true
         }
@@ -934,6 +942,13 @@ class SharedReelManager: ObservableObject {
                     )
                 }
                 
+                // Guard: discard results if the user changed while this sync was in flight.
+                guard UserManager.shared.currentUserId == syncingForUserId else {
+                    isSyncing = false
+                    print("⚠️ Discarding sync results — user changed mid-flight (was \(syncingForUserId))")
+                    return
+                }
+
                 // Update reels, keeping only local processing/pending reels that are:
                 //  • younger than 5 minutes, AND
                 //  • still listed in the App Group's pending_submissions
@@ -952,13 +967,13 @@ class SharedReelManager: ObservableObject {
                 }
                 let remoteIds = Set(syncedReels.map { $0.id })
                 let uniqueLocalReels = localPendingReels.filter { !remoteIds.contains($0.id) }
-                
+
                 reels = uniqueLocalReels + syncedReels
                 saveReels()
-                
+
                 lastSyncDate = Date()
                 isSyncing = false
-                
+
                 print("✅ Synced \(syncedReels.count) reels from backend")
             }
             
