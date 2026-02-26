@@ -34,6 +34,10 @@ struct HistoryView: View {
                     }
                     .padding()
                 }
+                .refreshable {
+                    HapticManager.lightImpact()
+                    loadHistory()
+                }
             }
         }
         .navigationTitle("History")

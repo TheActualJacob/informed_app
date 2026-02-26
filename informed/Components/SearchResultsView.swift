@@ -90,6 +90,9 @@ struct SearchResultsView: View {
                     if isSearching {
                         Text("Searching…")
                             .foregroundColor(.secondary)
+                    } else if query == "*", let cat = selectedCategory {
+                        Text("\(totalCount > 0 ? "\(totalCount)" : "No") result\(totalCount == 1 ? "" : "s") in \"\(cat)\"")
+                            .foregroundColor(.secondary)
                     } else {
                         Text("\(totalCount > 0 ? "\(totalCount)" : "No") result\(totalCount == 1 ? "" : "s") for \"\(query)\"")
                             .foregroundColor(.secondary)

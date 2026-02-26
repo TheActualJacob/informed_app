@@ -81,29 +81,29 @@ struct FeedView: View {
     }
     
     // MARK: - Empty State
-    
+
     private var emptyStateView: some View {
         VStack(spacing: 20) {
-            Image(systemName: "server.rack")
+            Image(systemName: "tray")
                 .font(.system(size: 60))
                 .foregroundColor(.gray.opacity(0.5))
-            
-            Text("Backend Not Ready")
+
+            Text("Nothing Here Yet")
                 .font(.title2)
                 .fontWeight(.bold)
                 .foregroundColor(.primary)
-            
-            Text("The public feed requires backend endpoints.\n\nShare BACKEND_URGENT_FIX.md with your backend team.")
+
+            Text("The Discover feed fills up as people fact-check reels. Check back soon!")
                 .font(.body)
                 .foregroundColor(.gray)
                 .multilineTextAlignment(.center)
-            
+
             Button {
                 Task {
                     await viewModel.loadFeed()
                 }
             } label: {
-                Text("Try Loading Feed")
+                Text("Refresh")
                     .font(.headline)
                     .foregroundColor(.white)
                     .padding(.horizontal, 32)

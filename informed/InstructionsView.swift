@@ -12,109 +12,107 @@ struct InstructionsView: View {
     @State private var showPermissionRequest = false
     
     var body: some View {
-        NavigationView {
-            ZStack {
-                // Background gradient
-                LinearGradient(
-                    colors: [Color.brandBlue.opacity(0.1), Color.brandTeal.opacity(0.1)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-                .ignoresSafeArea()
-                
-                ScrollView {
-                    VStack(spacing: 30) {
-                        
-                        Spacer().frame(height: 20)
-                        
-                        // Header
-                        VStack(spacing: 12) {
-                            Image(systemName: "sparkles")
-                                .font(.system(size: 60))
-                                .foregroundStyle(
-                                    LinearGradient(
-                                        colors: [.brandTeal, .brandBlue],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
+        ZStack {
+            // Background gradient
+            LinearGradient(
+                colors: [Color.brandBlue.opacity(0.1), Color.brandTeal.opacity(0.1)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
+
+            ScrollView {
+                VStack(spacing: 30) {
+
+                    Spacer().frame(height: 20)
+
+                    // Header
+                    VStack(spacing: 12) {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 60))
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: [.brandTeal, .brandBlue],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
                                 )
-                            
-                            Text("How to Use Informed")
-                                .font(.system(size: 28, weight: .bold, design: .rounded))
-                                .foregroundColor(.primary)
-                            
-                            Text("Fact-check Instagram reels instantly")
-                                .font(.subheadline)
-                                .foregroundColor(.gray)
-                        }
-                        .padding(.bottom, 10)
-                        
-                        // Notification Status Card
-                        notificationStatusCard
-                        
-                        // Instructions
-                        VStack(spacing: 16) {
-                            InstructionStep(
-                                number: "1",
-                                icon: "Instagram",
-                                title: "Find a Reel",
-                                description: "Open Instagram and find a reel you want to fact-check"
                             )
-                            
-                            InstructionStep(
-                                number: "2",
-                                icon: "square.and.arrow.up",
-                                title: "Share to Informed",
-                                description: "Tap the share button and select 'Informed' from the share sheet"
-                            )
-                            
-                            InstructionStep(
-                                number: "3",
-                                icon: "gearshape.2",
-                                title: "We Process It",
-                                description: "Our AI analyzes the reel and fact-checks all claims made"
-                            )
-                            
-                            InstructionStep(
-                                number: "4",
-                                icon: "bell.badge",
-                                title: "Get Notified",
-                                description: "You'll receive a push notification when fact-checking is complete"
-                            )
-                            
-                            InstructionStep(
-                                number: "5",
-                                icon: "doc.text.magnifyingglass",
-                                title: "View Results",
-                                description: "Open the app to see detailed fact-check results and sources"
-                            )
-                        }
-                        .padding(.horizontal)
-                        
-                        // Tips Section
-                        VStack(alignment: .leading, spacing: 12) {
-                            Label("Quick Tips", systemImage: "lightbulb.fill")
-                                .font(.headline)
-                                .foregroundColor(.brandBlue)
-                            
-                            TipItem(text: "Make sure notifications are enabled to get instant results")
-                            TipItem(text: "Processing typically takes 30 seconds to 2 minutes")
-                            TipItem(text: "You can share multiple reels - we'll process them all")
-                            TipItem(text: "Check the 'Shared Reels' tab to see status of all submissions")
-                        }
-                        .padding()
-                        .background(Color.white)
-                        .cornerRadius(16)
-                        .shadow(color: Color.black.opacity(0.08), radius: 8, y: 4)
-                        .padding(.horizontal)
-                        
-                        Spacer().frame(height: 20)
+
+                        Text("How to Use Informed")
+                            .font(.system(size: 28, weight: .bold, design: .rounded))
+                            .foregroundColor(.primary)
+
+                        Text("Fact-check Instagram reels instantly")
+                            .font(.subheadline)
+                            .foregroundColor(.gray)
                     }
+                    .padding(.bottom, 10)
+
+                    // Notification Status Card
+                    notificationStatusCard
+
+                    // Instructions
+                    VStack(spacing: 16) {
+                        InstructionStep(
+                            number: "1",
+                            icon: "Instagram",
+                            title: "Find a Reel",
+                            description: "Open Instagram and find a reel you want to fact-check"
+                        )
+
+                        InstructionStep(
+                            number: "2",
+                            icon: "square.and.arrow.up",
+                            title: "Share to Informed",
+                            description: "Tap the share button and select 'Informed' from the share sheet"
+                        )
+
+                        InstructionStep(
+                            number: "3",
+                            icon: "gearshape.2",
+                            title: "We Process It",
+                            description: "Our AI analyzes the reel and fact-checks all claims made"
+                        )
+
+                        InstructionStep(
+                            number: "4",
+                            icon: "bell.badge",
+                            title: "Get Notified",
+                            description: "You'll receive a push notification when fact-checking is complete"
+                        )
+
+                        InstructionStep(
+                            number: "5",
+                            icon: "doc.text.magnifyingglass",
+                            title: "View Results",
+                            description: "Open the app to see detailed fact-check results and sources"
+                        )
+                    }
+                    .padding(.horizontal)
+
+                    // Tips Section
+                    VStack(alignment: .leading, spacing: 12) {
+                        Label("Quick Tips", systemImage: "lightbulb.fill")
+                            .font(.headline)
+                            .foregroundColor(.brandBlue)
+
+                        TipItem(text: "Make sure notifications are enabled to get instant results")
+                        TipItem(text: "Processing typically takes 30 seconds to 2 minutes")
+                        TipItem(text: "You can share multiple reels - we'll process them all")
+                        TipItem(text: "Check the 'Shared Reels' tab to see status of all submissions")
+                    }
+                    .padding()
+                    .background(Color.white)
+                    .cornerRadius(16)
+                    .shadow(color: Color.black.opacity(0.08), radius: 8, y: 4)
+                    .padding(.horizontal)
+
+                    Spacer().frame(height: 20)
                 }
             }
-            .navigationTitle("Instructions")
-            .navigationBarTitleDisplayMode(.inline)
         }
+        .navigationTitle("How to Use")
+        .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showPermissionRequest) {
             NotificationPermissionSheet()
         }

@@ -121,20 +121,24 @@ class HomeViewModel: ObservableObject {
     }
     
     // MARK: - Search Text Handling
-    
+
     private func handleSearchTextChange(_ text: String) {
         // Cancel pending tasks
         debounceTask?.cancel()
         searchDebounceTask?.cancel()
-        
+
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        
+
         if trimmed.isEmpty {
-            isSearchMode = false
-            searchResults = []
+            // Only exit search mode when there is no active category browse
+            if isSearchMode && selectedCategory == nil {
+                isSearchMode = false
+                searchResults = []
+                isSearching = false
+            }
             return
         }
-        
+
         // Check if it's a social media link
         if let url = URL(string: trimmed),
            url.scheme != nil,
@@ -146,7 +150,7 @@ class HomeViewModel: ObservableObject {
                                lower.contains("vm.tiktok.com")
             if isSocialLink {
                 // It's a URL — debounce and fact-check
-                isSearchMode = false
+                if isSearchMode { isSearchMode = false; searchResults = []; isSearching = false }
                 debounceTask = Task {
                     try? await Task.sleep(nanoseconds: 1_000_000_000)
                     guard !Task.isCancelled else { return }
@@ -155,11 +159,15 @@ class HomeViewModel: ObservableObject {
                 return
             }
         }
-        
-        // It's a text search query
-        isSearchMode = true
+
+        // It's a text search query.
+        // Only flip isSearchMode once — avoids a double re-render on every keystroke.
+        if !isSearchMode { isSearchMode = true }
+        // Show skeleton immediately so there is no blank flash while the debounce waits.
+        isSearching = true
+
         searchDebounceTask = Task {
-            try? await Task.sleep(nanoseconds: 500_000_000) // 0.5s debounce
+            try? await Task.sleep(nanoseconds: 400_000_000) // 0.4s debounce
             guard !Task.isCancelled else { return }
             await performSearch(query: trimmed)
         }
@@ -167,8 +175,18 @@ class HomeViewModel: ObservableObject {
     
     // MARK: - Search
     
+    func selectCategory(_ categoryName: String) {
+        // Enter search mode with only a category filter (no search text)
+        searchText = ""
+        selectedCategory = categoryName
+        isSearchMode = true
+        Task { await performSearch(query: "*", category: categoryName) }
+    }
+
     func performSearch(query: String, category: String? = nil) async {
-        guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Allow wildcard queries used by category browsing
+        guard !trimmed.isEmpty else { return }
         isSearching = true
         do {
             let response = try await NetworkService.shared.searchReels(
@@ -198,9 +216,20 @@ class HomeViewModel: ObservableObject {
     // MARK: - Category Filter for Search
     
     func filterSearchByCategory(_ category: String?) {
-        selectedCategory = category
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        if isSearchMode && !query.isEmpty {
+        // If we're in category-only browse mode (no text query) and the user taps
+        // "All", reset back to the normal feed entirely.
+        if query.isEmpty {
+            if category == nil {
+                clearSearch()
+            } else {
+                selectedCategory = category
+                Task { await performSearch(query: "*", category: category) }
+            }
+            return
+        }
+        selectedCategory = category
+        if isSearchMode {
             Task { await performSearch(query: query, category: category) }
         }
     }
