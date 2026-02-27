@@ -64,6 +64,17 @@ struct FeedView: View {
             }
             .navigationTitle("Discover")
             .navigationBarTitleDisplayMode(.large)
+            .onChange(of: userManager.isAuthenticated) { _, isAuthenticated in
+                if isAuthenticated && viewModel.publicReels.isEmpty {
+                    Task { await viewModel.loadFeed() }
+                }
+            }
+            .onChange(of: userManager.currentSessionId) { _, sessionId in
+                // Session ID arrived after initial load (e.g. Keychain read was delayed)
+                if sessionId != nil && viewModel.errorMessage != nil {
+                    Task { await viewModel.loadFeed() }
+                }
+            }
         }
     }
     

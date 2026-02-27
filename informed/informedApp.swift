@@ -11,7 +11,7 @@ import ActivityKit
 @main
 struct informedApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
-    @StateObject private var userManager = UserManager()
+    @StateObject private var userManager = UserManager.shared
     @StateObject private var notificationManager = NotificationManager.shared
     @StateObject private var reelManager = SharedReelManager.shared
 
