@@ -347,6 +347,7 @@ class HomeViewModel: ObservableObject {
             let thumbnailURL: URL? = factCheckData.thumbnailUrl.flatMap { URL(string: $0) }
 
             let newItem = FactCheckItem(
+                reelID: nil,
                 sourceName: platformName, sourceIcon: platformIcon,
                 timeAgo: "Just now", title: factCheckData.title,
                 summary: primaryClaim.summary,

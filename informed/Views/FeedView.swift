@@ -418,34 +418,31 @@ struct PublicReelDetailView: View {
 
                 // Claims pager — swipeable when 2-3 claims present
                 ClaimsPagerView(claims: reel.claims)
-
-                // Share Button
-                Button(action: {
-                    HapticManager.lightImpact()
-                    if let viewModel = viewModel { Task { await viewModel.trackShare(for: reel) } }
-                    if let url = URL(string: reel.videoLink) {
-                        let activityVC = UIActivityViewController(activityItems: [url], applicationActivities: nil)
-                        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-                           let rootVC = windowScene.windows.first?.rootViewController {
-                            rootVC.present(activityVC, animated: true)
-                        }
-                    }
-                }) {
-                    HStack {
-                        Image(systemName: "square.and.arrow.up")
-                        Text("Share This Fact Check")
-                    }
-                    .font(.headline).foregroundColor(.white)
-                    .frame(maxWidth: .infinity).padding(.vertical, 16)
-                    .background(LinearGradient(colors: [.brandTeal, .brandBlue], startPoint: .leading, endPoint: .trailing))
-                    .cornerRadius(Theme.CornerRadius.md)
-                }
             }
             .padding(Theme.Spacing.xl)
         }
         .background(Color.backgroundLight)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar { ToolbarItem(placement: .principal) { Text("") } }
+        .toolbar {
+            ToolbarItem(placement: .principal) { Text("") }
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button(action: {
+                    HapticManager.lightImpact()
+                    if let viewModel = viewModel { Task { await viewModel.trackShare(for: reel) } }
+                    let shareURL = URL(string: Config.Endpoints.shareBase + reel.id)
+                        ?? URL(string: reel.videoLink)
+                    let items: [Any] = shareURL != nil ? [shareURL!] : [reel.title]
+                    let activityVC = UIActivityViewController(activityItems: items, applicationActivities: nil)
+                    if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                       let rootVC = windowScene.windows.first?.rootViewController {
+                        rootVC.present(activityVC, animated: true)
+                    }
+                }) {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.system(size: 15, weight: .semibold))
+                }
+            }
+        }
         .toolbarBackground(.hidden, for: .navigationBar)
     }
 }

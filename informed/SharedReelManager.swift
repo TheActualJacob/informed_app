@@ -69,6 +69,8 @@ struct SharedReel: Identifiable, Codable {
 
 // Store complete fact check data with the reel
 struct StoredFactCheckData: Codable {
+    /// The backend uniqueID — used to build the shareable web preview URL.
+    let reelID: String?
     let title: String
     let summary: String
     let thumbnailURL: String?
@@ -91,7 +93,9 @@ struct StoredFactCheckData: Codable {
          claim: String, verdict: String, claimAccuracyRating: String,
          explanation: String, sources: [String],
          datePosted: String?, platform: String?,
-         aiGenerated: String? = nil, aiProbability: Double? = nil) {
+         aiGenerated: String? = nil, aiProbability: Double? = nil,
+         reelID: String? = nil) {
+        self.reelID = reelID
         self.title = title; self.summary = summary; self.thumbnailURL = thumbnailURL
         self.claims = [ClaimEntry(claim: claim, verdict: verdict,
                                   claimAccuracyRating: claimAccuracyRating,
@@ -103,7 +107,9 @@ struct StoredFactCheckData: Codable {
     // Multi-claim init
     init(title: String, summary: String, thumbnailURL: String?,
          claims: [ClaimEntry], datePosted: String?, platform: String?,
-         aiGenerated: String? = nil, aiProbability: Double? = nil) {
+         aiGenerated: String? = nil, aiProbability: Double? = nil,
+         reelID: String? = nil) {
+        self.reelID = reelID
         self.title = title; self.summary = summary; self.thumbnailURL = thumbnailURL
         self.claims = claims.isEmpty
             ? [ClaimEntry(claim: "", verdict: "", claimAccuracyRating: "50%",
@@ -116,7 +122,7 @@ struct StoredFactCheckData: Codable {
     // MARK: Custom Codable — migrates old flat JSON on disk to claims array
 
     enum CodingKeys: String, CodingKey {
-        case title, summary, thumbnailURL, claims, datePosted, platform
+        case reelID, title, summary, thumbnailURL, claims, datePosted, platform
         case aiGenerated, aiProbability
         // Legacy flat keys written by old app versions
         case claim, verdict, explanation, sources
@@ -125,6 +131,7 @@ struct StoredFactCheckData: Codable {
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
+        reelID        = try? c.decodeIfPresent(String.self, forKey: .reelID)
         title         = try c.decode(String.self, forKey: .title)
         summary       = (try? c.decodeIfPresent(String.self, forKey: .summary)) ?? ""
         thumbnailURL  = try c.decodeIfPresent(String.self, forKey: .thumbnailURL)
@@ -148,10 +155,11 @@ struct StoredFactCheckData: Codable {
 
     func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
-        try c.encode(title,         forKey: .title)
-        try c.encode(summary,       forKey: .summary)
+        try c.encodeIfPresent(reelID,        forKey: .reelID)
+        try c.encode(title,                  forKey: .title)
+        try c.encode(summary,                forKey: .summary)
         try c.encodeIfPresent(thumbnailURL,  forKey: .thumbnailURL)
-        try c.encode(claims,        forKey: .claims)
+        try c.encode(claims,                 forKey: .claims)
         try c.encodeIfPresent(datePosted,    forKey: .datePosted)
         try c.encodeIfPresent(platform,      forKey: .platform)
         try c.encodeIfPresent(aiGenerated,   forKey: .aiGenerated)
@@ -163,6 +171,7 @@ struct StoredFactCheckData: Codable {
         let resolvedPlatform = platform ?? detectedPlatformFromURL(originalLink)
         let (platformName, platformIcon) = platformInfo(for: resolvedPlatform)
         return FactCheckItem(
+            reelID: reelID,
             sourceName: platformName, sourceIcon: platformIcon,
             timeAgo: "Recently", title: title, summary: summary,
             thumbnailURL: thumbnailURL.flatMap { URL(string: $0) },
@@ -384,7 +393,8 @@ class SharedReelManager: ObservableObject {
                     datePosted: nil,
                     platform: r.platform,
                     aiGenerated: r.aiGenerated,
-                    aiProbability: r.aiProbability
+                    aiProbability: r.aiProbability,
+                    reelID: r.id
                 )
             } else if status == .completed,
                let claim = r.claim, let verdict = r.verdict,
@@ -394,7 +404,8 @@ class SharedReelManager: ObservableObject {
                     claim: claim, verdict: verdict, claimAccuracyRating: rating,
                     explanation: r.explanation ?? "", sources: r.sources ?? [],
                     datePosted: nil, platform: r.platform,
-                    aiGenerated: r.aiGenerated, aiProbability: r.aiProbability
+                    aiGenerated: r.aiGenerated, aiProbability: r.aiProbability,
+                    reelID: r.id
                 )
             }
             return SharedReel(
@@ -877,7 +888,9 @@ class SharedReelManager: ObservableObject {
                 let platform = factCheckData["platform"] as? String
                 let aiGenerated = factCheckData["aiGenerated"] as? String
                 let aiProbability = factCheckData["aiProbability"] as? Double
-                
+                let backendReelID = factCheckData["unique_id"] as? String
+                    ?? factCheckData["uniqueID"] as? String
+
                 storedData = StoredFactCheckData(
                     title: title,
                     summary: summary,
@@ -890,7 +903,8 @@ class SharedReelManager: ObservableObject {
                     datePosted: datePosted,
                     platform: platform,
                     aiGenerated: aiGenerated,
-                    aiProbability: aiProbability
+                    aiProbability: aiProbability,
+                    reelID: backendReelID
                 )
             } else {
                 print("⚠️ Missing some fact-check fields, creating without stored data")
@@ -1066,7 +1080,8 @@ class SharedReelManager: ObservableObject {
                             datePosted: nil,
                             platform: userReel.platform,
                             aiGenerated: userReel.aiGenerated,
-                            aiProbability: userReel.aiProbability
+                            aiProbability: userReel.aiProbability,
+                            reelID: userReel.id
                         )
                     } else if status == .completed,
                        let claim = userReel.claim,
@@ -1085,7 +1100,8 @@ class SharedReelManager: ObservableObject {
                             datePosted: nil,
                             platform: userReel.platform,
                             aiGenerated: userReel.aiGenerated,
-                            aiProbability: userReel.aiProbability
+                            aiProbability: userReel.aiProbability,
+                            reelID: userReel.id
                         )
                     }
                     

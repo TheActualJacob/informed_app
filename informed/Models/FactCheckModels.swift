@@ -112,6 +112,8 @@ struct FactCheck: Codable {
 struct FactCheckItem: Identifiable, Equatable {
     static func == (lhs: FactCheckItem, rhs: FactCheckItem) -> Bool { lhs.id == rhs.id }
     let id = UUID()
+    /// The backend uniqueID for this fact check — used to build the shareable web preview URL.
+    let reelID: String?
     let sourceName: String
     let sourceIcon: String
     let timeAgo: String
@@ -314,7 +316,8 @@ struct PublicReel: Identifiable, Codable {
         return .low
     }
     func toFactCheckItem() -> FactCheckItem {
-        FactCheckItem(sourceName: platformDisplayName, sourceIcon: platformIcon,
+        FactCheckItem(reelID: id,
+                      sourceName: platformDisplayName, sourceIcon: platformIcon,
                       timeAgo: timeAgo, title: title, summary: summary,
                       thumbnailURL: thumbnailUrl.flatMap { URL(string: $0) },
                       credibilityScore: averageCredibilityScore,

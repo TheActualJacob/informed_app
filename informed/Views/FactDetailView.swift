@@ -39,62 +39,25 @@ struct FactDetailView: View {
             VStack(alignment: .leading, spacing: 0) {
 
                 // MARK: Hero
-                ZStack(alignment: .topLeading) {
-                    GeometryReader { geo in
-                        Group {
-                            if hasRealThumbnail, let url = item.thumbnailURL {
-                                ThumbnailImage(url: url, platform: platform)
-                            } else {
-                                heroPlaceholder
-                            }
+                GeometryReader { geo in
+                    Group {
+                        if hasRealThumbnail, let url = item.thumbnailURL {
+                            ThumbnailImage(url: url, platform: platform)
+                        } else {
+                            heroPlaceholder
                         }
-                        .frame(width: geo.size.width, height: 300)
-                        .clipped()
-                        .overlay(
-                            LinearGradient(
-                                colors: [.black.opacity(0.4), .clear],
-                                startPoint: .top,
-                                endPoint: .center
-                            )
+                    }
+                    .frame(width: geo.size.width, height: 300)
+                    .clipped()
+                    .overlay(
+                        LinearGradient(
+                            colors: [.black.opacity(0.4), .clear],
+                            startPoint: .top,
+                            endPoint: .center
                         )
-                    }
-                    .frame(height: 300)
-
-                    HStack {
-                        Button(action: {
-                            HapticManager.lightImpact()
-                            presentationMode.wrappedValue.dismiss()
-                        }) {
-                            Image(systemName: "arrow.left")
-                                .foregroundColor(.white)
-                                .padding(Theme.Spacing.md)
-                                .background(.ultraThinMaterial)
-                                .clipShape(Circle())
-                        }
-
-                        Spacer()
-
-                        Button(action: {
-                            HapticManager.lightImpact()
-                            let activityVC = UIActivityViewController(
-                                activityItems: [item.title, item.summary],
-                                applicationActivities: nil
-                            )
-                            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-                               let rootVC = windowScene.windows.first?.rootViewController {
-                                rootVC.present(activityVC, animated: true)
-                            }
-                        }) {
-                            Image(systemName: "square.and.arrow.up")
-                                .foregroundColor(.white)
-                                .padding(Theme.Spacing.md)
-                                .background(.ultraThinMaterial)
-                                .clipShape(Circle())
-                        }
-                    }
-                    .padding(.top, 60)
-                    .padding(.horizontal, Theme.Spacing.xl)
+                    )
                 }
+                .frame(height: 300)
             }
 
             // MARK: Content card
@@ -158,6 +121,30 @@ struct FactDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .principal) { Text("") }
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button(action: {
+                    HapticManager.lightImpact()
+                    let shareURL: URL? = {
+                        if let rid = item.reelID {
+                            return URL(string: Config.Endpoints.shareBase + rid)
+                        }
+                        return item.originalLink.flatMap { URL(string: $0) }
+                    }()
+                    let items: [Any] = shareURL != nil ? [shareURL!] : [item.title]
+                    let activityVC = UIActivityViewController(activityItems: items, applicationActivities: nil)
+                    if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                       let rootVC = windowScene.windows.first?.rootViewController {
+                        rootVC.present(activityVC, animated: true)
+                    }
+                }) {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(width: 34, height: 34)
+                        .background(.ultraThinMaterial)
+                        .clipShape(Circle())
+                }
+            }
         }
         .toolbarBackground(.hidden, for: .navigationBar)
         // Swipe right anywhere outside the claims pager to go back

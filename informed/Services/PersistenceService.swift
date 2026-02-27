@@ -104,6 +104,7 @@ class PersistenceService {
                 
                 changed = true
                 return FactCheckItem(
+                    reelID: item.reelID,
                     sourceName: item.sourceName,
                     sourceIcon: item.sourceIcon,
                     timeAgo: item.timeAgo,
@@ -191,6 +192,7 @@ class PersistenceService {
 // MARK: - Codable Wrapper for FactCheckItem
 
 struct FactCheckCodable: Codable {
+    let reelID: String?
     let sourceName: String
     let sourceIcon: String
     let timeAgo: String
@@ -210,6 +212,7 @@ struct FactCheckCodable: Codable {
     let aiProbability: Double?
 
     init(from item: FactCheckItem) {
+        self.reelID = item.reelID
         self.sourceName = item.sourceName
         self.sourceIcon = item.sourceIcon
         self.timeAgo = item.timeAgo
@@ -243,6 +246,7 @@ struct FactCheckCodable: Codable {
                                          explanation: "", summary: summary, sources: [])]
         }
         return FactCheckItem(
+            reelID: reelID,
             sourceName: sourceName, sourceIcon: sourceIcon,
             timeAgo: timeAgo, title: title, summary: summary,
             thumbnailURL: thumbnailURLString.flatMap { URL(string: $0) },

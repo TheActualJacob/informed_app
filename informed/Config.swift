@@ -60,5 +60,9 @@ struct Config {
         static let categories = Config.endpoint("/api/categories")
         static let search = Config.endpoint("/api/search")
         static let personalizedFeed = Config.endpoint("/api/user-feed-personalized")
+
+        // Shareable web preview — append a reelID to build the full URL
+        // e.g. Config.Endpoints.shareBase + "abc-123-uuid"
+        static let shareBase = Config.endpoint("/share/")
     }
 }
