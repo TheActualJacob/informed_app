@@ -98,7 +98,8 @@ struct AuthenticationView: View {
     @State private var isLoading: Bool = false
     @State private var errorMessage: String?
     @State private var showPassword: Bool = false
-    
+    @State private var showHowItWorks: Bool = false
+
     @FocusState private var focusedField: Field?
     
     enum Field: Hashable {
@@ -369,6 +370,9 @@ struct AuthenticationView: View {
                         Button(action: {
                             isLoginMode.toggle()
                             errorMessage = nil
+                            if !isLoginMode {
+                                showHowItWorks = true
+                            }
                         }) {
                             HStack(spacing: 4) {
                                 Text(isLoginMode ? "Don't have an account?" : "Already have an account?")
@@ -398,6 +402,9 @@ struct AuthenticationView: View {
         }
         .onTapGesture {
             hideKeyboard()
+        }
+        .sheet(isPresented: $showHowItWorks) {
+            HowItWorksSheet(isPresented: $showHowItWorks)
         }
     }
     
@@ -500,6 +507,32 @@ struct AuthenticationView: View {
             
             await MainActor.run {
                 isLoading = false
+            }
+        }
+    }
+}
+
+// MARK: - How It Works Sheet (shown on sign-up)
+
+struct HowItWorksSheet: View {
+    @Binding var isPresented: Bool
+
+    var body: some View {
+        NavigationView {
+            ZStack {
+                Color.backgroundLight.ignoresSafeArea()
+                HowItWorksCarouselView {
+                    isPresented = false
+                }
+            }
+            .navigationTitle("How It Works")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Skip") { isPresented = false }
+                        .font(.subheadline.weight(.medium))
+                        .foregroundColor(.secondary)
+                }
             }
         }
     }

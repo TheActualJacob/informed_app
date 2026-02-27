@@ -222,7 +222,7 @@ struct SearchReelRow: View {
                     .foregroundColor(.primary)
                     .lineLimit(2)
                 
-                Text(reel.summary)
+                Text(reel.claims.first?.claim ?? reel.summary)
                     .font(.system(size: 12))
                     .foregroundColor(.secondary)
                     .lineLimit(2)

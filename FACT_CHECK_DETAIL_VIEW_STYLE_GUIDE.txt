@@ -1,0 +1,426 @@
+================================================================================
+  INFORMED APP — FACT CHECK DETAIL VIEW: COMPLETE STYLE GUIDE
+  (For backend GIF/image generation — reproduce this layout exactly)
+================================================================================
+
+This document covers every visual element in the Fact Check Detail View so a
+backend script can render a pixel-accurate animated GIF or static image.
+
+
+────────────────────────────────────────────────────────────────────────────────
+1. CANVAS / OVERALL LAYOUT
+────────────────────────────────────────────────────────────────────────────────
+
+  Orientation : Portrait (iPhone width — use 390 × 844 pt as reference)
+  Background  : #F2F2F7  (iOS systemGroupedBackground — light mode)
+  Font family : -apple-system / SF Pro Display / SF Pro Text / Helvetica Neue
+  Layout flow : Vertical scroll; top-to-bottom sections stacked
+
+  Main structure (top → bottom):
+    1.  Hero image / platform placeholder   — 300 pt tall, full width, no padding
+    2.  White content card                  — rounded-top corners, overlaps hero by 40 pt
+    3.  Sections inside card                — padded 20 pt on all sides, 24 pt gaps between sections
+
+
+────────────────────────────────────────────────────────────────────────────────
+2. COLOR TOKENS
+────────────────────────────────────────────────────────────────────────────────
+
+  — BRAND COLORS —
+  brandTeal        : rgb(0, 191, 217)       #00BFD9
+  brandBlue        : rgb(38, 89, 242)       #2659F2
+  brandGreen       : rgb(51, 191, 115)      #33BF73
+  brandYellow      : rgb(250, 191, 38)      #FABF26
+  brandRed         : rgb(242, 77, 77)       #F24D4D
+
+  — BACKGROUNDS —
+  backgroundLight  : #F2F2F7   (page / view background)
+  cardBackground   : #FFFFFF   (sections/cards inside the content card)
+
+  — TEXT —
+  primary          : #0F172A   (near-black)
+  secondary        : #64748B   (medium grey)
+
+  — VERDICT / CREDIBILITY LEVEL —
+  Verified  (score ≥ 0.80) → brandGreen  #33BF73
+  Debated   (score ≥ 0.50) → brandYellow #FABF26
+  Misleading(score < 0.50) → brandRed    #F24D4D
+
+  — PLATFORM HERO GRADIENTS (used when no real thumbnail) —
+  Instagram  : #D41F87 → #661488   (top-left to bottom-right)
+  TikTok     : #030303 → #1F1F1F
+  YouTube    : #DB1212 → #990A0A
+  Threads    : #141414 → #383838
+  Twitter/X  : #1CA1F3 → #0F6BB8
+
+
+────────────────────────────────────────────────────────────────────────────────
+3. SPACING & RADIUS TOKENS
+────────────────────────────────────────────────────────────────────────────────
+
+  xs  :  4 pt
+  sm  :  8 pt
+  md  : 12 pt
+  lg  : 16 pt
+  xl  : 20 pt
+  xxl : 24 pt
+  xxxl: 30 pt
+
+  Corner radius tokens:
+    sm  :  8 pt
+    md  : 12 pt
+    lg  : 16 pt
+    xl  : 24 pt
+
+  Content card:
+    cornerRadius  : 30 pt (top-left & top-right only; card overlaps hero)
+    padding       : 20 pt (all sides)
+    gap between sections: 24 pt
+
+
+────────────────────────────────────────────────────────────────────────────────
+4. SECTION-BY-SECTION BREAKDOWN
+────────────────────────────────────────────────────────────────────────────────
+
+  ── 4A. HERO ──────────────────────────────────────────────────────────────────
+
+  Height      : 300 pt
+  Width       : full screen
+  Content mode: fill (crop to fit)
+
+  Overlay: a black-to-transparent linear gradient
+    - Start  : black @ 40% opacity (top edge)
+    - End    : clear (vertical center / 50% down)
+
+  [If real thumbnail exists]
+    Show the thumbnail image with the overlay.
+
+  [If no real thumbnail — platform placeholder]
+    Background: platform gradient (see Section 2)
+    Center content:
+      • SF Symbol icon, 52 pt, weight semibold, white @ 90% opacity
+          Instagram   → "camera.fill"  (or "photo.on.rectangle.fill")
+          TikTok      → "music.note"
+          YouTube     → "play.rectangle.fill"
+          Threads     → "bubble.left.and.bubble.right.fill"
+          Twitter/X   → "bird.fill"
+      • Platform name label, 16 pt medium, white @ 70% opacity
+          spaced 10 pt below the icon
+
+  Navigation bar (overlaid):
+    - Transparent / hidden background
+    - Top-right: circular share button
+        diameter    : 34 pt
+        background  : ultra-thin material (frosted glass / white @ 50% opacity)
+        icon        : "square.and.arrow.up", 15 pt, weight semibold, white
+
+
+  ── 4B. CONTENT CARD ──────────────────────────────────────────────────────────
+
+  Starts   : 260 pt from top (overlaps hero by 40 pt via negative offset)
+  Shape    : rounded corners at top (30 pt radius), square at bottom
+  Fill     : backgroundLight (#F2F2F7)
+  Padding  : 20 pt all sides
+  Section gaps: 24 pt
+
+
+  ── 4C. HEADER ROW (top of content card) ─────────────────────────────────────
+
+  Layout: horizontal, space-between
+
+  LEFT — Credibility Badge (pill)
+    Content  : SF Symbol icon + credibility label text (e.g. "Verified")
+    Font     : .caption (.system size ~11 pt), weight bold
+    Padding  : 6 pt vertical, 12 pt horizontal
+    Background: credibility color @ 10% opacity
+    Text color: credibility color (full)
+    Corner radius: 8 pt (sm)
+    Icon mapping:
+      Verified   → "checkmark.seal.fill"
+      Debated    → "exclamationmark.triangle.fill"
+      Misleading → "xmark.octagon.fill"
+
+  RIGHT — Time-ago label
+    Font  : .caption (~11 pt)
+    Color : secondary (#64748B)
+    Example: "2h ago", "3d ago"
+
+
+  ── 4D. TITLE ────────────────────────────────────────────────────────────────
+
+  Font   : system serif, 26 pt, weight bold   (design: .serif)
+  Color  : primary (#0F172A)
+  Margin : 12 pt below header row
+
+
+  ── 4E. LINK PREVIEW CARD ───────────────────────────────────────────────────
+
+  Overall shape: rounded rect, 12 pt radius, 1 pt border secondary @ 10% opacity
+  Height       : min 90 pt
+  Background   : secondary @ 5% opacity (#64748B0D)
+
+  LEFT column — thumbnail, 90 × 90 pt, no corner radius, clips to fill
+    • If real CDN thumbnail: show image
+    • If no thumbnail: platform placeholder (same gradient + icon as hero, but smaller)
+      Platform icon: ~22 pt, weight semibold, white
+      "Watch" label: 9 pt medium, white @ 80%
+
+  RIGHT column — text, padded 10 pt all sides, fills remaining width
+    Title    : serif, 14 pt, weight bold, 2-line limit, primary color
+    Source row (below title, 4 pt gap):
+      • Source name: caption2 (~10 pt), secondary color
+      • "arrow.up.right.square" icon: caption2, brandBlue (if link exists)
+
+
+  ── 4F. DIVIDER ─────────────────────────────────────────────────────────────
+
+  System-default hairline divider (1 pt, secondary @ 30% opacity)
+
+
+  ── 4G. TRUTH SCORE DONUT CHART ─────────────────────────────────────────────
+
+  Centered horizontally in the card.
+
+  Outer dimensions : 120 × 120 pt
+  Ring stroke width: 15 pt, lineCap .round
+  Background ring  : credibility color @ 10% opacity (full circle)
+  Foreground arc   : credibility color (full), trimmed from 0 → score value
+                     rotated –90° so 0% starts at 12 o'clock
+  Center text stack (vertical):
+    • Score percent : "XX%", 24 pt, weight bold, design .rounded, credibility color
+    • "TRUTH SCORE"  : 10 pt, weight bold, secondary color, ALL CAPS
+
+
+  ── 4H. AI DETECTION CARD (conditionally shown) ──────────────────────────────
+
+  Shown when: platform is NOT text-only (Instagram, TikTok, YouTube, etc.)
+              OR when aiGenerated value is present.
+
+  Container:
+    Background    : orange @ 7% opacity
+    Corner radius : 12 pt (md)
+    Padding       : 16 pt (lg)
+
+  Header label: "AI Detection", .headline (~17 pt, weight semibold)
+
+  [When aiGenerated value exists]
+    Two-column horizontal layout:
+
+    LEFT column:
+      Sub-label : "AI-Generated Content", .caption bold, secondary color
+      Value row :
+        • Icon  : "exclamationmark.triangle.fill" (orange, 16 pt, bold)  if AI = true
+                  "checkmark.circle.fill" (brandGreen, 16 pt, bold)      if AI = false
+        • Text  : "Yes" / "No", 18 pt bold, same color as icon
+
+    RIGHT column (trailing-aligned):
+      Sub-label : "Confidence", .caption bold, secondary color
+      Value     : "XX%", 18 pt bold, same color as verdict icon
+
+  [When no aiGenerated value]
+    "?" icon + sentence: "AI detection was not performed for this content."
+    Font: .body, secondary color
+
+
+  ── 4I. DIVIDER ──────────────────────────────────────────────────────────────
+
+  Same as 4F.
+
+
+  ── 4J. MULTI-CLAIM SWIPE HINT BANNER (shown when 2+ claims) ─────────────────
+
+  Container:
+    Background    : brandBlue @ 7% opacity
+    Border        : brandBlue @ 20% opacity, 1 pt, rounded rect 12 pt
+    Corner radius : 12 pt
+    Padding       : 10 pt vertical, 14 pt horizontal
+
+  Content (horizontal):
+    LEFT  : "hand.draw.fill" SF Symbol, 16 pt, brandBlue color
+    CENTER: two-line VStack (leading)
+              Top    : "N claims fact-checked"  — .caption bold, primary color
+              Bottom : "Swipe left to see each one" — .caption2, secondary color
+    RIGHT side: capsule dots (one per claim) + chevron
+              Each capsule: 18 × 5 pt, filled with that claim's credibility color
+              "chevron.right" icon: .caption, secondary color
+
+
+  ── 4K. CLAIMS PAGER ─────────────────────────────────────────────────────────
+
+  One page rendered per claim. When multiple claims exist, a navigation bar
+  with left/right chevrons sits above the pages, and dot indicators below.
+
+  NAVIGATION BAR (multi-claim only):
+    Container: rounded rect, secondary @ 8% opacity, height 52 pt
+    LEFT  : "chevron.left.circle.fill", 22 pt semibold
+              Active   → brandBlue
+              Inactive → secondary @ 30%
+    CENTER: icon "doc.text.magnifyingglass" + "Claim N of M"  (.caption bold)
+             sub-text "Swipe to see all claims" (10 pt, secondary)
+    RIGHT : "chevron.right.circle.fill", 22 pt semibold (same active/inactive rules)
+
+  DOT INDICATORS (multi-claim only):
+    Layout : horizontal, 8 pt gaps
+    Active dot  : capsule, 20 × 7 pt, claim's credibility color
+    Inactive dot: capsule, 7 × 7 pt, secondary @ 25% opacity
+
+  ── CLAIM PAGE (one per claim) ───────────────────────────────────────────────
+
+  Outer: VStack, 16 pt gaps, 2 pt horizontal inset padding
+
+  [1] CLAIM BOX
+    Background    : blue (system) @ 8% opacity
+    Corner radius : 12 pt
+    Padding       : 16 pt
+    Header        : "quote.bubble.fill" icon + label ("The Claim" / "Claim N"), .headline
+    Body text     : .body, primary @ 85% opacity, line spacing 4 pt
+
+  [2] VERDICT + ACCURACY ROW
+    Background    : claim's credibility color @ 8% opacity
+    Corner radius : 12 pt
+    Padding       : 16 pt
+    Two-column, space-between:
+      LEFT:
+        Sub-label : "Verdict",          .caption bold, secondary
+        Value     : verdict string,     18 pt bold, credibility color
+                    (e.g. "True", "False", "Mostly True", "Misleading")
+      RIGHT (trailing):
+        Sub-label : "Accuracy Rating",  .caption bold, secondary
+        Value     : accuracy string,    18 pt bold, credibility color
+                    (e.g. "85%")
+
+  [3] SUMMARY BOX
+    Background    : green (system) @ 8% opacity
+    Corner radius : 12 pt
+    Padding       : 16 pt
+    Header        : "text.alignleft" icon + "Summary", .headline
+    Body text     : .body, primary @ 80% opacity, line spacing 6 pt
+
+  [4] EXPLANATION BOX
+    Background    : cardBackground (#FFFFFF / system secondaryGroupedBackground)
+    Corner radius : 12 pt
+    Padding       : 16 pt
+    Header        : "info.circle.fill" icon + "Explanation", .headline
+    Body text     : .body, primary @ 80% opacity, line spacing 6 pt
+    If explanation is empty:
+      Italic placeholder: "No detailed explanation available for this claim."
+      Font: .body, gray @ 80% opacity, italic
+
+  [5] SOURCES BOX (shown only when sources list is non-empty)
+    Background    : cardBackground (#FFFFFF)
+    Corner radius : 12 pt
+    Padding       : 16 pt
+    Header        : "link" icon + "Sources", .headline
+    Each source row:
+      Container  : brandBlue @ 5% opacity, corner radius 8 pt
+      Padding    : sm vertical (8 pt), md horizontal (12 pt)
+      Layout     : horizontal
+        LEFT  : "link.circle.fill", .caption, brandBlue
+                domain name of the URL (e.g. "pubmed.ncbi.nlm.nih.gov")
+                .caption, brandBlue, 1-line limit
+        RIGHT : "arrow.up.right", .caption2, brandBlue @ 60%
+      Row gap   : 10 pt
+
+
+────────────────────────────────────────────────────────────────────────────────
+5. TYPOGRAPHY SUMMARY
+────────────────────────────────────────────────────────────────────────────────
+
+  Role                  Size   Weight       Design    Color
+  ─────────────────────────────────────────────────────────────────────────────
+  Article title         26 pt  Bold         Serif     primary
+  Link preview title    14 pt  Bold         Serif     primary
+  Truth score number    24 pt  Bold         Rounded   credibility color
+  Verdict value         18 pt  Bold         Default   credibility color
+  Accuracy rating       18 pt  Bold         Default   credibility color
+  AI yes/no value       18 pt  Bold         Default   orange or brandGreen
+  Section headlines     ~17 pt Semibold     Default   primary  (.headline)
+  Claim body text       ~17 pt Regular      Default   primary @ 85%
+  Summary/explanation   ~17 pt Regular      Default   primary @ 80%
+  Credibility badge     ~11 pt Bold         Default   credibility color
+  Time ago              ~11 pt Regular      Default   secondary
+  Sub-labels (captions) ~11 pt Bold         Default   secondary
+  Source domain         ~11 pt Regular      Default   brandBlue
+  Swipe hint top        ~11 pt Bold         Default   primary  (.caption)
+  Swipe hint bottom     ~10 pt Regular      Default   secondary (.caption2)
+  "Truth Score" label    10 pt Bold         Default   secondary (ALL CAPS)
+  Nav counter            10 pt Regular      Default   secondary
+
+
+────────────────────────────────────────────────────────────────────────────────
+6. PLATFORM IDENTIFIER → VISUAL MAPPING
+────────────────────────────────────────────────────────────────────────────────
+
+  Platform key     Display name    SF Symbol icon                 Hero gradient
+  ──────────────────────────────────────────────────────────────────────────────
+  instagram        Instagram       camera.fill                    #D41F87 → #801488
+  tiktok           TikTok          music.note                     #030303 → #1F1F1F
+  youtube_shorts   YouTube Shorts  play.rectangle.fill            #DB1212 → #990A0A
+  threads          Threads         bubble.left.and.bubble.right   #141414 → #383838
+  twitter          Twitter / X     bird.fill                      #1CA1F3 → #0F6BB8
+
+
+────────────────────────────────────────────────────────────────────────────────
+7. CREDIBILITY THRESHOLDS
+────────────────────────────────────────────────────────────────────────────────
+
+  Input format: "85%" string or 0.85 float
+
+  score >= 0.80  →  Verified    icon: checkmark.seal.fill         color: brandGreen  #33BF73
+  score >= 0.50  →  Debated     icon: exclamationmark.triangle.fill color: brandYellow #FABF26
+  score <  0.50  →  Misleading  icon: xmark.octagon.fill           color: brandRed   #F24D4D
+
+
+────────────────────────────────────────────────────────────────────────────────
+8. GIF ANIMATION RECOMMENDATIONS
+────────────────────────────────────────────────────────────────────────────────
+
+  For a GIF that faithfully represents the app view, animate in this order:
+
+  Frame 1–3  (0.0 – 0.6 s) : Fade in hero image/placeholder
+  Frame 4–6  (0.6 – 1.2 s) : Slide up the content card from below (offset y: +40 → 0)
+  Frame 7–8  (1.2 – 1.8 s) : Fade in header row (badge + time)
+  Frame 9    (1.8 – 2.0 s) : Fade in title text
+  Frame 10   (2.0 – 2.2 s) : Fade in link preview card
+  Frame 11–13(2.2 – 3.0 s) : Donut arc animates from 0% → final score
+                              (spring animation, response 1.5 s, damping 0.8)
+  Frame 14   (3.0 – 3.3 s) : AI detection card fades in (if applicable)
+  Frame 15   (3.3 – 3.6 s) : Swipe hint banner fades in (if multiple claims)
+  Frame 16–17(3.6 – 4.2 s) : First claim page fades in
+  Frame 18   (4.2 – 4.5 s) : Dot/arrow indicators pulse (scale 1.0 → 1.15 → 1.0)
+  Frame 19+  (4.5 – 6.0 s) : Optional: slide to claim 2, then back — loop
+
+
+────────────────────────────────────────────────────────────────────────────────
+9. EXACT HEX REFERENCE SHEET (for renderer)
+────────────────────────────────────────────────────────────────────────────────
+
+  Token             Light-mode hex     Note
+  ─────────────────────────────────────────────────────────────────────────────
+  backgroundLight   #F2F2F7            Page background
+  cardBackground    #FFFFFF            Inner section cards
+  primary text      #0F172A
+  secondary text    #64748B
+  brandBlue         #2659F2
+  brandTeal         #00BFD9
+  brandGreen        #33BF73
+  brandYellow       #FABF26
+  brandRed          #F24D4D
+  divider           #C6C6C8 (1 pt)
+  badge bg (green)  #33BF7319          brandGreen @ 10%
+  badge bg (yellow) #FABF2619          brandYellow @ 10%
+  badge bg (red)    #F24D4D19          brandRed @ 10%
+  claim box bg      #1A6BF20F          blue @ 8%
+  verdict box bg    (credibility) @ 8%
+  summary box bg    #22C55E14          green @ 8%
+  explanation bg    #FFFFFF            cardBackground
+  sources bg        #FFFFFF            cardBackground
+  source row bg     #2659F20D          brandBlue @ 5%
+  AI card bg        #FF80000F          orange @ 7%
+  swipe hint bg     #2659F212          brandBlue @ 7%
+  swipe hint border #2659F233          brandBlue @ 20%
+
+
+================================================================================
+  END OF STYLE GUIDE
+================================================================================

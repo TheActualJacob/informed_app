@@ -39,7 +39,7 @@ struct FactResultCard: View {
             
             LinkPreviewView(item: item)
             
-            Text(item.summary)
+            Text(item.claims.first?.claim ?? item.summary)
                 .font(.system(size: 15))
                 .foregroundColor(.primary.opacity(0.8))
                 .lineLimit(3)

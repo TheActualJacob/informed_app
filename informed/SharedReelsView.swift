@@ -234,8 +234,8 @@ struct ReelStatusCard: View {
                     // Link Preview - match Home format exactly
                     LinkPreviewView(item: factCheckData.toFactCheckItem(originalLink: reel.url))
                     
-                    // Summary text
-                    Text(factCheckData.summary)
+                    // Claim text
+                    Text(factCheckData.claims.first?.claim ?? factCheckData.summary)
                         .font(.system(size: 15))
                         .foregroundColor(.primary.opacity(0.8))
                         .lineLimit(3)

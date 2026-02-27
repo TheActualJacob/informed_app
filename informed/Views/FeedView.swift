@@ -224,8 +224,8 @@ struct PublicReelCard: View {
                 // Link Preview - match Home format exactly
                 LinkPreviewView(item: reel.toFactCheckItem())
                 
-                // Summary text
-                Text(reel.summary)
+                // Claim text
+                Text(reel.claims.first?.claim ?? reel.summary)
                     .font(.system(size: 15))
                     .foregroundColor(.primary.opacity(0.8))
                     .lineLimit(3)
