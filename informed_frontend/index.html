@@ -1,296 +1,1348 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Informed | Fact Check Your World</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
-    
-    <style>
-        body { font-family: 'Inter', sans-serif; }
-        
-        /* Custom Scrollbar for the horizontal scroll */
-        .hide-scroll::-webkit-scrollbar {
-            display: none;
-        }
-        .hide-scroll {
-            -ms-overflow-style: none;
-            scrollbar-width: none;
-        }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Informed — Truth in Your Feed</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400;1,700&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
-        /* Glassmorphism utilities */
-        .glass {
-            background: rgba(255, 255, 255, 0.7);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-        }
+  :root {
+    --bg: #050810;
+    --surface: #0b1121;
+    --surface2: #0f1729;
+    --border: rgba(99,179,255,0.1);
+    --blue: #3B82F6;
+    --blue-bright: #60A5FA;
+    --blue-glow: rgba(59,130,246,0.2);
+    --text: #EEF2FF;
+    --muted: #7A8FAD;
+    --green: #10B981;
+    --green-bright: #34D399;
+    --yellow: #F59E0B;
+    --red: #EF4444;
+  }
 
-        /* The Realistic iPhone CSS Frame */
-        .iphone-frame {
-            width: 300px;
-            height: 620px;
-            background: #000;
-            border-radius: 50px;
-            position: relative;
-            box-shadow: 
-                0 0 0 4px #343434, 
-                0 20px 50px -10px rgba(0,0,0,0.5),
-                inset 0 0 0 2px rgba(255,255,255,0.1);
-            overflow: hidden;
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
-        }
-        
-        .iphone-frame:hover {
-            transform: translateY(-10px);
-            box-shadow: 
-                0 0 0 4px #343434, 
-                0 40px 70px -15px rgba(0,0,0,0.6);
-        }
+  html { scroll-behavior: smooth; }
 
-        /* Dynamic Island / Notch */
-        .dynamic-island {
-            width: 100px;
-            height: 28px;
-            background: #000;
-            position: absolute;
-            top: 15px;
-            left: 50%;
-            transform: translateX(-50%);
-            border-radius: 20px;
-            z-index: 20;
-        }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 400;
+    overflow-x: hidden;
+  }
 
-        /* Screen Content Area */
-        .screen {
-            width: 100%;
-            height: 100%;
-            background: #F2F4F8; /* Matches your screenshot bg */
-            border-radius: 46px;
-            overflow: hidden;
-            position: relative;
-            /* Inner Bezel Gap */
-            mask-image: radial-gradient(white, black);
-            -webkit-mask-image: -webkit-radial-gradient(white, black);
-            transform: scale(0.96); /* Creates the bezel look */
-        }
-        
-        /* Video Placeholder Animation */
-        .play-pulse {
-            animation: pulse-ring 2s infinite;
-        }
-        @keyframes pulse-ring {
-            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
-            70% { transform: scale(1); box-shadow: 0 0 0 15px rgba(16, 185, 129, 0); }
-            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
-        }
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 9999;
+  }
 
-        /* Floating Gradient Orbs */
-        .orb {
-            position: absolute;
-            border-radius: 50%;
-            filter: blur(80px);
-            z-index: -1;
-            opacity: 0.6;
-        }
+  /* NAV */
+  nav {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 200;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 52px;
+    background: rgba(5,8,16,0.75);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border-bottom: 1px solid var(--border);
+  }
 
-        /* Video Modal */
-        .video-modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.9);
-            z-index: 9999;
-            align-items: center;
-            justify-content: center;
-        }
-        .video-modal.active {
-            display: flex;
-        }
-        .video-container {
-            position: relative;
-            width: 90%;
-            max-width: 1000px;
-            aspect-ratio: 16/9;
-        }
-        .close-modal {
-            position: absolute;
-            top: -40px;
-            right: 0;
-            color: white;
-            font-size: 30px;
-            cursor: pointer;
-            transition: transform 0.2s;
-        }
-        .close-modal:hover {
-            transform: scale(1.2);
-        }
-    </style>
+  .nav-logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    text-decoration: none;
+  }
+
+  .nav-logo img {
+    width: 30px;
+    height: 30px;
+    object-fit: contain;
+  }
+
+  .nav-logo-text {
+    font-family: 'Playfair Display', serif;
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text);
+    letter-spacing: -0.4px;
+  }
+
+  .nav-links {
+    display: flex;
+    gap: 36px;
+    list-style: none;
+    align-items: center;
+  }
+
+  .nav-links a {
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 14px;
+    transition: color 0.2s;
+  }
+
+  .nav-links a:hover { color: var(--text); }
+
+  .nav-cta {
+    background: var(--blue) !important;
+    color: white !important;
+    padding: 8px 20px;
+    border-radius: 8px;
+    font-weight: 500 !important;
+    transition: box-shadow 0.2s, transform 0.2s !important;
+  }
+
+  .nav-cta:hover {
+    box-shadow: 0 0 20px var(--blue-glow) !important;
+    transform: translateY(-1px);
+  }
+
+  /* HERO */
+  .hero {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    padding: 120px 52px 80px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .hero-ambient {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 55% 60% at 15% 55%, rgba(59,130,246,0.07) 0%, transparent 65%),
+      radial-gradient(ellipse 45% 50% at 85% 25%, rgba(29,78,216,0.05) 0%, transparent 65%);
+    pointer-events: none;
+  }
+
+  .hero-grid-lines {
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(59,130,246,0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(59,130,246,0.035) 1px, transparent 1px);
+    background-size: 64px 64px;
+    mask-image: radial-gradient(ellipse 65% 65% at 50% 50%, black 20%, transparent 100%);
+    pointer-events: none;
+  }
+
+  .hero-inner {
+    position: relative;
+    z-index: 2;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 72px;
+    align-items: center;
+    max-width: 1160px;
+    width: 100%;
+    margin: 0 auto;
+  }
+
+  .hero-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(59,130,246,0.08);
+    border: 1px solid rgba(59,130,246,0.2);
+    border-radius: 100px;
+    padding: 5px 14px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--blue-bright);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    margin-bottom: 28px;
+  }
+
+  .badge-dot {
+    width: 6px;
+    height: 6px;
+    background: var(--blue-bright);
+    border-radius: 50%;
+    box-shadow: 0 0 6px var(--blue-bright);
+    animation: blink 2.2s ease-in-out infinite;
+  }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  .hero-title {
+    font-family: 'Playfair Display', serif;
+    font-size: clamp(46px, 5.2vw, 74px);
+    font-weight: 900;
+    line-height: 1.04;
+    letter-spacing: -2.5px;
+    margin-bottom: 22px;
+  }
+
+  .hero-title .accent { color: var(--blue-bright); }
+
+  .hero-sub {
+    font-size: 16.5px;
+    line-height: 1.75;
+    color: var(--muted);
+    font-weight: 300;
+    max-width: 440px;
+    margin-bottom: 40px;
+  }
+
+  .hero-sub strong { color: var(--green-bright); font-weight: 500; }
+
+  .hero-actions {
+    display: flex;
+    gap: 20px;
+    align-items: center;
+  }
+
+  .btn-primary {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    background: var(--blue);
+    color: white;
+    padding: 13px 26px;
+    border-radius: 10px;
+    font-size: 15px;
+    font-weight: 500;
+    text-decoration: none;
+    transition: all 0.2s;
+    box-shadow: 0 4px 20px rgba(59,130,246,0.28);
+  }
+
+  .btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 28px rgba(59,130,246,0.42);
+  }
+
+  .btn-ghost {
+    color: var(--muted);
+    font-size: 14px;
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: color 0.2s;
+  }
+
+  .btn-ghost:hover { color: var(--text); }
+  .btn-ghost svg { transition: transform 0.2s; }
+  .btn-ghost:hover svg { transform: translateX(3px); }
+
+  /* PHONE */
+  .hero-visual {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    position: relative;
+    animation: float 7s ease-in-out infinite;
+  }
+
+  @keyframes float {
+    0%, 100% { transform: translateY(0) rotate(-1.5deg); }
+    50% { transform: translateY(-14px) rotate(-1.5deg); }
+  }
+
+  .hero-visual::before {
+    content wolverine: '';
+    content: '';
+    position: absolute;
+    width: 320px;
+    height: 320px;
+    background: radial-gradient(circle, rgba(59,130,246,0.12) 0%, transparent 70%);
+    border-radius: 50%;
+    pointer-events: none;
+  }
+
+  .phone-wrap {
+    position: relative;
+    width: 270px;
+    z-index: 1;
+  }
+
+  .phone-screenshot {
+    width: 100%;
+    display: block;
+  }
+
+  /* STATS */
+  .stats {
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    padding: 44px 52px;
+    display: flex;
+    justify-content: center;
+    gap: 90px;
+  }
+
+  .stat { text-align: center; }
+
+  .stat-n {
+    font-family: 'Playfair Display', serif;
+    font-size: 44px;
+    font-weight: 900;
+    line-height: 1;
+    color: var(--blue-bright);
+    letter-spacing: -1.5px;
+  }
+
+  .stat-l {
+    font-size: 13px;
+    color: var(--muted);
+    margin-top: 7px;
+    letter-spacing: 0.03em;
+  }
+
+  /* SHARED */
+  .eyebrow {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--blue);
+    margin-bottom: 18px;
+  }
+
+  .section-h {
+    font-family: 'Playfair Display', serif;
+    font-size: clamp(32px, 3.4vw, 50px);
+    font-weight: 800;
+    line-height: 1.1;
+    letter-spacing: -1.5px;
+    margin-bottom: 20px;
+  }
+
+  .section-h em { font-style: italic; color: var(--blue-bright); }
+
+  .section-p {
+    font-size: 16px;
+    line-height: 1.8;
+    color: var(--muted);
+    font-weight: 300;
+  }
+
+  /* MISSION */
+  .mission {
+    max-width: 1160px;
+    margin: 0 auto;
+    padding: 120px 52px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 96px;
+    align-items: center;
+  }
+
+  .mission-pillars { display: flex; flex-direction: column; gap: 18px; }
+
+  .pillar {
+    display: flex;
+    gap: 18px;
+    padding: 20px 22px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    transition: border-color 0.25s;
+    align-items: flex-start;
+  }
+
+  .pillar:hover { border-color: rgba(59,130,246,0.28); }
+
+  .pillar-icon {
+    width: 38px;
+    height: 38px;
+    min-width: 38px;
+    background: rgba(59,130,246,0.1);
+    border: 1px solid rgba(59,130,246,0.2);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .pillar-icon svg { width: 18px; height: 18px; stroke: var(--blue-bright); fill: none; }
+  .pillar-body h4 { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+  .pillar-body p { font-size: 13px; color: var(--muted); line-height: 1.6; }
+
+  /* APP SCREENSHOTS */
+  .screenshots {
+    padding: 80px 52px 100px;
+    max-width: 1160px;
+    margin: 0 auto;
+  }
+
+  .screenshots-hd { text-align: center; max-width: 500px; margin: 0 auto 52px; }
+
+  .screens-row {
+    display: flex;
+    gap: 24px;
+    justify-content: center;
+    align-items: flex-end;
+  }
+
+  .screen-item { flex: 1; max-width: 240px; }
+
+  .screen-item img {
+    width: 100%;
+    display: block;
+  }
+
+  .screen-item.featured { max-width: 268px; transform: translateY(-18px); }
+
+  .screen-caption {
+    text-align: center;
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 16px;
+    letter-spacing: 0.03em;
+  }
+
+  /* iPHONE PRO FRAME */
+  .iphone-outer {
+    position: relative;
+    background: linear-gradient(160deg, #1a1a1a 0%, #111111 50%, #080808 100%);
+    border-radius: 36px;
+    padding: 4px 3px;
+    box-shadow:
+      inset 0 0 0 1px rgba(255,255,255,0.1),
+      inset 0 0 0 2px rgba(0,0,0,0.6),
+      0 0 0 1px rgba(0,0,0,0.8),
+      0 32px 72px rgba(0,0,0,0.72),
+      0 0 40px rgba(59,130,246,0.07);
+  }
+
+  /* Action button + volume buttons (left side) */
+  .iphone-outer::before {
+    content: '';
+    position: absolute;
+    left: -2px;
+    top: 64px;
+    width: 2px;
+    height: 20px;
+    background: #1a1a1a;
+    border-radius: 2px 0 0 2px;
+    box-shadow: 0 32px 0 #1a1a1a, 0 60px 0 #1a1a1a;
+  }
+
+  /* Power button (right side) */
+  .iphone-outer::after {
+    content: '';
+    position: absolute;
+    right: -2px;
+    top: 78px;
+    width: 2px;
+    height: 46px;
+    background: #1a1a1a;
+    border-radius: 0 2px 2px 0;
+  }
+
+  .iphone-screen {
+    border-radius: 33px;
+    overflow: hidden;
+    position: relative;
+    background: #000;
+    display: block;
+  }
+
+  .iphone-dynamic-island {
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 32%;
+    max-width: 72px;
+    min-width: 48px;
+    height: 18px;
+    background: #000;
+    border-radius: 12px;
+    z-index: 10;
+    pointer-events: none;
+  }
+
+  /* FEATURES */
+  .features {
+    padding: 80px 52px 100px;
+    max-width: 1160px;
+    margin: 0 auto;
+  }
+
+  .features-hd { text-align: center; max-width: 540px; margin: 0 auto 52px; }
+
+  .features-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+
+  .f-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 28px;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.25s;
+  }
+
+  .f-card::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--blue), transparent);
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+
+  .f-card:hover { border-color: rgba(59,130,246,0.28); transform: translateY(-3px); box-shadow: 0 12px 40px rgba(0,0,0,0.35); }
+  .f-card:hover::after { opacity: 1; }
+
+  .f-card-icon {
+    width: 40px;
+    height: 40px;
+    background: rgba(59,130,246,0.1);
+    border: 1px solid rgba(59,130,246,0.18);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 18px;
+  }
+
+  .f-card-icon svg { width: 20px; height: 20px; stroke: var(--blue-bright); fill: none; }
+  .f-card h3 { font-size: 16px; font-weight: 600; margin-bottom: 10px; letter-spacing: -0.2px; }
+  .f-card p { font-size: 13.5px; color: var(--muted); line-height: 1.7; }
+
+  .f-card.span2 {
+    grid-column: span 2;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 28px;
+    align-items: center;
+  }
+
+  .verdict-preview {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px;
+  }
+
+  .vp-label { font-size: 10px; color: var(--muted); font-family: 'DM Mono', monospace; margin-bottom: 14px; }
+
+  .vbar { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; }
+  .vbar-name { width: 80px; color: var(--muted); font-size: 10.5px; }
+  .vbar-track { flex: 1; height: 5px; background: rgba(255,255,255,0.05); border-radius: 3px; overflow: hidden; }
+  .vbar-fill { height: 100%; border-radius: 3px; }
+  .vbar-fill.t { background: var(--green); width: 35%; }
+  .vbar-fill.p { background: var(--yellow); width: 42%; }
+  .vbar-fill.f { background: var(--red); width: 23%; }
+  .vbar-pct { font-family: 'DM Mono', monospace; font-size: 10px; color: var(--muted); width: 26px; text-align: right; }
+
+  /* HOW IT WORKS */
+  .how {
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    padding: 100px 52px;
+  }
+
+  .how-inner { max-width: 1200px; margin: 0 auto; }
+  .how-hd { text-align: center; max-width: 520px; margin: 0 auto 68px; }
+
+  .demo-steps {
+    display: flex;
+    gap: 20px;
+    justify-content: center;
+    align-items: flex-end;
+    overflow-x: auto;
+    padding-bottom: 8px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .demo-steps::-webkit-scrollbar { display: none; }
+
+  .demo-step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 18px;
+    flex: 0 0 auto;
+    width: 180px;
+  }
+
+  .demo-step-img {
+    width: 100%;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .demo-step-img img {
+    width: 100%;
+    border-radius: 16px;
+    display: block;
+    box-shadow: 0 12px 36px rgba(0,0,0,0.5);
+    flex-shrink: 0;
+  }
+
+  .demo-step-img .iphone-outer {
+    width: 100%;
+    flex-shrink: 0;
+  }
+
+  .demo-step-label {
+    text-align: center;
+    min-height: 72px;
+  }
+
+  .demo-step-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: rgba(59,130,246,0.12);
+    border: 1px solid rgba(59,130,246,0.3);
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--blue-bright);
+    margin-bottom: 8px;
+  }
+
+  .demo-step-label p {
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+
+  .demo-step .iphone-outer {
+    width: 100%;
+  }
+
+  .demo-step img {
+    width: 100%;
+    border-radius: 16px;
+    display: block;
+    box-shadow: 0 12px 36px rgba(0,0,0,0.5);
+  }
+
+  .demo-connector {
+    align-self: flex-end;
+    margin-bottom: 160px;
+    flex: 0 0 auto;
+    color: rgba(59,130,246,0.35);
+  }
+  .demo-connector svg { width: 20px; height: 20px; }
+
+  /* REVIEWS */
+  .reviews {
+    padding: 100px 52px;
+    max-width: 1160px;
+    margin: 0 auto;
+  }
+
+  .reviews-hd { text-align: center; margin-bottom: 52px; }
+  .reviews-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+
+  .review-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 26px;
+    transition: border-color 0.2s;
+  }
+
+  .review-card:hover { border-color: rgba(59,130,246,0.25); }
+
+  .review-stars { display: flex; gap: 3px; margin-bottom: 14px; }
+  .review-stars svg { width: 14px; height: 14px; fill: var(--yellow); }
+
+  .review-text { font-size: 14px; line-height: 1.75; color: var(--muted); margin-bottom: 20px; font-style: italic; }
+  .review-author { display: flex; align-items: center; gap: 12px; }
+
+  .review-av {
+    width: 34px; height: 34px; border-radius: 50%;
+    background: linear-gradient(135deg, #2563EB, #1D4ED8);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700; color: white; min-width: 34px;
+  }
+
+  .review-name { font-size: 13px; font-weight: 600; }
+  .review-handle { font-size: 11px; color: var(--muted); }
+
+  /* FREE COMMITMENT */
+  .free-section {
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    padding: 100px 52px;
+  }
+
+  .free-inner {
+    max-width: 1160px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 96px;
+    align-items: center;
+  }
+
+  .free-section .eyebrow { color: var(--green); }
+  .free-section .section-h em { color: var(--green-bright); }
+  .free-section .section-p { margin-bottom: 32px; }
+
+  .free-list { display: flex; flex-direction: column; gap: 14px; }
+
+  .free-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 18px 20px;
+    background: var(--bg);
+    border: 1px solid rgba(16,185,129,0.12);
+    border-radius: 12px;
+    transition: border-color 0.2s;
+  }
+
+  .free-item:hover { border-color: rgba(16,185,129,0.28); }
+
+  .free-item-icon {
+    width: 34px; height: 34px; min-width: 34px;
+    background: rgba(16,185,129,0.1);
+    border: 1px solid rgba(16,185,129,0.2);
+    border-radius: 9px;
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  .free-item-icon svg { width: 17px; height: 17px; stroke: var(--green-bright); fill: none; }
+  .free-item h4 { font-size: 14px; font-weight: 600; margin-bottom: 3px; }
+  .free-item p { font-size: 13px; color: var(--muted); line-height: 1.55; }
+
+  .free-visual { display: flex; align-items: center; justify-content: center; }
+
+  .free-card {
+    background: var(--bg);
+    border: 1px solid rgba(16,185,129,0.2);
+    border-radius: 24px;
+    padding: 40px 44px;
+    text-align: center;
+    box-shadow: 0 0 60px rgba(16,185,129,0.05);
+    max-width: 320px;
+    width: 100%;
+  }
+
+  .free-big {
+    font-family: 'Playfair Display', serif;
+    font-size: 84px;
+    font-weight: 900;
+    line-height: 1;
+    color: var(--green-bright);
+    letter-spacing: -4px;
+    margin-bottom: 4px;
+  }
+
+  .free-sub {
+    font-size: 12px;
+    color: var(--muted);
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    font-family: 'DM Mono', monospace;
+    margin-bottom: 28px;
+  }
+
+  .free-rows { display: flex; flex-direction: column; gap: 8px; text-align: left; }
+
+  .free-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    color: var(--muted);
+    padding: 8px 12px;
+    background: var(--surface);
+    border-radius: 8px;
+  }
+
+  .free-row svg { width: 14px; height: 14px; stroke: var(--green-bright); fill: none; min-width: 14px; }
+  .free-note { margin-top: 24px; font-size: 11px; color: rgba(52,211,153,0.45); font-family: 'DM Mono', monospace; }
+
+  /* CTA */
+  .cta {
+    text-align: center;
+    padding: 100px 52px 120px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .cta::before {
+    content: '';
+    position: absolute;
+    width: 700px; height: 400px;
+    background: radial-gradient(ellipse, rgba(59,130,246,0.08) 0%, transparent 70%);
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+  }
+
+  .cta-inner { position: relative; z-index: 2; max-width: 540px; margin: 0 auto; }
+
+  .cta-title {
+    font-family: 'Playfair Display', serif;
+    font-size: clamp(38px, 4.2vw, 62px);
+    font-weight: 900;
+    line-height: 1.04;
+    letter-spacing: -2px;
+    margin-bottom: 18px;
+  }
+
+  .cta-title em { font-style: italic; color: var(--blue-bright); }
+
+  .cta-sub {
+    font-size: 16px;
+    color: var(--muted);
+    line-height: 1.75;
+    margin-bottom: 40px;
+    font-weight: 300;
+  }
+
+  .app-btns { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+
+  .app-btn {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 22px;
+    text-decoration: none;
+    color: var(--text);
+    transition: all 0.2s;
+  }
+
+  .app-btn:hover { border-color: rgba(59,130,246,0.35); transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
+  .app-btn svg { width: 26px; height: 26px; fill: var(--text); }
+  .app-btn-text small { display: block; font-size: 10px; color: var(--muted); letter-spacing: 0.04em; }
+  .app-btn-text strong { font-size: 16px; font-weight: 600; }
+
+  /* FOOTER */
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 44px 52px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .footer-brand { display: flex; align-items: center; gap: 9px; }
+  .footer-brand img { width: 22px; height: 22px; object-fit: contain; }
+  .footer-brand span { font-family: 'Playfair Display', serif; font-size: 17px; font-weight: 700; color: var(--text); }
+
+  .footer-links { display: flex; gap: 28px; list-style: none; }
+  .footer-links a { color: var(--muted); text-decoration: none; font-size: 13px; transition: color 0.2s; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-size: 12px; color: var(--muted); }
+
+  /* RESPONSIVE */
+  @media (max-width: 940px) {
+    nav { padding: 16px 24px; }
+    .nav-links { display: none; }
+    .hero { padding: 100px 24px 64px; }
+    .hero-inner { grid-template-columns: 1fr; gap: 56px; }
+    .phone-wrap { margin: 0 auto; max-width: 240px; }
+    .stats { padding: 32px 24px; gap: 36px; flex-wrap: wrap; }
+    .mission { grid-template-columns: 1fr; gap: 52px; padding: 72px 24px; }
+    .screenshots { padding: 56px 24px 72px; }
+    .screens-row { flex-wrap: wrap; justify-content: center; }
+    .screen-item.featured { transform: none; }
+    .features { padding: 56px 24px 72px; }
+    .features-grid { grid-template-columns: 1fr; }
+    .f-card.span2 { grid-column: span 1; grid-template-columns: 1fr; }
+    .how { padding: 64px 24px; }
+    .demo-steps { justify-content: flex-start; padding: 0 4px 16px; }
+    .demo-step { width: 150px; }
+    .reviews { padding: 64px 24px; }
+    .reviews-grid { grid-template-columns: 1fr; }
+    .free-section { padding: 64px 24px; }
+    .free-inner { grid-template-columns: 1fr; gap: 52px; }
+    .cta { padding: 64px 24px 80px; }
+    footer { padding: 32px 24px; flex-direction: column; gap: 24px; text-align: center; }
+    .footer-links { flex-wrap: wrap; justify-content: center; }
+  }
+
+  @keyframes up {
+    from { opacity: 0; transform: translateY(22px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .hero-badge   { animation: up 0.55s ease both; }
+  .hero-title   { animation: up 0.55s 0.08s ease both; }
+  .hero-sub     { animation: up 0.55s 0.16s ease both; }
+  .hero-actions { animation: up 0.55s 0.24s ease both; }
+  .hero-visual  { animation: up 0.7s 0.18s ease both; }
+</style>
 </head>
-<body class="bg-slate-50 text-slate-900 overflow-x-hidden relative">
+<body>
 
-    <div class="orb w-96 h-96 bg-blue-300 top-0 left-0 -translate-x-1/2 -translate-y-1/2"></div>
-    <div class="orb w-[500px] h-[500px] bg-green-200 bottom-0 right-0 translate-x-1/3 translate-y-1/3"></div>
+<!-- NAV -->
+<nav>
+  <a href="#" class="nav-logo">
+    <!-- Image path: place logo.png in the same directory as this file, or update the src -->
+    <img src="logo.png" alt="Informed">
+    <span class="nav-logo-text">Informed</span>
+  </a>
+  <ul class="nav-links">
+    <li><a href="#mission">Mission</a></li>
+    <li><a href="#features">Features</a></li>
+    <li><a href="#how">How It Works</a></li>
+    <li><a href="#free">Free Forever</a></li>
+    <li><a href="#download" class="nav-cta">Download</a></li>
+  </ul>
+</nav>
 
-    <nav class="fixed w-full z-50 top-0 left-0 p-6">
-        <div class="max-w-7xl mx-auto glass rounded-full px-8 py-4 flex justify-between items-center shadow-lg">
-            <div class="flex items-center gap-2">
-                <img src="logo.png" alt="Informed Logo" class="w-8 h-8 rounded-lg object-cover">
-                <span class="text-xl font-bold tracking-tight">Informed</span>
-            </div>
-            <div class="hidden md:flex gap-8 font-medium text-slate-600">
-            </div>
-            <button class="bg-slate-900 text-white px-6 py-2 rounded-full font-semibold hover:bg-slate-700 transition transform hover:scale-105">
-                Download App
-            </button>
-        </div>
-    </nav>
-
-    <section class="min-h-screen flex flex-col md:flex-row items-center justify-center pt-32 pb-20 px-6 max-w-7xl mx-auto gap-12">
-        
-        <div class="flex-1 space-y-8 z-10">
-            <div class="inline-flex items-center gap-2 bg-green-100 text-green-700 px-4 py-1.5 rounded-full text-sm font-semibold border border-green-200">
-                <i class="fa-solid fa-check-circle"></i> Verified by AI + Humans
-            </div>
-            <h1 class="text-5xl md:text-7xl font-extrabold leading-tight tracking-tight">
-                Scroll Smart.<br>
-                <span class="text-transparent bg-clip-text bg-gradient-to-r from-green-500 to-blue-600">Verify Instantly.</span>
-            </h1>
-            <p class="text-lg text-slate-500 max-w-lg leading-relaxed">
-                The ultimate companion for your social feed. We analyze reels, news, and viral claims in real-time, giving you a credibility score you can trust.
-            </p>
-            <button onclick="openVideoModal()" class="bg-white text-slate-800 border border-slate-200 px-8 py-4 rounded-xl font-semibold shadow-sm hover:bg-slate-50 transition flex items-center gap-2">
-                <i class="fa-solid fa-play"></i> Watch Trailer
-            </button>
-        </div>
-
-        <div class="flex-1 flex justify-center z-10">
-            <div class="iphone-frame">
-                <div class="dynamic-island"></div>
-                <div class="screen flex flex-col pt-12 px-4 pb-4">
-                    <div class="bg-white rounded-full p-3 shadow-sm flex items-center gap-2 mb-6 text-slate-400">
-                        <i class="fa-solid fa-magnifying-glass ml-2"></i>
-                        <span class="text-sm">Paste a link or search...</span>
-                    </div>
-
-                    <div class="bg-white p-4 rounded-3xl shadow-sm mb-4">
-                        <div class="flex justify-between items-start mb-2">
-                            <div class="flex gap-2 items-center">
-                                <div class="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-600">
-                                    <i class="fa-solid fa-newspaper"></i>
-                                </div>
-                                <div>
-                                    <h4 class="text-xs font-bold text-slate-500">Verified by AI + Humans</h4>
-                                    <p class="text-[10px] text-slate-400">1h ago</p>
-                                </div>
-                            </div>
-                            <i class="fa-solid fa-chevron-right text-slate-300 text-xs"></i>
-                        </div>
-                        <div class="flex gap-3 mb-3">
-                            <img src="demo.png" alt="Demo" class="w-16 h-16 rounded-xl shrink-0 object-cover">
-                            <div>
-                                <h3 class="font-bold text-sm leading-tight">NYC 2025 Mayoral Election Voter Turnout</h3>
-                                <p class="text-[10px] text-slate-400 mt-1">News Aggregator</p>
-                            </div>
-                        </div>
-                        <p class="text-xs text-slate-600 leading-snug mb-3">
-                            More people voted in New York City's election this year than they have in 50 years.
-                        </p>
-                        <div class="flex justify-between items-center text-xs font-bold text-slate-400 mb-1">
-                            <span>Credibility:</span>
-                            <span class="text-green-500 flex items-center gap-1"><i class="fa-solid fa-certificate"></i> Verified</span>
-                        </div>
-                        <div class="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                            <div class="h-full bg-green-500 w-full"></div>
-                        </div>
-                    </div>
-
-                     <div class="bg-white p-4 rounded-3xl shadow-sm">
-                        <div class="flex justify-between items-start mb-2">
-                            <div class="flex gap-2 items-center">
-                                <div class="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-600">
-                                    <i class="fa-solid fa-globe"></i>
-                                </div>
-                                <div>
-                                    <h4 class="text-xs font-bold text-slate-500">Verified by AI + Humans</h4>
-                                    <p class="text-[10px] text-slate-400">2h ago</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="flex gap-3 mb-3">
-                            <img src="demo.png" alt="Demo" class="w-16 h-16 rounded-xl shrink-0 object-cover">
-                            <div>
-                                <h3 class="font-bold text-sm leading-tight">Does the new AI Chip actually use human...</h3>
-                                <p class="text-[10px] text-slate-400 mt-1">TechCrunch</p>
-                            </div>
-                        </div>
-                        <div class="flex justify-between items-center text-xs font-bold text-slate-400 mb-1">
-                            <span>Credibility:</span>
-                            <span class="text-green-500 flex items-center gap-1"><i class="fa-solid fa-certificate"></i> Verified</span>
-                        </div>
-                        <div class="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                            <div class="h-full bg-green-500 w-[95%]"></div>
-                        </div>
-                    </div>
-                    
-                    <div class="absolute bottom-4 left-4 right-4 bg-white rounded-3xl shadow-lg p-3 flex justify-around items-center z-20">
-                        <div class="flex flex-col items-center text-blue-600">
-                            <i class="fa-solid fa-house text-lg"></i>
-                            <span class="text-[10px] font-bold">Feed</span>
-                        </div>
-                        <div class="flex flex-col items-center text-slate-400">
-                            <i class="fa-solid fa-download text-lg"></i>
-                            <span class="text-[10px] font-medium">Shared</span>
-                        </div>
-                        <div class="flex flex-col items-center text-slate-400">
-                            <i class="fa-solid fa-user text-lg"></i>
-                            <span class="text-[10px] font-medium">Account</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- Video Modal -->
-    <div id="videoModal" class="video-modal" onclick="closeVideoModal(event)">
-        <div class="video-container" onclick="event.stopPropagation()">
-            <span class="close-modal" onclick="closeVideoModal()">&times;</span>
-            <video id="trailerVideo" controls class="w-full h-full rounded-lg">
-                <source src="demovideo.mp4" type="video/mp4">
-                Your browser does not support the video tag.
-            </video>
-        </div>
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-ambient"></div>
+  <div class="hero-grid-lines"></div>
+  <div class="hero-inner">
+    <div>
+      <div class="hero-badge">
+        <span class="badge-dot"></span>
+        Now on iOS
+      </div>
+      <h1 class="hero-title">
+        Stop scrolling.<br>
+        Start being<br>
+        <span class="accent">Informed.</span>
+      </h1>
+      <p class="hero-sub">
+        AI fact-checking for social media videos. Real-time claim analysis, truth scores, and source verification right in your feed. <strong>Always 100% free.</strong>
+      </p>
+      <div class="hero-actions">
+        <a href="#download" class="btn-primary">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
+          Download for iOS
+        </a>
+        <a href="#how" class="btn-ghost">
+          See how it works
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </a>
+      </div>
     </div>
+    <div class="hero-visual">
+      <div class="phone-wrap">
+        <div class="iphone-outer">
+          <div class="iphone-screen">
+            <div class="iphone-dynamic-island"></div>
+            <!-- Image path: place demo0.png in the same directory, or update the src to your hosted URL -->
+            <img class="phone-screenshot" src="IMG_1777.PNG" alt="Informed app — fact-check results">
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
 
-    <script>
-        function openVideoModal() {
-            document.getElementById('videoModal').classList.add('active');
-            document.getElementById('trailerVideo').play();
-        }
+<!-- STATS -->
+<div class="stats">
+  <div class="stat"><div class="stat-n">10M+</div><div class="stat-l">Videos analyzed</div></div>
+  <div class="stat"><div class="stat-n">94%</div><div class="stat-l">Accuracy rate</div></div>
+  <div class="stat"><div class="stat-n">3.2s</div><div class="stat-l">Average fact-check time</div></div>
+  <div class="stat"><div class="stat-n">50K+</div><div class="stat-l">Active users</div></div>
+</div>
 
-        function closeVideoModal(event) {
-            const modal = document.getElementById('videoModal');
-            const video = document.getElementById('trailerVideo');
-            modal.classList.remove('active');
-            video.pause();
-            video.currentTime = 0;
-        }
+<!-- MISSION -->
+<section class="mission" id="mission">
+  <div>
+    <div class="eyebrow">Our Mission</div>
+    <h2 class="section-h">People are less radical than social media <em>wants you to think.</em></h2>
+    <p class="section-p">Misinformation thrives because engagement algorithms reward outrage over accuracy. Informed fights back — giving everyone the tools to see through the noise and understand the world as it actually is.</p>
+    <br>
+    <p class="section-p">We're a social enterprise. Our goal isn't profit — it's a more informed planet where people connect across differences based on shared facts, not fabrications.</p>
+  </div>
+  <div class="mission-pillars">
+    <div class="pillar">
+      <div class="pillar-icon">
+        <svg viewBox="0 0 24 24" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      </div>
+      <div class="pillar-body">
+        <h4>Real-Time Verification</h4>
+        <p>Claims are checked the moment you encounter them — no waiting, no manual research required.</p>
+      </div>
+    </div>
+    <div class="pillar">
+      <div class="pillar-icon">
+        <svg viewBox="0 0 24 24" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+      </div>
+      <div class="pillar-body">
+        <h4>Multi-Platform Coverage</h4>
+        <p>Works across Instagram Reels, TikTok, YouTube Shorts, and other major social video platforms.</p>
+      </div>
+    </div>
+    <div class="pillar">
+      <div class="pillar-icon">
+        <svg viewBox="0 0 24 24" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+      </div>
+      <div class="pillar-body">
+        <h4>Sourced and Transparent</h4>
+        <p>Every verdict links directly to primary sources — so you can always verify the findings yourself.</p>
+      </div>
+    </div>
+    <div class="pillar">
+      <div class="pillar-icon">
+        <svg viewBox="0 0 24 24" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      </div>
+      <div class="pillar-body">
+        <h4>AI-Generation Detection</h4>
+        <p>Identifies deepfakes and AI-generated video content before you share it with your network.</p>
+      </div>
+    </div>
+  </div>
+</section>
 
-        // Close modal with Escape key
-        document.addEventListener('keydown', function(event) {
-            if (event.key === 'Escape') {
-                closeVideoModal();
-            }
-        });
-    </script>
+<!-- APP SCREENSHOTS -->
+<section class="screenshots">
+  <div class="screenshots-hd">
+    <div class="eyebrow">The App</div>
+    <h2 class="section-h" style="font-size: clamp(28px, 3vw, 42px);">Built for the way<br><em>people actually scroll.</em></h2>
+  </div>
+  <div class="screens-row">
+    <div class="screen-item">
+      <div class="iphone-outer">
+        <div class="iphone-screen">
+          <div class="iphone-dynamic-island"></div>
+          <!-- Image path: IMG_1778.PNG — update src to your hosted URL when deploying -->
+          <img src="IMG_1778.PNG" alt="Informed app — source breakdown">
+        </div>
+      </div>
+      <div class="screen-caption">Full source breakdown</div>
+    </div>
+    <div class="screen-item featured">
+      <div class="iphone-outer">
+        <div class="iphone-screen">
+          <div class="iphone-dynamic-island"></div>
+          <!-- Image path: IMG_1777.PNG — update src to your hosted URL when deploying -->
+          <img src="IMG_1777.PNG" alt="Informed app — truth score overview">
+        </div>
+      </div>
+      <div class="screen-caption">Truth score overview</div>
+    </div>
+    <div class="screen-item">
+      <div class="iphone-outer">
+        <div class="iphone-screen">
+          <div class="iphone-dynamic-island"></div>
+          <!-- Image path: demo0.png — update src to your hosted URL when deploying -->
+          <img src="demo5.png" alt="Informed app — claim verdict">
+        </div>
+      </div>
+      <div class="screen-caption">Claim-by-claim verdict</div>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section class="features" id="features">
+  <div class="features-hd">
+    <div class="eyebrow">What Informed Does</div>
+    <h2 class="section-h" style="font-size: clamp(28px, 3vw, 42px);">Every tool you need to<br><em>separate fact from fiction.</em></h2>
+  </div>
+  <div class="features-grid">
+    <div class="f-card span2">
+      <div>
+        <div class="f-card-icon">
+          <svg viewBox="0 0 24 24" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+        </div>
+        <h3>Claim-by-Claim Breakdown</h3>
+        <p>Every video is broken down into its individual factual claims. Each gets its own verdict, accuracy rating, and plain-language explanation — so you know exactly what's true, false, or somewhere in between.</p>
+      </div>
+      <div class="verdict-preview">
+        <div class="vp-label">ACCURACY DISTRIBUTION · 3 CLAIMS</div>
+        <div class="vbar"><span class="vbar-name">True</span><div class="vbar-track"><div class="vbar-fill t"></div></div><span class="vbar-pct">35%</span></div>
+        <div class="vbar"><span class="vbar-name">Partially True</span><div class="vbar-track"><div class="vbar-fill p"></div></div><span class="vbar-pct">42%</span></div>
+        <div class="vbar"><span class="vbar-name">False</span><div class="vbar-track"><div class="vbar-fill f"></div></div><span class="vbar-pct">23%</span></div>
+      </div>
+    </div>
+    <div class="f-card">
+      <div class="f-card-icon">
+        <svg viewBox="0 0 24 24" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+      </div>
+      <h3>AI Content Detection</h3>
+      <p>Detects deepfakes and AI-generated video with confidence scores, so you know what's real before you share it.</p>
+    </div>
+    <div class="f-card">
+      <div class="f-card-icon">
+        <svg viewBox="0 0 24 24" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      </div>
+      <h3>Instant Truth Score</h3>
+      <p>A single 0–100 score summarizes overall video credibility at a glance, color-coded with a plain-language explanation.</p>
+    </div>
+    <div class="f-card">
+      <div class="f-card-icon">
+        <svg viewBox="0 0 24 24" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+      </div>
+      <h3>Primary Source Links</h3>
+      <p>Every verdict cites original reporting, government records, or peer-reviewed research — never just an aggregator.</p>
+    </div>
+    <div class="f-card">
+      <div class="f-card-icon">
+        <svg viewBox="0 0 24 24" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+      </div>
+      <h3>My Reels History</h3>
+      <p>A searchable archive of every video you've fact-checked, so you can revisit past verdicts and track misinformation trends.</p>
+    </div>
+  </div>
+</section>
+
+<!-- HOW IT WORKS -->
+<section class="how" id="how">
+  <div class="how-inner">
+    <div class="how-hd">
+      <div class="eyebrow">How It Works</div>
+      <h2 class="section-h" style="font-size: clamp(28px, 2.8vw, 42px);">From video to verdict<br><em>in seconds.</em></h2>
+    </div>
+    <div class="demo-steps">
+
+      <div class="demo-step">
+        <div class="demo-step-img"><img src="demo1.png" alt="Step 1 — tap share"></div>
+        <div class="demo-step-label">
+          <div class="demo-step-num">1</div>
+          <p>Tap share on your social media content</p>
+        </div>
+      </div>
+
+      <div class="demo-connector">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+      </div>
+
+      <div class="demo-step">
+        <div class="demo-step-img"><img src="demo2.png" alt="Step 2 — share sheet"></div>
+        <div class="demo-step-label">
+          <div class="demo-step-num">2</div>
+          <p>Press &ldquo;Share to&hellip;&rdquo;</p>
+        </div>
+      </div>
+
+      <div class="demo-connector">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+      </div>
+
+      <div class="demo-step">
+        <div class="demo-step-img"><img src="demo3.png" alt="Step 3 — find Informed"></div>
+        <div class="demo-step-label">
+          <div class="demo-step-num">3</div>
+          <p>Find Informed</p>
+        </div>
+      </div>
+
+      <div class="demo-connector">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+      </div>
+
+      <div class="demo-step">
+        <div class="demo-step-img"><img src="demo4.png" alt="Step 4 — start fact check"></div>
+        <div class="demo-step-label">
+          <div class="demo-step-num">4</div>
+          <p>That&rsquo;s it! Start your fact check.</p>
+        </div>
+      </div>
+
+      <div class="demo-connector">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+      </div>
+
+      <div class="demo-step">
+        <div class="demo-step-img">
+          <div class="iphone-outer">
+            <div class="iphone-screen">
+              <div class="iphone-dynamic-island"></div>
+              <img src="demo5.png" alt="Step 5 — see your verdict">
+            </div>
+          </div>
+        </div>
+        <div class="demo-step-label">
+          <div class="demo-step-num">5</div>
+          <p>See your verdict in seconds</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- REVIEWS -->
+<section class="reviews">
+  <div class="reviews-hd">
+    <div class="eyebrow">What People Are Saying</div>
+    <h2 class="section-h" style="font-size: clamp(28px, 2.8vw, 42px);">Trusted by <em>critical thinkers.</em></h2>
+  </div>
+  <div class="reviews-grid">
+    <div class="review-card">
+      <div class="review-stars">
+        <svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        <svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        <svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        <svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        <svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+      </div>
+      <p class="review-text">I've been sharing this with everyone. It's changed how I interact with content my family sends in group chats. Finally something that helps instead of just pointing fingers.</p>
+      <div class="review-author">
+        <div class="review-av">S</div>
+        <div><div class="review-name">Sarah K.</div><div class="review-handle">@sarahkay · verified user</div></div>
+      </div>
+    </div>
+    <div class="review-card">
+      <div class="review-stars">
+        <svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        <svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        <svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        <svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        <svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+      </div>
+      <p class="review-text">As a journalism professor, I recommend Informed to all my students. The sourcing is transparent and the verdicts are nuanced — it doesn't just say true or false, it explains the complexity.</p>
+      <div class="review-author">
+        <div class="review-av">M</div>
+        <div><div class="review-name">Dr. Marcus T.</div><div class="review-handle">@marcustorrance · educator</div></div>
+      </div>
+    </div>
+    <div class="review-card">
+      <div class="review-stars">
+        <svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        <svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        <svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        <svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        <svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+      </div>
+      <p class="review-text">The AI detection feature alone is worth it. I sent three deepfake videos back to the original posters with the Informed report attached. Two of them deleted their posts.</p>
+      <div class="review-author">
+        <div class="review-av">R</div>
+        <div><div class="review-name">Riya M.</div><div class="review-handle">@riyamakes · content creator</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FREE COMMITMENT -->
+<section class="free-section" id="free">
+  <div class="free-inner">
+    <div>
+      <div class="eyebrow">Our Commitment</div>
+      <h2 class="section-h">Truth doesn't have a price tag.<br><em>Neither do we.</em></h2>
+      <p class="section-p">Informed is — and will always remain — 100% free for every user on the planet. Misinformation doesn't discriminate by income, and neither should the tools to fight it. We believe access to accurate information is a fundamental right, not a subscription feature.</p>
+      <div class="free-list">
+        <div class="free-item">
+          <div class="free-item-icon">
+            <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          </div>
+          <div>
+            <h4>No Paywalls. Ever.</h4>
+            <p>Every feature — fact-checks, truth scores, AI detection, source links — is free for all users, always.</p>
+          </div>
+        </div>
+        <div class="free-item">
+          <div class="free-item-icon">
+            <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+          </div>
+          <div>
+            <h4>No Ads. No Data Selling.</h4>
+            <p>We don't monetize your attention or your data. We're a social enterprise built around a mission, not an exit.</p>
+          </div>
+        </div>
+        <div class="free-item">
+          <div class="free-item-icon">
+            <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+          </div>
+          <div>
+            <h4>Built for Everyone.</h4>
+            <p>From students to journalists to grandparents — Informed is designed so anyone, anywhere can access the truth.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="free-visual">
+      <div class="free-card">
+        <div class="free-big">Free</div>
+        <div class="free-sub">For every user · Forever</div>
+        <div class="free-rows">
+          <div class="free-row">
+            <svg viewBox="0 0 24 24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            Unlimited fact-checks
+          </div>
+          <div class="free-row">
+            <svg viewBox="0 0 24 24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            Full claim breakdowns
+          </div>
+          <div class="free-row">
+            <svg viewBox="0 0 24 24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            AI-generation detection
+          </div>
+          <div class="free-row">
+            <svg viewBox="0 0 24 24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            Primary source links
+          </div>
+          <div class="free-row">
+            <svg viewBox="0 0 24 24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            My Reels history
+          </div>
+          <div class="free-row">
+            <svg viewBox="0 0 24 24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            No account required
+          </div>
+        </div>
+        <div class="free-note">— A promise from the Informed team</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta" id="download">
+  <div class="cta-inner">
+    <div class="eyebrow" style="margin-bottom:16px;">Available Now</div>
+    <h2 class="cta-title">The truth is<br>out there.<br><em>Go find it.</em></h2>
+    <p class="cta-sub">Join thousands of people who've chosen to be Informed. Download the app and start fact-checking any video in your feed today — completely free.</p>
+    <div class="app-btns">
+      <a href="#" class="app-btn">
+        <svg viewBox="0 0 24 24"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
+        <div class="app-btn-text"><small>DOWNLOAD ON THE</small><strong>App Store</strong></div>
+      </a>
+      <a href="#" class="app-btn" style="opacity:0.4; pointer-events:none;">
+        <svg viewBox="0 0 24 24"><path d="M3 20.5v-17c0-.83.94-1.3 1.6-.8l14 8.5c.6.37.6 1.23 0 1.6l-14 8.5c-.66.5-1.6.03-1.6-.8z"/></svg>
+        <div class="app-btn-text"><small>COMING SOON TO</small><strong>Google Play</strong></div>
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="footer-brand">
+    <!-- Image path: place logo.png in the same directory, or update src to your hosted URL -->
+    <img src="logo.png" alt="Informed">
+    <span>Informed</span>
+  </div>
+  <ul class="footer-links">
+    <li><a href="#">Mission</a></li>
+    <li><a href="#">Privacy Policy</a></li>
+    <li><a href="#">Terms</a></li>
+    <li><a href="#">Press</a></li>
+    <li><a href="#">Contact</a></li>
+  </ul>
+  <div class="footer-copy">© 2026 Informed. A social enterprise.</div>
+</footer>
 
 </body>
 </html>
