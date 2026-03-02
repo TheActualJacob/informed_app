@@ -135,12 +135,6 @@ struct SharedReelsView: View {
                 .multilineTextAlignment(.center)
         }
         .padding()
-        .onAppear {
-            // Auto-sync from backend when empty state appears
-            Task {
-                await reelManager.syncHistoryFromBackend()
-            }
-        }
     }
     
     private var syncingView: some View {
