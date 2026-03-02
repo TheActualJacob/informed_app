@@ -8,7 +8,6 @@
 import UIKit
 import SwiftUI
 import UniformTypeIdentifiers
-import UserNotifications
 import ActivityKit
 
 class ShareViewController: UIViewController {
@@ -266,20 +265,15 @@ class ShareViewController: UIViewController {
         CFNotificationCenterPostNotification(center, CFNotificationName(notificationName), nil, nil, true)
         print("📡 Sent Darwin notification: \(notificationName)")
         
-        // Send local notification as fallback to trigger main app to start Live Activity
-        sendStartProcessingNotification(submissionId: submissionId, url: url)
-        
         // Send the request in background (fire and forget)
         let task = URLSession.shared.dataTask(with: request) { data, response, error in
             if let error = error {
                 print("❌ Network error: \(error.localizedDescription)")
-                self.sendErrorNotification()
                 return
             }
             
             guard let httpResponse = response as? HTTPURLResponse else {
                 print("❌ Invalid response")
-                self.sendErrorNotification()
                 return
             }
             
@@ -315,10 +309,6 @@ class ShareViewController: UIViewController {
                                 factCheckData: json,
                                 sharedDefaults: sharedDefaults
                             )
-                            
-                            let title = json["title"] as? String ?? "Fact-Check Complete"
-                            self.sendCompletionNotification(url: url, title: title)
-                            
                             print("✅ Fact-check completed synchronously and saved")
                         } else {
                             print("⏳ Fact-check is processing asynchronously")
@@ -326,14 +316,12 @@ class ShareViewController: UIViewController {
                     }
                 } catch {
                     print("❌ Error parsing response: \(error)")
-                    // Don't send error notification for parsing errors - request was accepted
                 }
             } else {
                 print("❌ Server error: \(httpResponse.statusCode)")
                 if let data = data, let errorText = String(data: data, encoding: .utf8) {
                     print("   Error details: \(errorText)")
                 }
-                self.sendErrorNotification()
             }
         }
         
@@ -479,103 +467,6 @@ class ShareViewController: UIViewController {
                value is Data
     }
     
-    // MARK: - Notifications
-    
-    private func sendStartProcessingNotification(submissionId: String, url: String) {
-        let center = UNUserNotificationCenter.current()
-        
-        let content = UNMutableNotificationContent()
-        content.title = "🎬 Fact-Checking Reel"
-        content.body = "Processing your submission..."
-        content.sound = .default
-        content.badge = nil
-        
-        // CRITICAL: Set category to make it actionable and wake the app
-        content.categoryIdentifier = "REEL_PROCESSING"
-        
-        content.userInfo = [
-            "action": "start_processing",
-            "submission_id": submissionId,
-            "reel_url": url,
-            "timestamp": Date().timeIntervalSince1970
-        ]
-        
-        // Deliver immediately with minimal delay
-        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 0.1, repeats: false)
-        let request = UNNotificationRequest(
-            identifier: "start-processing-\(submissionId)",
-            content: content,
-            trigger: trigger
-        )
-        
-        center.add(request) { error in
-            if let error = error {
-                print("❌ Failed to send start processing notification: \(error)")
-            } else {
-                print("✅ Start processing notification sent for submission \(submissionId)")
-                print("   This notification will wake the main app to start Live Activity")
-            }
-        }
-    }
-    
-    private func sendCompletionNotification(url: String, title: String) {
-        let center = UNUserNotificationCenter.current()
-        
-        let content = UNMutableNotificationContent()
-        content.title = "✅ Fact-Check Complete"
-        content.body = "Tap to view results for: \(title)"
-        content.sound = .default
-        content.badge = 1
-        
-        // Generate a unique ID for this reel
-        let reelId = UUID().uuidString
-        
-        content.userInfo = [
-            "instagram_url": url,
-            "action": "fact_check_complete",
-            "reel_id": reelId,
-            "reel_title": title
-        ]
-        
-        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 0.1, repeats: false)
-        let request = UNNotificationRequest(
-            identifier: "factcheck-complete-\(reelId)",
-            content: content,
-            trigger: trigger
-        )
-        
-        center.add(request) { error in
-            if let error = error {
-                print("❌ Failed to send completion notification: \(error)")
-            } else {
-                print("✅ Completion notification sent!")
-            }
-        }
-    }
-    
-    private func sendErrorNotification() {
-        let center = UNUserNotificationCenter.current()
-        
-        let content = UNMutableNotificationContent()
-        content.title = "❌ Fact-Check Failed"
-        content.body = "Unable to process this reel. Please try again."
-        content.sound = .default
-        
-        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 0.1, repeats: false)
-        let request = UNNotificationRequest(
-            identifier: "factcheck-error-\(UUID().uuidString)",
-            content: content,
-            trigger: trigger
-        )
-        
-        center.add(request) { error in
-            if let error = error {
-                print("❌ Failed to send error notification: \(error)")
-            }
-        }
-    }
-    
-    // MARK: - Live Activity
     // MARK: - Live Activity
     
     /// Starts a Live Activity (and therefore Dynamic Island) directly from the

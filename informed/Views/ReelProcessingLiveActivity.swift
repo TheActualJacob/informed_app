@@ -187,8 +187,9 @@ struct CompactTrailingView: View {
                         .rotationEffect(.degrees(-90))
                         .animation(.spring(response: 0.5, dampingFraction: 0.8), value: context.state.progress)
                 }
-                .frame(width: 13, height: 13)
-                .padding(.trailing, 2)
+                .frame(width: 11, height: 11)
+                .padding(.leading, 2)
+                .padding(.trailing, 3)
             }
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.7), value: context.state.status)
@@ -230,10 +231,10 @@ struct ExpandedLeadingView: View {
         ZStack {
             Circle()
                 .fill(context.state.status.color.opacity(isPulsing ? 0.24 : 0.13))
-                .frame(width: 52, height: 52)
+                .frame(width: 36, height: 36)
                 .animation(.easeInOut(duration: 1.3).repeatForever(autoreverses: true), value: isPulsing)
             Image(systemName: context.state.status.icon)
-                .font(.system(size: 24, weight: .semibold))
+                .font(.system(size: 18, weight: .semibold))
                 .foregroundColor(context.state.status.color)
                 .scaleEffect(context.state.status == .completed ? 1.15 : 1.0)
                 .animation(.spring(response: 0.4, dampingFraction: 0.55), value: context.state.status)
@@ -253,19 +254,19 @@ struct ExpandedTrailingView: View {
     var body: some View {
         if context.state.status == .completed {
             ZStack {
-                Circle().fill(Color.brandGreen.opacity(0.18)).frame(width: 52, height: 52)
-                Image(systemName: "checkmark").font(.system(size: 26, weight: .bold)).foregroundColor(.brandGreen)
+                Circle().fill(Color.brandGreen.opacity(0.18)).frame(width: 36, height: 36)
+                Image(systemName: "checkmark").font(.system(size: 18, weight: .bold)).foregroundColor(.brandGreen)
             }
             .scaleEffect(1.1)
             .animation(.spring(response: 0.45, dampingFraction: 0.5), value: context.state.status)
         } else if context.state.status == .failed {
             ZStack {
-                Circle().fill(Color.brandRed.opacity(0.18)).frame(width: 52, height: 52)
-                Image(systemName: "xmark").font(.system(size: 24, weight: .bold)).foregroundColor(.brandRed)
+                Circle().fill(Color.brandRed.opacity(0.18)).frame(width: 36, height: 36)
+                Image(systemName: "xmark").font(.system(size: 16, weight: .bold)).foregroundColor(.brandRed)
             }
         } else {
             LACircularRing(progress: context.state.progress, color: context.state.status.color)
-                .frame(width: 52, height: 52)
+                .frame(width: 36, height: 36)
         }
     }
 }
