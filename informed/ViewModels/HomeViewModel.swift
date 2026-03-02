@@ -358,7 +358,7 @@ class HomeViewModel: ObservableObject {
             let newItem = FactCheckItem(
                 reelID: nil,
                 sourceName: platformName, sourceIcon: platformIcon,
-                timeAgo: "Just now", title: factCheckData.title,
+                timeAgo: "Just now", title: factCheckData.title ?? "",
                 summary: primaryClaim.summary,
                 thumbnailURL: thumbnailURL,
                 credibilityScore: calculateCredibilityScore(from: primaryClaim.claimAccuracyRating),
@@ -370,14 +370,14 @@ class HomeViewModel: ObservableObject {
             PersistenceService.shared.saveFactCheck(newItem)
 
             let storedData = StoredFactCheckData(
-                title: factCheckData.title, summary: primaryClaim.summary,
+                title: factCheckData.title ?? "", summary: primaryClaim.summary,
                 thumbnailURL: factCheckData.thumbnailUrl, claims: resolvedClaims,
                 datePosted: factCheckData.date, platform: factCheckData.platform,
                 aiGenerated: factCheckData.aiGenerated, aiProbability: factCheckData.aiProbability
             )
             let completedReel = SharedReel(
                 id: submissionId, url: link, submittedAt: Date(),
-                status: .completed, resultId: factCheckData.title,
+                status: .completed, resultId: factCheckData.title ?? "",
                 errorMessage: nil, factCheckData: storedData
             )
             // Replace placeholder with completed reel
@@ -394,7 +394,7 @@ class HomeViewModel: ObservableObject {
                 currentSubmissionId = nil
                 Task { @MainActor in
                     await ReelProcessingActivityManager.shared.completeActivity(
-                        submissionId: sid, title: factCheckData.title, verdict: primaryClaim.verdict
+                        submissionId: sid, title: factCheckData.title ?? "", verdict: primaryClaim.verdict
                     )
                     try? await Task.sleep(nanoseconds: 3_000_000_000)
                     await ReelProcessingActivityManager.shared.endActivity(submissionId: sid, dismissalPolicy: .default)

@@ -148,7 +148,10 @@ struct LegacyFactCheckData: Codable {
 /// resolvedClaims synthesises ClaimEntry objects from either new claims array
 /// or legacy flat fields so all callers work unchanged.
 struct FactCheckData: Codable {
-    let title: String
+    // Optional because the 202 async response contains no title; only the legacy
+    // synchronous response includes it. Making it optional prevents a DecodingError
+    // when the 202 body is decoded before isAsyncSubmission can be checked.
+    let title: String?
     let description: String?
     let date: String?
     let videoLink: String?
