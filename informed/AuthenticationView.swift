@@ -1,4 +1,6 @@
 import SwiftUI
+import AuthenticationServices
+import GoogleSignIn
 
 // MARK: - Authentication Models
 
@@ -32,7 +34,64 @@ struct LoginResponse: Codable {
     }
 }
 
+// MARK: - OAuth Models
+
+struct AppleAuthRequest: Codable {
+    let identityToken: String
+    let fullName: FullName?
+    let deviceToken: String?
+
+    struct FullName: Codable {
+        let givenName: String?
+        let familyName: String?
+    }
+}
+
+struct GoogleAuthRequest: Codable {
+    let idToken: String
+    let deviceToken: String?
+}
+
+// Shared response shape for both OAuth flows — mirrors LoginResponse
+struct OAuthResponse: Codable {
+    let message: String
+    let user: UserData
+
+    struct UserData: Codable {
+        let userID: String
+        let username: String
+        let email: String
+        let sessionID: String
+    }
+}
+
 // MARK: - API Functions
+
+func authWithApple(_ payload: AppleAuthRequest) async throws -> OAuthResponse {
+    guard let url = URL(string: Config.Endpoints.authApple) else { throw URLError(.badURL) }
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    request.httpBody = try JSONEncoder().encode(payload)
+    let (data, response) = try await URLSession.shared.data(for: request)
+    guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+        throw URLError(.badServerResponse)
+    }
+    return try JSONDecoder().decode(OAuthResponse.self, from: data)
+}
+
+func authWithGoogle(_ payload: GoogleAuthRequest) async throws -> OAuthResponse {
+    guard let url = URL(string: Config.Endpoints.authGoogle) else { throw URLError(.badURL) }
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    request.httpBody = try JSONEncoder().encode(payload)
+    let (data, response) = try await URLSession.shared.data(for: request)
+    guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+        throw URLError(.badServerResponse)
+    }
+    return try JSONDecoder().decode(OAuthResponse.self, from: data)
+}
 
 func createUser(_ registration: UserRegistration) async throws -> UserResponse {
     guard let url = URL(string: Config.Endpoints.createUser) else {
@@ -384,6 +443,64 @@ struct AuthenticationView: View {
                             .font(.subheadline)
                         }
                         .padding(.top, 8)
+
+                        // Divider
+                        HStack {
+                            Rectangle().frame(height: 1).foregroundColor(.secondary.opacity(0.3))
+                            Text("or")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .padding(.horizontal, 8)
+                            Rectangle().frame(height: 1).foregroundColor(.secondary.opacity(0.3))
+                        }
+                        .padding(.top, 8)
+
+                        // Sign in with Apple
+                        SignInWithAppleButton(
+                            isLoginMode ? .signIn : .signUp,
+                            onRequest: { appleRequest in
+                                appleRequest.requestedScopes = [.fullName, .email]
+                            },
+                            onCompletion: { result in
+                                switch result {
+                                case .success(let authorization):
+                                    handleAppleSignIn(authorization)
+                                case .failure(let error):
+                                    errorMessage = "Apple Sign In failed: \(error.localizedDescription)"
+                                }
+                            }
+                        )
+                        .signInWithAppleButtonStyle(colorScheme == .dark ? .white : .black)
+                        .frame(height: 50)
+                        .cornerRadius(12)
+                        .disabled(isLoading)
+
+                        // Sign in with Google
+                        Button(action: signInWithGoogle) {
+                            HStack(spacing: 10) {
+                                // Stylised "G" matching Google brand colours
+                                ZStack {
+                                    Circle()
+                                        .fill(.white)
+                                        .frame(width: 24, height: 24)
+                                    Text("G")
+                                        .font(.system(size: 14, weight: .bold))
+                                        .foregroundColor(Color(red: 0.26, green: 0.52, blue: 0.96))
+                                }
+                                Text(isLoginMode ? "Sign in with Google" : "Sign up with Google")
+                                    .font(.system(size: 17, weight: .medium))
+                                    .foregroundColor(colorScheme == .dark ? .white : Color(red: 0.2, green: 0.2, blue: 0.2))
+                            }
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                            .background(colorScheme == .dark ? Color(white: 0.18) : .white)
+                            .cornerRadius(12)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
+                            )
+                        }
+                        .disabled(isLoading)
                         
                     }
                     .padding(24)
@@ -507,6 +624,107 @@ struct AuthenticationView: View {
             
             await MainActor.run {
                 isLoading = false
+            }
+        }
+    }
+
+    // MARK: - Apple Sign In
+
+    private func handleAppleSignIn(_ authorization: ASAuthorization) {
+        guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential,
+              let tokenData = credential.identityToken,
+              let identityToken = String(data: tokenData, encoding: .utf8) else {
+            errorMessage = "Apple Sign In failed: could not read identity token"
+            return
+        }
+
+        isLoading = true
+        errorMessage = nil
+
+        let fullName = credential.fullName
+        let payload = AppleAuthRequest(
+            identityToken: identityToken,
+            fullName: fullName.map {
+                AppleAuthRequest.FullName(
+                    givenName: $0.givenName,
+                    familyName: $0.familyName
+                )
+            },
+            deviceToken: nil
+        )
+
+        Task {
+            do {
+                let response = try await authWithApple(payload)
+                await MainActor.run {
+                    userManager.saveUser(
+                        userId: response.user.userID,
+                        username: response.user.username,
+                        sessionId: response.user.sessionID
+                    )
+                    print("✅ Apple Sign In successful! ID: \(response.user.userID)")
+                }
+            } catch {
+                await MainActor.run {
+                    errorMessage = "Apple Sign In failed: \(error.localizedDescription)"
+                    print("❌ Apple Sign In error: \(error)")
+                }
+            }
+            await MainActor.run { isLoading = false }
+        }
+    }
+
+    // MARK: - Google Sign In
+
+    private func signInWithGoogle() {
+        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let rootVC = windowScene.windows.first?.rootViewController else {
+            errorMessage = "Google Sign In failed: no root view controller"
+            return
+        }
+
+        GIDSignIn.sharedInstance.configuration = GIDConfiguration(clientID: Config.googleClientID)
+
+        isLoading = true
+        errorMessage = nil
+
+        GIDSignIn.sharedInstance.signIn(withPresenting: rootVC) { result, error in
+            if let error = error {
+                DispatchQueue.main.async {
+                    self.errorMessage = "Google Sign In failed: \(error.localizedDescription)"
+                    self.isLoading = false
+                }
+                return
+            }
+
+            guard let idToken = result?.user.idToken?.tokenString else {
+                DispatchQueue.main.async {
+                    self.errorMessage = "Google Sign In failed: could not read ID token"
+                    self.isLoading = false
+                }
+                return
+            }
+
+            let payload = GoogleAuthRequest(idToken: idToken, deviceToken: nil)
+
+            Task {
+                do {
+                    let response = try await authWithGoogle(payload)
+                    await MainActor.run {
+                        self.userManager.saveUser(
+                            userId: response.user.userID,
+                            username: response.user.username,
+                            sessionId: response.user.sessionID
+                        )
+                        print("✅ Google Sign In successful! ID: \(response.user.userID)")
+                    }
+                } catch {
+                    await MainActor.run {
+                        self.errorMessage = "Google Sign In failed: \(error.localizedDescription)"
+                        print("❌ Google Sign In error: \(error)")
+                    }
+                }
+                await MainActor.run { self.isLoading = false }
             }
         }
     }

@@ -10,6 +10,15 @@
                 <string>factcheckapp</string>
             </array>
         </dict>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>Google Sign-In</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <!-- Replace with your reversed Google iOS Client ID, e.g. com.googleusercontent.apps.XXXXXXXXXX-XXXX -->
+                <string>com.googleusercontent.apps.YOUR_REVERSED_CLIENT_ID</string>
+            </array>
+        </dict>
     </array>
     <key>NSSupportsLiveActivities</key>
     <true/>

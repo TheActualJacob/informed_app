@@ -72,5 +72,14 @@ struct Config {
         // Account management
         static let deleteAccount = Config.endpoint("/api/delete-account")
         static let reportContent = Config.endpoint("/api/report-content")
+
+        // Social auth
+        static let authApple = Config.endpoint("/auth/apple")
+        static let authGoogle = Config.endpoint("/auth/google")
     }
+
+    // MARK: - Google Sign-In
+    // Set this to your iOS OAuth 2.0 Client ID from Google Cloud Console.
+    // Format: XXXXXXXXXX-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX.apps.googleusercontent.com
+    static let googleClientID = "YOUR_GOOGLE_IOS_CLIENT_ID.apps.googleusercontent.com"
 }

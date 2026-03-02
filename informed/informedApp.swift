@@ -7,6 +7,7 @@
 
 import SwiftUI
 import ActivityKit
+import GoogleSignIn
 
 @main
 struct informedApp: App {
@@ -125,6 +126,9 @@ struct informedApp: App {
             } else {
                 AuthenticationView()
                     .environmentObject(userManager)
+                    .onOpenURL { url in
+                        GIDSignIn.sharedInstance.handle(url)
+                    }
             }
         }
     }
