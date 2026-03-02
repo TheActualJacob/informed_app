@@ -67,8 +67,8 @@ class ShareViewController: UIViewController {
                 // Start fact-check in background and close IMMEDIATELY
                 self.startFactCheckInBackground(url: url)
                 
-                // Close after brief success animation (reduced from 0.5s to 0.3s)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                // Close after brief success animation (delaying slightly to ensure Live Activity starts)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
                     self.closeExtension()
                 }
                 
@@ -134,7 +134,20 @@ class ShareViewController: UIViewController {
     
     private func startFactCheckInBackground(url: String) {
         // Get user ID, session ID, and device token from shared storage
-        let appGroupName = "group.com.jacob.informed"
+        let appGroupName = "group.rob"
+
+        // ── App Group diagnostic ──────────────────────────────────────
+        print("🔑 [ShareExt] Testing App Group access: \(appGroupName)")
+        if let testDefaults = UserDefaults(suiteName: appGroupName) {
+            testDefaults.set(Date().timeIntervalSince1970, forKey: "_share_ext_diag_ts")
+            testDefaults.synchronize()
+            let readBack = testDefaults.double(forKey: "_share_ext_diag_ts")
+            print("✅ [ShareExt] App Group accessible, write+read test: \(readBack > 0 ? "PASSED" : "FAILED")")
+        } else {
+            print("❌ [ShareExt] App Group returned nil — NOT PROVISIONED for this extension")
+        }
+        // ─────────────────────────────────────────────────────────────
+
         guard let sharedDefaults = UserDefaults(suiteName: appGroupName) else {
             print("⚠️ Could not access App Group: \(appGroupName)")
             return
@@ -174,14 +187,30 @@ class ShareViewController: UIViewController {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.timeoutInterval = 300 // 5 minutes
         
+        let liveActivityToken = sharedDefaults.string(forKey: "live_activity_push_to_start_token")
+        
         let submissionId = UUID().uuidString
-        let body: [String: Any] = [
+        #if DEBUG
+        let apnsEnvironment = "sandbox"
+        #else
+        let apnsEnvironment = "production"
+        #endif
+        var body: [String: Any] = [
             "link": url,
             "user_id": userId,
             "device_token": deviceToken,
             "submission_id": submissionId,
-            "source": "share_extension"
+            "source": "share_extension",
+            "apns_environment": apnsEnvironment
         ]
+        
+        // Include the push-to-start token if available!
+        if let laToken = liveActivityToken {
+            body["push_to_start_token"] = laToken
+            print("🔑 Including Push-To-Start Token in request: \(laToken.prefix(8))... (env=\(apnsEnvironment))")
+        } else {
+            print("⚠️ No push-to-start token in App Group — Dynamic Island will appear when app is foregrounded")
+        }
         
         do {
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -193,6 +222,12 @@ class ShareViewController: UIViewController {
         // Save pending submission immediately
         savePendingSubmission(submissionId: submissionId, url: url, sharedDefaults: sharedDefaults)
         
+        // 🚀 START LIVE ACTIVITY RIGHT NOW (requires paid developer account)
+        // This shows the Dynamic Island immediately, before the main app is opened.
+        if #available(iOS 16.1, *) {
+            startLiveActivity(submissionId: submissionId, url: url)
+        }
+        
         // Set a flag to trigger the main app to check immediately
         sharedDefaults.set(Date().timeIntervalSince1970, forKey: "new_submission_timestamp")
         sharedDefaults.set(true, forKey: "hasPendingReel")
@@ -200,7 +235,7 @@ class ShareViewController: UIViewController {
         print("🚩 Set new_submission_timestamp flag for main app")
         
         // ⚠️ IMPORTANT: extensionContext?.open() requires a PAID Apple Developer Account
-        // 
+        //
         // This feature allows the Share Extension to automatically open the main app,
         // triggering the Dynamic Island immediately. However, it requires:
         // 1. Paid Apple Developer Program membership ($99/year)
@@ -214,16 +249,13 @@ class ShareViewController: UIViewController {
         // FALLBACK: The scenePhase observer in informedApp.swift will detect when
         // the user manually returns to the app and trigger checkForPendingSharedURL().
         
-        if let appURL = URL(string: "factcheckapp://startActivity") {
-            print("🚀 Attempting to open main app via URL scheme: \(appURL.absoluteString)")
-            print("   ⚠️  Note: This requires a paid Apple Developer account")
+        if let appURL = URL(string: "factcheckapp://") {
+            // extensionContext?.open is the only supported path for Share Extensions on modern iOS.
             extensionContext?.open(appURL, completionHandler: { success in
                 if success {
-                    print("✅ Successfully opened main app - Dynamic Island should start instantly!")
+                    print("✅ Successfully opened main app via extensionContext!")
                 } else {
-                    print("⚠️ Could not auto-open main app (likely using free developer account)")
-                    print("   User will need to manually switch back to the app")
-                    print("   Dynamic Island will appear when they do")
+                    print("⚠️ Could not auto-open main app. User must manually open it.")
                 }
             })
         }
@@ -544,66 +576,125 @@ class ShareViewController: UIViewController {
     }
     
     // MARK: - Live Activity
-    // MARK: - Live Activity (NOT USED - Cannot start from Share Extension)
+    // MARK: - Live Activity
     
-    // NOTE: This function exists but is NOT called because Live Activities CANNOT be started
-    // from Share Extensions in iOS. They can only be started from the main app process.
-    // The Share Extension now uses extensionContext?.open(url:) to wake the main app,
-    // which then starts the Live Activity in checkAndStartPendingLiveActivities().
-    //
-    // Keeping this code for reference only.
-    
+    /// Starts a Live Activity (and therefore Dynamic Island) directly from the
+    /// Share Extension.  This requires a PAID Apple Developer account so that
+    /// the extension shares the same App Group entitlement as the main app.
+    /// The activity is visible immediately – no need to open the main app first.
     @available(iOS 16.1, *)
     private func startLiveActivity(submissionId: String, url: String) {
-        print("⚠️ [ShareExtension] WARNING: This function should not be called!")
-        print("⚠️ Live Activities cannot be started from Share Extensions.")
-        print("⚠️ The main app must start them via checkAndStartPendingLiveActivities()")
-        
-        // This code is kept for reference but will not work from Share Extension
-        /*
         print("🚀 [ShareExtension] Starting Live Activity for: \(submissionId)")
         
-        // Check if Live Activities are enabled
         let authInfo = ActivityAuthorizationInfo()
         guard authInfo.areActivitiesEnabled else {
-            print("⚠️ [ShareExtension] Live Activities not enabled")
+            print("⚠️ [ShareExtension] Live Activities not enabled – skipping")
             return
         }
         
-        // Create activity attributes
+        // End any existing activity for the same submission to avoid duplicates.
+        for existing in Activity<ReelProcessingActivityAttributes>.activities
+            where existing.attributes.submissionId == submissionId {
+            Task { await existing.end(existing.content, dismissalPolicy: .immediate) }
+        }
+        
         let attributes = ReelProcessingActivityAttributes(
             reelURL: url,
             submissionId: submissionId,
             startTime: Date()
         )
         
-        // Create initial state
         let initialState = ReelProcessingActivityAttributes.ContentState(
             status: .submitting,
             progress: 0.1,
-            statusMessage: "Submitting your reel...",
+            statusMessage: "Starting fact-check…",
             title: nil,
             verdict: nil,
-            thumbnailURL: nil
+            thumbnailURL: nil,
+            estimatedSecondsRemaining: 90
         )
         
+        // Attempt 1: pushType: .token so we get a push token for server-side updates.
+        // This requires aps-environment in the extension entitlements. If that's missing,
+        // ActivityKit throws and we fall back to pushType: nil so the Dynamic Island at
+        // least appears. The main app will "upgrade" to a token-backed activity on first
+        // foreground (see startActivity in ReelProcessingActivity.swift).
+        let activity: Activity<ReelProcessingActivityAttributes>?
         do {
-            // Request Live Activity
-            let activity = try Activity<ReelProcessingActivityAttributes>.request(
+            activity = try Activity<ReelProcessingActivityAttributes>.request(
                 attributes: attributes,
-                contentState: initialState,
-                pushType: nil
+                content: ActivityContent(state: initialState, staleDate: nil),
+                pushType: .token
             )
-            
-            print("✅ [ShareExtension] Live Activity started successfully!")
-            print("   Activity ID: \(activity.id)")
-            print("   🎉 Dynamic Island should now be visible!")
-            
+            print("✅ [ShareExtension] Live Activity started with push token support! id=\(activity!.id)")
         } catch {
-            print("❌ [ShareExtension] Failed to start Live Activity: \(error.localizedDescription)")
-            // Not critical - main app can still start it as fallback
+            print("⚠️ [ShareExtension] pushType:.token failed (\(error.localizedDescription)) — retrying with pushType:nil")
+            do {
+                activity = try Activity<ReelProcessingActivityAttributes>.request(
+                    attributes: attributes,
+                    content: ActivityContent(state: initialState, staleDate: nil),
+                    pushType: nil
+                )
+                print("✅ [ShareExtension] Live Activity started (no push token) id=\(activity!.id)")
+                print("   ℹ️ Dynamic Island visible — push updates will activate when user opens app")
+            } catch {
+                print("❌ [ShareExtension] Could not start Live Activity at all: \(error.localizedDescription)")
+                return
+            }
         }
-        */
+
+        guard let activity else { return }
+
+        // Observe push token updates and persist them to App Group so the main app
+        // can register the token with the backend when it next becomes active.
+        Task {
+            for await pushToken in activity.pushTokenUpdates {
+                let tokenString = pushToken.map { String(format: "%02x", $0) }.joined()
+                print("🔑 [ShareExtension] Activity push token for \(submissionId.prefix(8)): \(tokenString)")
+                if let sharedDefaults = UserDefaults(suiteName: "group.rob") {
+                    sharedDefaults.set(tokenString, forKey: "activity_push_token_\(submissionId)")
+                    print("💾 [ShareExtension] Saved activity push token to App Group")
+                }
+                await sendActivityPushTokenToBackend(tokenString, submissionId: submissionId)
+            }
+        }
+    }
+    
+    /// Sends the per-activity APNs push token to the backend directly from the Share Extension.
+    private func sendActivityPushTokenToBackend(_ token: String, submissionId: String) async {
+        let appGroupName = "group.rob"
+        guard let sharedDefaults = UserDefaults(suiteName: appGroupName),
+              let userId = sharedDefaults.string(forKey: "stored_user_id"),
+              let sessionId = sharedDefaults.string(forKey: "session_id") else {
+            print("⚠️ [ShareExtension] No credentials — activity push token will be sent by main app on next launch")
+            return
+        }
+        
+        let backendURL = sharedDefaults.string(forKey: "backend_url") ?? "https://informed-production.up.railway.app"
+        guard let url = URL(string: "\(backendURL)/api/register-activity-token") else { return }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        let body: [String: Any] = [
+            "activityPushToken": token,
+            "submissionId": submissionId,
+            "userId": userId,
+            "sessionId": sessionId
+        ]
+        
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+            let (_, response) = try await URLSession.shared.data(for: request)
+            if let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) {
+                print("✅ [ShareExtension] Activity push token registered with backend for \(submissionId.prefix(8))")
+            } else {
+                print("⚠️ [ShareExtension] Backend rejected activity push token")
+            }
+        } catch {
+            print("❌ [ShareExtension] Error sending activity push token: \(error)")
+        }
     }
 }
 

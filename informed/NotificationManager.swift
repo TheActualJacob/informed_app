@@ -19,6 +19,8 @@ class NotificationManager: NSObject, ObservableObject {
     @Published var authorizationStatus: UNAuthorizationStatus = .notDetermined
     
     private let deviceTokenKey = "stored_device_token"
+    private let pendingPushToStartTokenKey = "pending_push_to_start_token"
+    private var cancellables = Set<AnyCancellable>()
     
     override init() {
         super.init()
@@ -26,6 +28,28 @@ class NotificationManager: NSObject, ObservableObject {
         Task {
             await checkAuthorizationStatus()
         }
+        observeLoginForPendingToken()
+    }
+    
+    // MARK: - Pending Token Retry
+    
+    /// Observes UserManager login state and flushes any queued push-to-start token
+    /// that arrived before the user was authenticated.
+    private func observeLoginForPendingToken() {
+        UserManager.shared.$currentUserId
+            .compactMap { $0 }
+            .sink { [weak self] _ in
+                guard let self else { return }
+                Task { await self.flushPendingPushToStartToken() }
+            }
+            .store(in: &cancellables)
+    }
+    
+    private func flushPendingPushToStartToken() async {
+        guard let token = UserDefaults.standard.string(forKey: pendingPushToStartTokenKey) else { return }
+        print("🔄 Retrying queued push-to-start token registration after login...")
+        UserDefaults.standard.removeObject(forKey: pendingPushToStartTokenKey)
+        await sendPushToStartTokenToBackend(token)
     }
     
     // MARK: - Permission Handling
@@ -69,7 +93,7 @@ class NotificationManager: NSObject, ObservableObject {
         UserDefaults.standard.set(token, forKey: deviceTokenKey)
         
         // Also save to App Group for Share Extension access
-        let appGroupName = "group.com.jacob.informed"
+        let appGroupName = "group.rob"
         if let sharedDefaults = UserDefaults(suiteName: appGroupName) {
             sharedDefaults.set(token, forKey: deviceTokenKey)
             print("💾 Device token also saved to App Group for Share Extension")
@@ -130,16 +154,114 @@ class NotificationManager: NSObject, ObservableObject {
         }
     }
     
+    func sendPushToStartTokenToBackend(_ token: String) async {
+        guard let userId = UserManager.shared.currentUserId,
+              let sessionId = UserManager.shared.currentSessionId else {
+            print("⚠️ No user/session — queuing push-to-start token for retry after login")
+            UserDefaults.standard.set(token, forKey: pendingPushToStartTokenKey)
+            return
+        }
+        
+        var components = URLComponents(string: Config.Endpoints.updatePushToken)
+        components?.queryItems = [
+            URLQueryItem(name: "userId", value: userId),
+            URLQueryItem(name: "sessionId", value: sessionId)
+        ]
+        
+        guard let url = components?.url else {
+            print("❌ Invalid update token URL")
+            return
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        #if DEBUG
+        let apnsEnvironment = "sandbox"
+        #else
+        let apnsEnvironment = "production"
+        #endif
+        let body: [String: Any] = [
+            "pushToStartToken": token,
+            "apns_environment": apnsEnvironment
+        ]
+        
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+            
+            let (_, response) = try await URLSession.shared.data(for: request)
+            
+            if let httpResponse = response as? HTTPURLResponse,
+               (200...299).contains(httpResponse.statusCode) {
+                print("✅ Push-to-Start token registered with backend")
+            } else {
+                print("⚠️ Failed to register push-to-start token with backend")
+            }
+        } catch {
+            print("❌ Error sending push-to-start token to backend: \(error)")
+        }
+    }
+    
+    // MARK: - Activity Push Token
+    
+    /// Sends the per-activity APNs update token to the backend so the server can
+    /// push Live Activity updates directly to this specific activity.
+    func sendActivityPushTokenToBackend(_ token: String, submissionId: String) async {
+        guard let userId = UserManager.shared.currentUserId,
+              let sessionId = UserManager.shared.currentSessionId else {
+            print("⚠️ No user/session — cannot send activity push token for \(submissionId.prefix(8))")
+            return
+        }
+        
+        guard let url = URL(string: Config.Endpoints.registerActivityToken) else {
+            print("❌ Invalid activity token URL")
+            return
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        let body: [String: Any] = [
+            "activityPushToken": token,
+            "submissionId": submissionId,
+            "userId": userId,
+            "sessionId": sessionId
+        ]
+        
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+            let (_, response) = try await URLSession.shared.data(for: request)
+            if let httpResponse = response as? HTTPURLResponse,
+               (200...299).contains(httpResponse.statusCode) {
+                print("✅ Activity push token registered for \(submissionId.prefix(8))")
+            } else {
+                print("⚠️ Failed to register activity push token for \(submissionId.prefix(8))")
+            }
+        } catch {
+            print("❌ Error sending activity push token: \(error)")
+        }
+    }
+    
     // MARK: - Handle Received Notifications
     
     func handleNotification(userInfo: [AnyHashable: Any]) {
         print("📬 Handling notification: \(userInfo)")
         
-        // Extract data from notification
+        // Handle start_processing from background APNs push (mirrors foreground path in AppDelegate)
+        if let action = userInfo["action"] as? String, action == "start_processing" {
+            print("🎬 Background start_processing notification — checking pending Live Activities")
+            Task { @MainActor in
+                if #available(iOS 16.1, *) {
+                    await SharedReelManager.shared.checkAndStartPendingLiveActivities()
+                }
+            }
+            return
+        }
+        
         if let factCheckId = userInfo["fact_check_id"] as? String {
             print("🔍 Fact check completed for ID: \(factCheckId)")
-            
-            // Post notification to update UI
             NotificationCenter.default.post(
                 name: NSNotification.Name("FactCheckCompleted"),
                 object: nil,
