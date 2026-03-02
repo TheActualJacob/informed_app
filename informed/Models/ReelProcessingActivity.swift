@@ -64,14 +64,30 @@ struct SubmissionStatusResponse: Codable {
 
 // MARK: - Processing Status
 
+// Raw values intentionally match the backend's snake_case status strings so that
+// APNs push-to-start / update payloads can be decoded by JSONDecoder without
+// a custom Decodable implementation.  Display text lives in `displayName` below.
 enum ProcessingStatus: String, Codable, Hashable {
-    case submitting = "Submitting..."
-    case downloading = "Downloading video"
-    case processing = "Processing"
-    case analyzing = "Analyzing content"
-    case factChecking = "Fact-checking"
-    case completed = "Completed"
-    case failed = "Failed"
+    case submitting   = "submitting"
+    case downloading  = "downloading"
+    case processing   = "processing"
+    case analyzing    = "analyzing"
+    case factChecking = "fact_checking"
+    case completed    = "completed"
+    case failed       = "failed"
+
+    // MARK: - Human-readable label (was formerly the raw value)
+    var displayName: String {
+        switch self {
+        case .submitting:   return "Submitting..."
+        case .downloading:  return "Downloading video"
+        case .processing:   return "Processing"
+        case .analyzing:    return "Analyzing content"
+        case .factChecking: return "Fact-checking"
+        case .completed:    return "Completed"
+        case .failed:       return "Failed"
+        }
+    }
 
     // MARK: - Per-stage SF Symbols
     var icon: String {
@@ -166,7 +182,17 @@ class ReelProcessingActivityManager: ObservableObject {
     static let shared = ReelProcessingActivityManager()
     
     var currentActivities: [String: Activity<ReelProcessingActivityAttributes>] = [:]
-    
+
+    /// Injected by the main app target on startup. Called with each (token, submissionId) pair
+    /// whenever a Live Activity's APNs push token is issued or rotated.
+    /// Extensions leave this nil — they handle token forwarding via App Group storage instead.
+    var onActivityPushToken: ((String, String) async -> Void)?
+
+    /// Injected by the main app on startup. Returns whether the app is currently in the
+    /// background. Extensions leave this as the default `{ false }` — they are always
+    /// active when running, and `UIApplication.shared` is unavailable in extension targets.
+    var isAppInBackground: () -> Bool = { false }
+
     init() {
         // Note: Removed automatic cleanup on init to prevent ending active Live Activities
         // Cleanup is now only called explicitly when needed (e.g., on app becoming active after long period)
@@ -216,18 +242,58 @@ class ReelProcessingActivityManager: ObservableObject {
     
     // MARK: - Start Activity
     
-    func startActivity(submissionId: String, reelURL: String, thumbnailURL: String? = nil) async {
+    func startActivity(submissionId: String, reelURL: String, thumbnailURL: String? = nil, inheritedState: ReelProcessingActivityAttributes.ContentState? = nil) async {
         print("🚀 [ActivityManager] startActivity called for: \(submissionId.prefix(8))…")
         print("🔬 [GHOST_DIAG] startActivity: currentActivities.count=\(currentActivities.count) systemActivities.count=\(Activity<ReelProcessingActivityAttributes>.activities.count)")
         
-        // Check if activity actually exists in the system (not just in our tracking dictionary)
+        // Check if activity actually exists in the system (not just in our tracking dictionary).
+        // Skip .ended activities so a recursive upgrade call doesn't re-enter this branch.
         let existingSystemActivity = Activity<ReelProcessingActivityAttributes>.activities.first {
-            $0.attributes.submissionId == submissionId
+            $0.attributes.submissionId == submissionId && $0.activityState != .ended
         }
         
         if let existing = existingSystemActivity {
             print("⚠️ [ActivityManager] System Live Activity already exists for \(submissionId.prefix(8)) state=\(existing.activityState)")
-            currentActivities[submissionId] = existing
+
+            // If the Share Extension created this activity with pushType: nil (because it
+            // lacked aps-environment entitlement), it has no push token and the backend
+            // cannot send Dynamic Island updates. Upgrade it now that the main app is in
+            // the foreground by ending the tokenless activity and starting a fresh one.
+            let hasNoPushToken = existing.pushToken == nil
+            if hasNoPushToken && !isAppInBackground() {
+                print("🔄 [ActivityManager] Upgrading pushType:nil activity to pushType:.token for \(submissionId.prefix(8))…")
+                let existingState = existing.content.state
+                // End the old activity silently — no UI disruption because we immediately
+                // start a replacement with identical content below.
+                await existing.end(
+                    ActivityContent(state: existingState, staleDate: nil),
+                    dismissalPolicy: .immediate
+                )
+                currentActivities.removeValue(forKey: submissionId)
+                // Re-enter startActivity with the preserved content state so the new
+                // activity picks up right where the old one left off.
+                await startActivity(submissionId: submissionId, reelURL: reelURL, thumbnailURL: thumbnailURL, inheritedState: existingState)
+                return
+            } else {
+                currentActivities[submissionId] = existing
+                // Set up the ongoing push-token rotation observer.
+                // This is safe in the background; only CREATING activities requires foreground.
+                observePushToken(for: existing, submissionId: submissionId)
+                // The Share Extension stores the initial push token in App Group the moment
+                // it arrives because the extension process may be killed before the main app
+                // wakes up and `pushTokenUpdates` can re-emit it. Read and forward it now so
+                // the backend can start pushing updates without waiting for the user to open
+                // the app.
+                flushAppGroupPushToken(submissionId: submissionId)
+                return
+            }
+        }
+
+        // ActivityKit Error 7: creating a NEW Live Activity requires the app to be in the foreground.
+        // If we're in the background (woken by Darwin notification), bail out here.
+        // The activity will be created the next time the user opens the app.
+        guard !isAppInBackground() else {
+            print("⚠️ [ActivityManager] App in background — cannot create new Live Activity (ActivityKit Error 7). Will start when foregrounded.")
             return
         }
         
@@ -259,7 +325,9 @@ class ReelProcessingActivityManager: ObservableObject {
             startTime: Date()
         )
         
-        let initialState = ReelProcessingActivityAttributes.ContentState(
+        // Use the inherited state when upgrading a pushType:nil activity so the
+        // replacement activity shows the current progress, not the initial state.
+        let initialState = inheritedState ?? ReelProcessingActivityAttributes.ContentState(
             status: .submitting,
             progress: 0.1,
             statusMessage: "Submitting your reel...",
@@ -274,12 +342,14 @@ class ReelProcessingActivityManager: ObservableObject {
             let activity = try Activity<ReelProcessingActivityAttributes>.request(
                 attributes: attributes,
                 content: ActivityContent(state: initialState, staleDate: nil),
-                pushType: nil
+                pushType: .token
             )
             
             currentActivities[submissionId] = activity
             print("✅ [ActivityManager] ✨ Live Activity started! id=\(activity.id) sid=\(submissionId.prefix(8))")
             print("🔬 [GHOST_DIAG] startActivity SUCCESS: currentActivities.count=\(currentActivities.count) systemActivities.count=\(Activity<ReelProcessingActivityAttributes>.activities.count)")
+            
+            observePushToken(for: activity, submissionId: submissionId)
             
         } catch {
             print("❌ [ActivityManager] Failed to start Live Activity: \(error.localizedDescription)")
@@ -289,18 +359,93 @@ class ReelProcessingActivityManager: ObservableObject {
         }
     }
     
+    // MARK: - Push Token Observation
+
+    /// Observes push token updates for an activity and forwards each token via `onActivityPushToken`.
+    /// Call this whenever a new activity is started OR when an existing activity is discovered
+    /// (e.g. one started by the Share Extension before the main app woke up).
+    func observePushToken(for activity: Activity<ReelProcessingActivityAttributes>, submissionId: String) {
+        Task {
+            for await pushToken in activity.pushTokenUpdates {
+                let tokenString = pushToken.map { String(format: "%02x", $0) }.joined()
+                print("🔑 [ActivityManager] Activity push token for \(submissionId.prefix(8)): \(tokenString)")
+                await onActivityPushToken?(tokenString, submissionId)
+            }
+        }
+    }
+    
+    // MARK: - App Group Token Flush
+
+    /// Reads the activity push token that the Share Extension stored in App Group and
+    /// immediately forwards it via `onActivityPushToken`.
+    ///
+    /// The Share Extension stores the token synchronously the moment `pushTokenUpdates`
+    /// emits, but the extension process may be killed before its own network call
+    /// completes. This method is the main app's reliable fallback: it runs in the
+    /// background immediately after an existing Share-Extension activity is discovered,
+    /// giving the backend the token it needs to push Dynamic Island updates without
+    /// requiring the user to open the app.
+    ///
+    /// The key is intentionally NOT cleared after the send so that a token rotation
+    /// (new value written by iOS) is also picked up on the next check. The backend
+    /// endpoint is idempotent — registering the same token twice is harmless.
+    func flushAppGroupPushToken(submissionId: String) {
+        guard let sharedDefaults = UserDefaults(suiteName: "group.rob"),
+              let storedToken = sharedDefaults.string(forKey: "activity_push_token_\(submissionId)") else {
+            return
+        }
+        print("📦 [ActivityManager] Found App Group push token for \(submissionId.prefix(8)) — forwarding to backend")
+        Task {
+            await onActivityPushToken?(storedToken, submissionId)
+        }
+    }
+
     // MARK: - Update Activity
     
+    /// Re-registers an activity under a new submission ID (e.g. when the backend
+    /// returns a different ID than the local UUID we generated).
+    func reRegisterActivity(oldSubmissionId: String, newSubmissionId: String) {
+        if let activity = currentActivities[oldSubmissionId] {
+            currentActivities[newSubmissionId] = activity
+            currentActivities.removeValue(forKey: oldSubmissionId)
+            print("🔄 [ActivityManager] Re-registered activity: \(oldSubmissionId.prefix(8)) → \(newSubmissionId.prefix(8))")
+        } else if let system = Activity<ReelProcessingActivityAttributes>.activities.first(where: {
+            $0.attributes.submissionId == oldSubmissionId
+        }) {
+            currentActivities[newSubmissionId] = system
+            print("🔄 [ActivityManager] Re-registered system activity: \(oldSubmissionId.prefix(8)) → \(newSubmissionId.prefix(8))")
+        } else {
+            print("⚠️ [ActivityManager] reRegisterActivity: no activity found for old ID \(oldSubmissionId.prefix(8))")
+        }
+    }
+
+    /// Resolves a tracked or system-level activity for the given submissionId.
+    /// Falls back to scanning `Activity.activities` so that updates still reach
+    /// an activity that was started before the current app session (e.g. after
+    /// the Share Extension woke the app and the activity manager was freshly
+    /// initialised).
+    private func resolvedActivity(for submissionId: String) -> Activity<ReelProcessingActivityAttributes>? {
+        if let tracked = currentActivities[submissionId] { return tracked }
+        if let system = Activity<ReelProcessingActivityAttributes>.activities.first(where: {
+            $0.attributes.submissionId == submissionId
+        }) {
+            print("⚠️ [ActivityManager] resolved untracked system activity for \(submissionId.prefix(8)) — caching it")
+            currentActivities[submissionId] = system
+            return system
+        }
+        return nil
+    }
+
     func updateActivity(submissionId: String, status: ProcessingStatus, customMessage: String? = nil) async {
-        guard let activity = currentActivities[submissionId] else {
-            print("⚠️ [ActivityManager] updateActivity: no tracked activity for \(submissionId) — skipping")
+        guard let activity = resolvedActivity(for: submissionId) else {
+            print("⚠️ [ActivityManager] updateActivity: no activity found for \(submissionId.prefix(8)) — skipping")
             return
         }
         
         let newState = ReelProcessingActivityAttributes.ContentState(
             status: status,
             progress: status.progressPercentage,
-            statusMessage: customMessage ?? status.rawValue,
+            statusMessage: customMessage ?? status.displayName,
             title: activity.content.state.title,
             verdict: activity.content.state.verdict,
             thumbnailURL: activity.content.state.thumbnailURL,
@@ -311,8 +456,8 @@ class ReelProcessingActivityManager: ObservableObject {
     }
     
     func updateProgress(submissionId: String, status: ProcessingStatus? = nil, progress: Double, message: String, estimatedSecondsRemaining: Int? = nil) async {
-        guard let activity = currentActivities[submissionId] else {
-            print("⚠️ [ActivityManager] updateProgress: no tracked activity for \(submissionId) — skipping")
+        guard let activity = resolvedActivity(for: submissionId) else {
+            print("⚠️ [ActivityManager] updateProgress: no activity found for \(submissionId.prefix(8)) — skipping")
             return
         }
         
@@ -501,7 +646,7 @@ class ReelProcessingActivityManager: ObservableObject {
     /// Removes a submission from the App Group `pending_submissions` list so that
     /// `checkAndStartPendingLiveActivities` cannot resurrect a ghost activity for it.
     static func removeFromAppGroupPendingSubmissions(submissionId: String) {
-        let appGroupName = "group.com.jacob.informed"
+        let appGroupName = "group.rob"
         guard let defaults = UserDefaults(suiteName: appGroupName) else { return }
         guard var submissions = defaults.array(forKey: "pending_submissions") as? [[String: Any]] else { return }
         let before = submissions.count
