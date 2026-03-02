@@ -15,8 +15,7 @@
             <string>Google Sign-In</string>
             <key>CFBundleURLSchemes</key>
             <array>
-                <!-- Replace with your reversed Google iOS Client ID, e.g. com.googleusercontent.apps.XXXXXXXXXX-XXXX -->
-                <string>com.googleusercontent.apps.YOUR_REVERSED_CLIENT_ID</string>
+                <string>com.googleusercontent.apps.422333423549-cdbbmdht65oqn0o16ijo1q5snahuisvj</string>
             </array>
         </dict>
     </array>

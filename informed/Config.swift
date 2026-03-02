@@ -81,5 +81,5 @@ struct Config {
     // MARK: - Google Sign-In
     // Set this to your iOS OAuth 2.0 Client ID from Google Cloud Console.
     // Format: XXXXXXXXXX-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX.apps.googleusercontent.com
-    static let googleClientID = "YOUR_GOOGLE_IOS_CLIENT_ID.apps.googleusercontent.com"
+    static let googleClientID = "422333423549-cdbbmdht65oqn0o16ijo1q5snahuisvj.apps.googleusercontent.com"
 }
