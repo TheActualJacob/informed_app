@@ -189,24 +189,18 @@ class ShareViewController: UIViewController {
         let liveActivityToken = sharedDefaults.string(forKey: "live_activity_push_to_start_token")
         
         let submissionId = UUID().uuidString
-        #if DEBUG
-        let apnsEnvironment = "sandbox"
-        #else
-        let apnsEnvironment = "production"
-        #endif
         var body: [String: Any] = [
             "link": url,
             "user_id": userId,
             "device_token": deviceToken,
             "submission_id": submissionId,
-            "source": "share_extension",
-            "apns_environment": apnsEnvironment
+            "source": "share_extension"
         ]
         
         // Include the push-to-start token if available!
         if let laToken = liveActivityToken {
             body["push_to_start_token"] = laToken
-            print("🔑 Including Push-To-Start Token in request: \(laToken.prefix(8))... (env=\(apnsEnvironment))")
+            print("🔑 Including Push-To-Start Token in request: \(laToken.prefix(8))...")
         } else {
             print("⚠️ No push-to-start token in App Group — Dynamic Island will appear when app is foregrounded")
         }

@@ -177,14 +177,8 @@ class NotificationManager: NSObject, ObservableObject {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
-        #if DEBUG
-        let apnsEnvironment = "sandbox"
-        #else
-        let apnsEnvironment = "production"
-        #endif
         let body: [String: Any] = [
-            "pushToStartToken": token,
-            "apns_environment": apnsEnvironment
+            "pushToStartToken": token
         ]
         
         do {
