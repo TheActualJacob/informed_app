@@ -674,19 +674,26 @@ class SharedReelManager: ObservableObject {
                                 .array(forKey: "pending_submissions") as? [[String: Any]])?.count ?? 0
                             if stillPending == 0 { self.activeProcessingURL = nil }
                         }
-                        // Drive the Dynamic Island to its completed state immediately.
-                        // completeActivity must be called here — syncCompletedFactChecksFromAppGroup
-                        // only processes entries in completed_fact_checks (written by the Share
-                        // Extension's synchronous response) and returns early when that key is
-                        // absent, so the Live Activity would stay stuck mid-progress without this.
+                        // Drive the Dynamic Island to its completed state immediately
+                        // with a placeholder title/verdict. The real data arrives shortly
+                        // after via syncHistoryFromBackend() below (polling path) or via
+                        // the backend's catch-up APNs push once the push token is registered
+                        // (APNs path — now enabled because resolvedActivity() calls
+                        // observePushToken() the first time it discovers the activity).
                         await ReelProcessingActivityManager.shared.completeActivity(
                             submissionId: submissionId,
                             title: "Fact-Check Complete",
                             verdict: "Tap to view results"
                         )
                         // Sync App Group in case the Share Extension also wrote completed data
-                        // (picks up real title/verdict for the UI, no-op if key is absent).
+                        // (picks up real title/verdict for the UI, no-op if key is absent in
+                        // the async 202 flow).
                         syncCompletedFactChecksFromAppGroup()
+                        // Pull the full result from the backend so My Reels and the feed
+                        // show the actual fact-check data without waiting for the user to
+                        // manually refresh. For the Share Extension 202 flow this is the
+                        // only reliable way to get the real title/verdict into the app.
+                        await syncHistoryFromBackend()
                         // Leave the Live Activity running in its completed state.
                         // dismissAllCompletedLiveActivities() will end it when the user
                         // opens the app, keeping the Dynamic Island visible until then.

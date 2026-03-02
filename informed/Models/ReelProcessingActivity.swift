@@ -433,6 +433,15 @@ class ReelProcessingActivityManager: ObservableObject {
         }) {
             print("⚠️ [ActivityManager] resolved untracked system activity for \(submissionId.prefix(8)) — caching it")
             currentActivities[submissionId] = system
+            // Start observing the push token so it gets registered with the backend.
+            // Without this, activities started via push-to-start (from the Share Extension
+            // or the backend while the app was in the background) never have their token
+            // forwarded, so the backend silently skips all APNs progress/completion pushes.
+            observePushToken(for: system, submissionId: submissionId)
+            // Also flush any token the Share Extension may have already stored in the App
+            // Group — this covers the case where the extension wrote the token before the
+            // main app woke up and the observePushToken loop had a chance to emit.
+            flushAppGroupPushToken(submissionId: submissionId)
             return system
         }
         return nil
