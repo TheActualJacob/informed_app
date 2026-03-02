@@ -21,6 +21,20 @@ struct HomeView: View {
             ZStack(alignment: .bottom) {
                 Color.backgroundLight.ignoresSafeArea()
 
+                // Hidden programmatic navigation link for already-completed duplicates
+                NavigationLink(
+                    destination: Group {
+                        if let item = viewModel.navigateToFactCheckItem {
+                            FactDetailView(item: item)
+                        }
+                    },
+                    isActive: Binding(
+                        get: { viewModel.navigateToFactCheckItem != nil },
+                        set: { if !$0 { viewModel.navigateToFactCheckItem = nil } }
+                    )
+                ) { EmptyView() }
+                    .hidden()
+
                 VStack(spacing: 0) {
                     // ── Header ───────────────────────────────────────────────
                     VStack(spacing: 0) {
@@ -211,6 +225,13 @@ struct HomeView: View {
                                 withAnimation {
                                     scrollProxy.scrollTo(scrollTopID, anchor: .top)
                                 }
+                            }
+                        }
+                        // Dismiss keyboard when the viewmodel detects a valid social link
+                        .onChange(of: viewModel.dismissKeyboard) { _, shouldDismiss in
+                            if shouldDismiss {
+                                isSearchFocused = false
+                                viewModel.dismissKeyboard = false
                             }
                         }
                     }

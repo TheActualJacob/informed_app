@@ -38,6 +38,11 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             ReelProcessingActivityManager.shared.isAppInBackground = {
                 UIApplication.shared.applicationState == .background
             }
+            // Inject the URL lookup so ReelProcessingActivity can resolve a reel URL
+            // without referencing SharedReelManager directly (unavailable in extensions).
+            ReelProcessingActivityManager.shared.reelURLForSubmissionId = { submissionId in
+                SharedReelManager.shared.reels.first(where: { $0.id == submissionId })?.url ?? ""
+            }
             setupLiveActivityHandling()
         }
         

@@ -53,6 +53,12 @@ class HomeViewModel: ObservableObject {
     // Track current Live Activity submission ID for testing
     private var currentSubmissionId: String?
     
+    // Signals HomeView to dismiss the keyboard (set true, HomeView resets it)
+    @Published var dismissKeyboard: Bool = false
+    
+    // Set to push an existing fact-check result directly (already-completed duplicate)
+    @Published var navigateToFactCheckItem: FactCheckItem?
+    
     // MARK: - Properties
     
     private var debounceTask: Task<Void, Never>?
@@ -203,6 +209,10 @@ class HomeViewModel: ObservableObject {
             if isSocialLink {
                 // It's a URL — debounce and fact-check
                 if isSearchMode { isSearchMode = false; searchResults = []; isSearching = false }
+                // Dismiss the keyboard as soon as a valid link is detected
+                dismissKeyboard = true
+                // If this exact link is already being processed, don't restart the request
+                if processingLink == trimmed { return }
                 debounceTask = Task {
                     try? await Task.sleep(nanoseconds: 1_000_000_000)
                     guard !Task.isCancelled else { return }
@@ -287,10 +297,31 @@ class HomeViewModel: ObservableObject {
     // MARK: - Fact Checking
     
     func performFactCheck(for link: String, userId: String, sessionId: String) async {
+        // ── Fast-path: local duplicate detection ─────────────────────────────────
+        // If we already have a completed fact-check for this URL locally, navigate
+        // to it immediately — no Live Activity, no network call needed.
+        if let localReel = SharedReelManager.shared.reels.first(where: {
+            urlsMatch($0.url, link) && $0.status == .completed
+        }), let localData = localReel.factCheckData {
+            print("♻️ [Pre-check] Locally-completed reel found — navigating directly (no network/activity needed)")
+            self.searchText = ""
+            self.errorMessage = nil
+            HapticManager.selection()
+            // Delay navigation by one run-loop tick so SwiftUI commits the
+            // searchText / view-state changes before the NavigationLink fires.
+            let navItem = localData.toFactCheckItem(originalLink: link)
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 200_000_000) // 0.2 s
+                self.navigateToFactCheckItem = navItem
+            }
+            return
+        }
+
         self.processingLink = link
         self.searchText = ""  // Clear immediately so user cannot re-submit
         self.errorMessage = nil
         if let url = URL(string: link) { self.processingThumbnailURL = url }
+        HapticManager.selection()  // Single subtle "submission received" — synced with processing banner
         print("🔍 Starting fact check for: \(link)")
 
         // Start Live Activity first, capture its submissionId
@@ -315,12 +346,10 @@ class HomeViewModel: ObservableObject {
 
             if factCheckData.isAsyncSubmission || factCheckData.isAlreadyCompleted {
                 // ── Async 202 flow (processing) OR duplicate-URL fast-complete flow ──
+
                 // Resolve the final submission ID before inserting into reels[] so the
                 // placeholder is inserted exactly once with the confirmed backend ID.
-                // This eliminates the SwiftUI identity rebind that caused cell re-animation.
                 if let backendSid = factCheckData.submissionId, !backendSid.isEmpty, backendSid != submissionId {
-                    // Re-register the Live Activity under the backend's submission ID
-                    // so progress polling (which uses backendSid) can find and update it.
                     if #available(iOS 16.1, *) {
                         ReelProcessingActivityManager.shared.reRegisterActivity(
                             oldSubmissionId: submissionId, newSubmissionId: backendSid
@@ -328,6 +357,90 @@ class HomeViewModel: ObservableObject {
                         currentSubmissionId = backendSid
                     }
                     submissionId = backendSid
+                }
+
+                // If the reel is already completed, navigate to the result.
+                // Three-tier resolution (fastest-to-slowest):
+                //
+                //  1. Embedded response data  — backend now ships the full fact-check in
+                //     the duplicate 202 response; works for ANY reel ever processed, with
+                //     no local cache dependency.
+                //
+                //  2. Local cache lookup      — instant, no network needed, works when the
+                //     reel was recently synced into SharedReelManager.reels[].
+                //
+                //  3. Polling                 — last resort for edge cases where neither
+                //     the embedded data nor the local cache is available.
+
+                if factCheckData.isAlreadyCompleted {
+                    // ── Tier 1: embedded data in the 202 response ───────────────────────
+                    // Guard: only use embedded data when the backend actually sent claims
+                    // (factCheckData.claims != nil and non-empty). Using resolvedClaims
+                    // here would be wrong because it synthesises a default fallback entry
+                    // even when no real data is present.
+                    let embeddedClaims = factCheckData.claims ?? []
+                    if !embeddedClaims.isEmpty {
+                        print("♻️ [Duplicate] Navigating from embedded response data (no cache/poll needed)")
+                        let resolvedPlatform = factCheckData.platform ?? detectedPlatformFromURL(link)
+                        let (platformName, platformIcon) = platformInfo(for: resolvedPlatform)
+                        let thumbnailURL: URL? = factCheckData.thumbnailUrl.flatMap { URL(string: $0) }
+                        let primaryClaim = embeddedClaims[0]
+                        let navItem = FactCheckItem(
+                            reelID: nil,
+                            sourceName: platformName, sourceIcon: platformIcon,
+                            timeAgo: "Just now", title: factCheckData.title ?? "",
+                            summary: primaryClaim.summary,
+                            thumbnailURL: thumbnailURL,
+                            credibilityScore: calculateCredibilityScore(from: primaryClaim.claimAccuracyRating),
+                            sources: primaryClaim.sources.joined(separator: ", "),
+                            verdict: primaryClaim.verdict, claims: embeddedClaims,
+                            originalLink: link, datePosted: factCheckData.date,
+                            aiGenerated: factCheckData.aiGenerated,
+                            aiProbability: factCheckData.aiProbability
+                        )
+                        self.processingLink = nil; self.processingThumbnailURL = nil
+                        if #available(iOS 16.1, *) {
+                            ReelProcessingActivityManager.removeFromAppGroupPendingSubmissions(submissionId: submissionId)
+                            Task { @MainActor in
+                                await ReelProcessingActivityManager.shared.endActivity(
+                                    submissionId: submissionId, dismissalPolicy: .default
+                                )
+                            }
+                            currentSubmissionId = nil
+                        }
+                        let navItemCopy = navItem
+                        Task { @MainActor in
+                            try? await Task.sleep(nanoseconds: 200_000_000) // 0.2 s
+                            self.navigateToFactCheckItem = navItemCopy
+                        }
+                        return
+                    }
+
+                    // ── Tier 2: local cache lookup ───────────────────────────────────────
+                    let existingReel = SharedReelManager.shared.reels.first(where: {
+                        (urlsMatch($0.url, link) || $0.id == submissionId) && $0.status == .completed
+                    })
+                    if let existingReel, let data = existingReel.factCheckData {
+                        print("♻️ [Duplicate] Navigating from local cache")
+                        self.processingLink = nil; self.processingThumbnailURL = nil
+                        if #available(iOS 16.1, *) {
+                            ReelProcessingActivityManager.removeFromAppGroupPendingSubmissions(submissionId: submissionId)
+                            Task { @MainActor in
+                                await ReelProcessingActivityManager.shared.endActivity(
+                                    submissionId: submissionId, dismissalPolicy: .default
+                                )
+                            }
+                            currentSubmissionId = nil
+                        }
+                        let navItem = data.toFactCheckItem(originalLink: link)
+                        Task { @MainActor in
+                            try? await Task.sleep(nanoseconds: 200_000_000) // 0.2 s
+                            self.navigateToFactCheckItem = navItem
+                        }
+                        return
+                    }
+                    // ── Tier 3: fall through to poll ─────────────────────────────────────
+                    // (skipInitialWait=true so the first poll fires immediately)
                 }
 
                 // Insert the placeholder into reels[] now that we have the confirmed ID.
@@ -339,8 +452,7 @@ class HomeViewModel: ObservableObject {
                 SharedReelManager.shared.saveReels()
 
                 // For already-completed duplicates skip the 5-second initial wait;
-                // the first poll will return "completed" immediately and trigger
-                // completeActivity + syncHistoryFromBackend.
+                // the first poll will return "completed" immediately.
                 let skipWait = factCheckData.isAlreadyCompleted
                 SharedReelManager.shared.startProgressPolling(submissionId: submissionId,
                                                               skipInitialWait: skipWait)
@@ -421,6 +533,18 @@ class HomeViewModel: ObservableObject {
             }
             self.processingLink = nil; self.processingThumbnailURL = nil
         } catch let networkError as NetworkError {
+            if case .requestCancelled = networkError {
+                // Request was cancelled (e.g. debounce reset) — silently clean up, no error toast
+                SharedReelManager.shared.reels.removeAll { $0.id == submissionId }
+                SharedReelManager.shared.saveReels()
+                if #available(iOS 16.1, *) {
+                    ReelProcessingActivityManager.removeFromAppGroupPendingSubmissions(submissionId: submissionId)
+                    Task { @MainActor in await ReelProcessingActivityManager.shared.endActivity(submissionId: submissionId, dismissalPolicy: .default) }
+                    currentSubmissionId = nil
+                }
+                self.processingLink = nil; self.processingThumbnailURL = nil
+                return
+            }
             let msg = networkError.errorDescription ?? "An error occurred"
             self.errorMessage = msg
             SharedReelManager.shared.reels.removeAll { $0.id == submissionId }
@@ -428,6 +552,16 @@ class HomeViewModel: ObservableObject {
             if #available(iOS 16.1, *) {
                 ReelProcessingActivityManager.removeFromAppGroupPendingSubmissions(submissionId: submissionId)
                 Task { @MainActor in await ReelProcessingActivityManager.shared.failActivity(submissionId: submissionId, errorMessage: msg) }
+                currentSubmissionId = nil
+            }
+            self.processingLink = nil; self.processingThumbnailURL = nil
+        } catch is CancellationError {
+            // Swift structured concurrency cancellation — silently clean up
+            SharedReelManager.shared.reels.removeAll { $0.id == submissionId }
+            SharedReelManager.shared.saveReels()
+            if #available(iOS 16.1, *) {
+                ReelProcessingActivityManager.removeFromAppGroupPendingSubmissions(submissionId: submissionId)
+                Task { @MainActor in await ReelProcessingActivityManager.shared.endActivity(submissionId: submissionId, dismissalPolicy: .default) }
                 currentSubmissionId = nil
             }
             self.processingLink = nil; self.processingThumbnailURL = nil
@@ -460,6 +594,21 @@ class HomeViewModel: ObservableObject {
     }
 
     // MARK: - Helper Methods
+
+    /// Returns true when two social-media URLs refer to the same piece of content,
+    /// ignoring tracking query parameters (igsh, igshid, fbclid, etc.) and trailing slashes.
+    /// This prevents false "no match" results when the same reel is submitted multiple times
+    /// with slightly different share URLs.
+    private func urlsMatch(_ a: String, _ b: String) -> Bool {
+        guard a != b else { return true }          // exact match fast-path
+        guard let ua = URL(string: a),
+              let ub = URL(string: b) else { return false }
+        let pathA = ua.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let pathB = ub.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        return ua.scheme?.lowercased() == ub.scheme?.lowercased() &&
+               ua.host?.lowercased()   == ub.host?.lowercased()   &&
+               pathA                   == pathB
+    }
 
     func calculateCredibilityScore(from rating: String) -> Double {
         let numericString = rating.replacingOccurrences(of: "%", with: "")

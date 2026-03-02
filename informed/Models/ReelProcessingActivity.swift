@@ -184,7 +184,9 @@ class ReelProcessingActivityManager: ObservableObject {
     static let shared = ReelProcessingActivityManager()
     
     var currentActivities: [String: Activity<ReelProcessingActivityAttributes>] = [:]
-
+    /// Holds completion info for activities that couldn't be shown because the app was in the
+    /// background when polling finished. Drained by `drainPendingCompletedActivities()` on foreground.
+    private var pendingCompletedInfo: [String: (title: String, verdict: String, url: String)] = [:]
     /// Injected by the main app target on startup. Called with each (token, submissionId) pair
     /// whenever a Live Activity's APNs push token is issued or rotated.
     /// Extensions leave this nil — they handle token forwarding via App Group storage instead.
@@ -194,6 +196,11 @@ class ReelProcessingActivityManager: ObservableObject {
     /// background. Extensions leave this as the default `{ false }` — they are always
     /// active when running, and `UIApplication.shared` is unavailable in extension targets.
     var isAppInBackground: () -> Bool = { false }
+
+    /// Injected by the main app on startup. Returns the reel URL for a given submission ID
+    /// by looking it up in SharedReelManager.reels. Extensions leave this as the default
+    /// `{ _ in "" }` because SharedReelManager is not compiled into extension targets.
+    var reelURLForSubmissionId: (String) -> String = { _ in "" }
 
     init() {
         // Note: Removed automatic cleanup on init to prevent ending active Live Activities
@@ -467,6 +474,15 @@ class ReelProcessingActivityManager: ObservableObject {
     }
     
     func updateProgress(submissionId: String, status: ProcessingStatus? = nil, progress: Double, message: String, estimatedSecondsRemaining: Int? = nil) async {
+        if resolvedActivity(for: submissionId) == nil, !isAppInBackground() {
+            // App was foregrounded mid-poll before the activity could be created —
+            // start it now so subsequent updates are visible.
+            let url = reelURLForSubmissionId(submissionId)
+            if !url.isEmpty {
+                print("🟢 [ActivityManager] updateProgress: lazy-starting activity for \(submissionId.prefix(8)) (now in foreground)")
+                await startActivity(submissionId: submissionId, reelURL: url)
+            }
+        }
         guard let activity = resolvedActivity(for: submissionId) else {
             print("⚠️ [ActivityManager] updateProgress: no activity found for \(submissionId.prefix(8)) — skipping")
             return
@@ -512,7 +528,19 @@ class ReelProcessingActivityManager: ObservableObject {
         }
         
         guard let activity = activity else {
-            print("⚠️ [ActivityManager] completeActivity: no activity found for \(submissionId)")
+            // No activity was ever created (e.g. share-ext submission while app was in background).
+            // Look up the reel URL via the injected closure (avoids a direct SharedReelManager
+            // reference which is unavailable in Share/Widget extension targets).
+            let url = reelURLForSubmissionId(submissionId)
+            if !isAppInBackground() {
+                // App is now in foreground — start a flash completed activity immediately.
+                print("🟢 [ActivityManager] completeActivity: app in foreground, starting completed activity for \(submissionId.prefix(8))")
+                await startActivityInCompletedState(submissionId: submissionId, url: url, title: title, verdict: verdict)
+            } else {
+                // Still in background — store for when user opens the app.
+                pendingCompletedInfo[submissionId] = (title: title, verdict: verdict, url: url)
+                print("📥 [ActivityManager] completeActivity: queued pending completion for \(submissionId.prefix(8)) (app in background)")
+            }
             return
         }
         
@@ -540,6 +568,59 @@ class ReelProcessingActivityManager: ObservableObject {
         HapticManager.successImpact()
     }
     
+    // MARK: - Drain Pending Completions
+
+    /// Creates a brief completed Live Activity for every submission that finished while the app
+    /// was in the background (and therefore could not create an activity at that time).
+    /// Call this from the foreground `scenePhase == .active` handler.
+    @available(iOS 16.1, *)
+    func drainPendingCompletedActivities() async {
+        guard !isAppInBackground(), !pendingCompletedInfo.isEmpty else { return }
+        let pending = pendingCompletedInfo
+        pendingCompletedInfo = [:]
+        print("🔄 [ActivityManager] Draining \(pending.count) pending completed activity(ies)")
+        for (submissionId, info) in pending {
+            await startActivityInCompletedState(
+                submissionId: submissionId, url: info.url,
+                title: info.title, verdict: info.verdict
+            )
+        }
+    }
+
+    /// Starts a brand-new Live Activity directly in the completed "Tap to view" state.
+    /// Used when the polling-completion fired while the app was in the background and no
+    /// activity existed at that point.
+    @available(iOS 16.1, *)
+    private func startActivityInCompletedState(
+        submissionId: String, url: String, title: String, verdict: String
+    ) async {
+        guard !isAppInBackground() else { return }
+        let authInfo = ActivityAuthorizationInfo()
+        guard authInfo.areActivitiesEnabled else { return }
+        let attributes = ReelProcessingActivityAttributes(
+            reelURL: url, submissionId: submissionId, startTime: Date()
+        )
+        let completedState = ReelProcessingActivityAttributes.ContentState(
+            status: .completed, progress: 1.0,
+            statusMessage: "Tap to view results",
+            title: title, verdict: verdict,
+            thumbnailURL: nil, estimatedSecondsRemaining: 0
+        )
+        do {
+            let activity = try Activity<ReelProcessingActivityAttributes>.request(
+                attributes: attributes,
+                content: ActivityContent(state: completedState, staleDate: nil),
+                pushType: .token
+            )
+            currentActivities[submissionId] = activity
+            observePushToken(for: activity, submissionId: submissionId)
+            HapticManager.successImpact()
+            print("✅ [ActivityManager] Started completed Live Activity for \(submissionId.prefix(8)) (drained from pending)")
+        } catch {
+            print("⚠️ [ActivityManager] Failed to start completed activity for \(submissionId.prefix(8)): \(error.localizedDescription)")
+        }
+    }
+
     // MARK: - End Activity
     
     func endActivity(submissionId: String, dismissalPolicy: ActivityUIDismissalPolicy = .default) async {

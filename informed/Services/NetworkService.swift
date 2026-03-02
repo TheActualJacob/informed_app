@@ -18,6 +18,7 @@ enum NetworkError: LocalizedError {
     case timeout
     case cannotConnectToHost
     case decodingError(String)
+    case requestCancelled
     case unknown(Error)
     
     var errorDescription: String? {
@@ -38,6 +39,8 @@ enum NetworkError: LocalizedError {
             return "Cannot connect to server. Make sure the backend is running"
         case .decodingError(let message):
             return "Failed to decode response: \(message)"
+        case .requestCancelled:
+            return nil
         case .unknown(let error):
             return "An error occurred: \(error.localizedDescription)"
         }
@@ -524,6 +527,8 @@ class NetworkService {
             return .timeout
         case .badServerResponse:
             return .serverError(statusCode: 0)
+        case .cancelled, .userAuthenticationRequired:
+            return .requestCancelled
         default:
             return .unknown(error)
         }

@@ -721,11 +721,26 @@ class SharedReelManager: ObservableObject {
 
                             // Auto-navigate for in-app submissions (homeViewModel is set).
                             guard self.homeViewModel != nil else { return }
+
+                            // Look up the completed reel using three strategies, in order:
+                            // 1. Exact submission ID match (works for brand-new fact-checks whose
+                            //    backend uniqueID happens to equal submissionId).
+                            // 2. URL path match — ignores query params (?igsh=, ?igshid=, etc.)
+                            //    so duplicate-URL submissions find the original fact_check row
+                            //    even when the stored URL differs only in tracking parameters.
+                            // 3. URL path vs submissionURL (the URL of the in-flight placeholder).
+                            func urlPathsMatch(_ a: String, _ b: String) -> Bool {
+                                guard a != b else { return true }
+                                guard let ua = URL(string: a), let ub = URL(string: b) else { return false }
+                                let pa = ua.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+                                let pb = ub.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+                                return ua.host?.lowercased() == ub.host?.lowercased() && pa == pb
+                            }
                             let completed = self.reels.first(where: {
                                 $0.id == submissionId && $0.status == .completed && $0.factCheckData != nil
                             }) ?? self.reels.first(where: {
                                 guard let url = submissionURL else { return false }
-                                return $0.url == url && $0.status == .completed && $0.factCheckData != nil
+                                return urlPathsMatch($0.url, url) && $0.status == .completed && $0.factCheckData != nil
                             })
                             guard let reel = completed, let data = reel.factCheckData else { return }
                             NotificationCenter.default.post(

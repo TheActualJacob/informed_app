@@ -80,6 +80,9 @@ struct informedApp: App {
                             Task {
                                 if #available(iOS 16.1, *) {
                                     await dismissAllCompletedLiveActivities()
+                                    // Show completed Dynamic Island badges for any fact-checks
+                                    // that finished while the app was in the background.
+                                    await ReelProcessingActivityManager.shared.drainPendingCompletedActivities()
                                 }
                                 // Only check for new pending submissions after cleanup is done
                                 checkForPendingSharedURL()
