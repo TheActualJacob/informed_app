@@ -288,6 +288,7 @@ class HomeViewModel: ObservableObject {
     
     func performFactCheck(for link: String, userId: String, sessionId: String) async {
         self.processingLink = link
+        self.searchText = ""  // Clear immediately so user cannot re-submit
         self.errorMessage = nil
         if let url = URL(string: link) { self.processingThumbnailURL = url }
         print("🔍 Starting fact check for: \(link)")
@@ -343,7 +344,6 @@ class HomeViewModel: ObservableObject {
                 let skipWait = factCheckData.isAlreadyCompleted
                 SharedReelManager.shared.startProgressPolling(submissionId: submissionId,
                                                               skipInitialWait: skipWait)
-                self.searchText = ""
                 print("✅ Submission accepted (202). Polling for sid=\(submissionId.prefix(8))… (skipWait=\(skipWait))")
                 return
             }
