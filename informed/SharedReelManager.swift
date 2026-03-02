@@ -693,43 +693,32 @@ class SharedReelManager: ObservableObject {
                         if #available(iOS 16.1, *) {
                             ReelProcessingActivityManager.removeFromAppGroupPendingSubmissions(submissionId: submissionId)
                         }
-                        // Clear the processing banner now that this submission is done.
-                        await MainActor.run {
-                            let stillPending = (UserDefaults(suiteName: "group.rob")?
-                                .array(forKey: "pending_submissions") as? [[String: Any]])?.count ?? 0
-                            if stillPending == 0 { self.activeProcessingURL = nil }
-                            // Also clear the HomeViewModel banner for in-app submissions.
-                            self.homeViewModel?.processingLink = nil
-                            self.homeViewModel?.processingThumbnailURL = nil
-                        }
-                        // Drive the Dynamic Island to its completed state immediately
-                        // with a placeholder title/verdict. The real data arrives shortly
-                        // after via syncHistoryFromBackend() below (polling path) or via
-                        // the backend's catch-up APNs push once the push token is registered
-                        // (APNs path — now enabled because resolvedActivity() calls
-                        // observePushToken() the first time it discovers the activity).
+                        // Drive the Dynamic Island to its completed state immediately.
                         await ReelProcessingActivityManager.shared.completeActivity(
                             submissionId: submissionId,
                             title: "Fact-Check Complete",
                             verdict: "Tap to view results"
                         )
-                        // Sync App Group in case the Share Extension also wrote completed data
-                        // (picks up real title/verdict for the UI, no-op if key is absent in
-                        // the async 202 flow).
+                        // Sync App Group in case the Share Extension also wrote completed data.
                         syncCompletedFactChecksFromAppGroup()
                         // Pull the full result from the backend so My Reels and the feed
                         // show the actual fact-check data without waiting for the user to
-                        // manually refresh. For the Share Extension 202 flow this is the
-                        // only reliable way to get the real title/verdict into the app.
+                        // manually refresh.
                         await syncHistoryFromBackend()
 
-                        // If the submission was started from the in-app search bar
-                        // (homeViewModel is set), auto-navigate to the detail view so
-                        // the user sees the results immediately without having to tap
-                        // the Dynamic Island or switch to My Reels manually.
+                        // Clear the banner and navigate in one atomic update so there is
+                        // no visible gap between the spinner disappearing and the detail
+                        // view appearing.
                         await MainActor.run {
+                            // Clear banner (both share-extension and in-app paths).
+                            let stillPending = (UserDefaults(suiteName: "group.rob")?
+                                .array(forKey: "pending_submissions") as? [[String: Any]])?.count ?? 0
+                            if stillPending == 0 { self.activeProcessingURL = nil }
+                            self.homeViewModel?.processingLink = nil
+                            self.homeViewModel?.processingThumbnailURL = nil
+
+                            // Auto-navigate for in-app submissions (homeViewModel is set).
                             guard self.homeViewModel != nil else { return }
-                            // Find the completed reel: try by ID first, fall back to URL.
                             let completed = self.reels.first(where: {
                                 $0.id == submissionId && $0.status == .completed && $0.factCheckData != nil
                             }) ?? self.reels.first(where: {
