@@ -162,9 +162,10 @@ class ShareViewController: UIViewController {
         print("   Session ID: \(sessionId)")
         print("   Device Token: \(deviceToken)")
         
-        // Get backend URL from shared config
-        let backendURL = sharedDefaults.string(forKey: "backend_url") ?? "http://172.20.10.2:5001"
-        
+        // Get backend URL from shared config (main app syncs this on launch via Config.syncBackendURLToSharedStorage)
+        let backendURL = sharedDefaults.string(forKey: "backend_url") ?? "https://informed-production.up.railway.app"
+        print("🌐 [ShareExt] Backend URL: \(backendURL)")
+
         // Create the API URL with query parameters
         guard var urlComponents = URLComponents(string: "\(backendURL)/fact-check") else {
             print("❌ Invalid API URL")
@@ -550,7 +551,7 @@ class ShareViewController: UIViewController {
         let appGroupName = "group.rob"
         guard let sharedDefaults = UserDefaults(suiteName: appGroupName),
               let userId = sharedDefaults.string(forKey: "stored_user_id"),
-              let sessionId = sharedDefaults.string(forKey: "session_id") else {
+              let sessionId = sharedDefaults.string(forKey: "stored_session_id") else {
             print("⚠️ [ShareExtension] No credentials — activity push token will be sent by main app on next launch")
             return
         }

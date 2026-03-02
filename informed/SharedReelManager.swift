@@ -207,6 +207,8 @@ class SharedReelManager: ObservableObject {
     private var lastActivityCheckTime: Date? // For debouncing Live Activity checks
     /// Submission IDs that currently have an active progress-polling Task running.
     private var activePollingIds: Set<String> = []
+    /// Submission IDs we've already sent a main-app fallback fact-check for (Share Extension request may have been killed).
+    private var fallbackSentForSubmissions: Set<String> = []
     /// Whether a thumbnail-refresh sync is already scheduled/running.
     private var thumbnailRefreshScheduled = false
     
@@ -784,6 +786,20 @@ class SharedReelManager: ObservableObject {
                         print("⏳ [ProgressPolling] Poll \(pollCount) not ready yet (submission may still be inserting) — retrying in 5s")
                     } else {
                         print("⚠️ [ProgressPolling] Error fetching status (poll \(pollCount)): \(error.localizedDescription)")
+                        // Main app fallback: Share Extension may have been killed before its POST completed.
+                        // If we get 404 and haven't tried yet, send the fact-check from the main app.
+                        let is404 = error.localizedDescription.contains("404")
+                        if is404, let url = submissionURL, !fallbackSentForSubmissions.contains(submissionId),
+                           let userId = UserManager.shared.currentUserId, let sessionId = UserManager.shared.currentSessionId {
+                            fallbackSentForSubmissions.insert(submissionId)
+                            do {
+                                let request = FactCheckRequest(link: url, userId: userId, sessionId: sessionId, submissionId: submissionId)
+                                _ = try await sendFactCheck(request)
+                                print("🔄 [ProgressPolling] Main app fallback: sent fact-check for \(submissionId.prefix(8)) (Share Extension request may have been killed)")
+                            } catch {
+                                print("⚠️ [ProgressPolling] Main app fallback failed: \(error.localizedDescription)")
+                            }
+                        }
                     }
                     try? await Task.sleep(nanoseconds: 5_000_000_000) // 5s back-off on error
                 }
