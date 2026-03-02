@@ -138,6 +138,7 @@ struct LockScreenLiveActivityView: View {
         }
         .activityBackgroundTint(Color.cardBackground)
         .activitySystemActionForegroundColor(context.state.status.color)
+        .widgetURL(URL(string: "factcheckapp://detail?id=\(context.attributes.submissionId)"))
     }
 }
 
