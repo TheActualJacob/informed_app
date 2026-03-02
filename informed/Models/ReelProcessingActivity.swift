@@ -141,6 +141,8 @@ enum ProcessingStatus: String, Codable, Hashable {
         }
     }
 
+    var isTerminal: Bool { self == .completed || self == .failed }
+
     // MARK: - Progress percentages
     var progressPercentage: Double {
         switch self {
