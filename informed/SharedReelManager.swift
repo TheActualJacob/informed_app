@@ -693,7 +693,6 @@ class SharedReelManager: ObservableObject {
                             // Also clear the HomeViewModel banner for in-app submissions.
                             self.homeViewModel?.processingLink = nil
                             self.homeViewModel?.processingThumbnailURL = nil
-                            self.homeViewModel?.currentSubmissionId = nil
                         }
                         // Drive the Dynamic Island to its completed state immediately
                         // with a placeholder title/verdict. The real data arrives shortly
@@ -731,7 +730,6 @@ class SharedReelManager: ObservableObject {
                             if stillPending == 0 { self.activeProcessingURL = nil }
                             self.homeViewModel?.processingLink = nil
                             self.homeViewModel?.processingThumbnailURL = nil
-                            self.homeViewModel?.currentSubmissionId = nil
                         }
                         // Prefer the backend's current_stage (now a user-friendly message
                         // set by friendly_error_for_live_activity on the server). Fall back
