@@ -139,6 +139,7 @@ struct AuthenticationView: View {
     @State private var errorMessage: String?
     @State private var showPassword: Bool = false
     @State private var showHowItWorks: Bool = false
+    @State private var appleSignInCoordinator: AppleSignInCoordinator?
 
     @FocusState private var focusedField: Field?
     
@@ -151,6 +152,7 @@ struct AuthenticationView: View {
             // Background gradient - adaptive
             Color.backgroundLight
                 .ignoresSafeArea()
+                .onTapGesture { hideKeyboard() }
             
             ScrollView {
                 VStack(spacing: 30) {
@@ -437,23 +439,19 @@ struct AuthenticationView: View {
                         .padding(.top, 8)
 
                         // Sign in with Apple
-                        SignInWithAppleButton(
-                            isLoginMode ? .signIn : .signUp,
-                            onRequest: { appleRequest in
-                                appleRequest.requestedScopes = [.fullName, .email]
-                            },
-                            onCompletion: { result in
-                                switch result {
-                                case .success(let authorization):
-                                    handleAppleSignIn(authorization)
-                                case .failure(let error):
-                                    errorMessage = "Apple Sign In failed: \(error.localizedDescription)"
-                                }
+                        Button(action: startAppleSignIn) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "apple.logo")
+                                    .font(.system(size: 18, weight: .medium))
+                                Text(isLoginMode ? "Sign in with Apple" : "Sign up with Apple")
+                                    .font(.system(size: 17, weight: .medium))
                             }
-                        )
-                        .signInWithAppleButtonStyle(colorScheme == .dark ? .white : .black)
-                        .frame(height: 50)
-                        .cornerRadius(12)
+                            .foregroundColor(colorScheme == .dark ? .black : .white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                            .background(colorScheme == .dark ? .white : .black)
+                            .cornerRadius(12)
+                        }
                         .disabled(isLoading)
 
                         
@@ -468,12 +466,6 @@ struct AuthenticationView: View {
                 }
                 .padding(.horizontal, 20)
             }
-            .onTapGesture {
-                hideKeyboard()
-            }
-        }
-        .onTapGesture {
-            hideKeyboard()
         }
         .sheet(isPresented: $showHowItWorks) {
             HowItWorksSheet(isPresented: $showHowItWorks)
@@ -585,7 +577,31 @@ struct AuthenticationView: View {
 
     // MARK: - Apple Sign In
 
-    private func handleAppleSignIn(_ authorization: ASAuthorization) {
+    private func startAppleSignIn() {
+        let request = ASAuthorizationAppleIDProvider().createRequest()
+        request.requestedScopes = [.fullName, .email]
+
+        let coordinator = AppleSignInCoordinator { [self] result in
+            switch result {
+            case .success(let authorization):
+                handleAppleCredential(authorization)
+            case .failure(let error):
+                let code = (error as? ASAuthorizationError)?.code
+                if code != .canceled {
+                    errorMessage = "Apple Sign In failed: \(error.localizedDescription)"
+                }
+            }
+            appleSignInCoordinator = nil
+        }
+        appleSignInCoordinator = coordinator
+
+        let controller = ASAuthorizationController(authorizationRequests: [request])
+        controller.delegate = coordinator
+        controller.presentationContextProvider = coordinator
+        controller.performRequests()
+    }
+
+    private func handleAppleCredential(_ authorization: ASAuthorization) {
         guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential,
               let tokenData = credential.identityToken,
               let identityToken = String(data: tokenData, encoding: .utf8) else {
@@ -629,6 +645,31 @@ struct AuthenticationView: View {
         }
     }
 
+}
+
+// MARK: - Apple Sign In Coordinator
+
+private class AppleSignInCoordinator: NSObject, ASAuthorizationControllerDelegate, ASAuthorizationControllerPresentationContextProviding {
+    var onCompletion: (Result<ASAuthorization, Error>) -> Void
+
+    init(onCompletion: @escaping (Result<ASAuthorization, Error>) -> Void) {
+        self.onCompletion = onCompletion
+    }
+
+    func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap { $0.windows }
+            .first { $0.isKeyWindow } ?? ASPresentationAnchor()
+    }
+
+    func authorizationController(controller: ASAuthorizationController, didCompleteWithAuthorization authorization: ASAuthorization) {
+        onCompletion(.success(authorization))
+    }
+
+    func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: Error) {
+        onCompletion(.failure(error))
+    }
 }
 
 // MARK: - How It Works Sheet (shown on sign-up)
