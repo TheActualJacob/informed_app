@@ -314,8 +314,12 @@ struct PublicReelDetailView: View {
     let reel: PublicReel
     // viewModel kept for backward compat with FeedView callers but no longer required
     var viewModel: FeedViewModel? = nil
-    
+
+    @EnvironmentObject var userManager: UserManager
     @Environment(\.presentationMode) var presentationMode
+    @State private var showReportSheet = false
+    @State private var reportSubmitted = false
+    @State private var reportError: String?
     
     var body: some View {
         ScrollView {
@@ -437,24 +441,82 @@ struct PublicReelDetailView: View {
         .toolbar {
             ToolbarItem(placement: .principal) { Text("") }
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button(action: {
-                    HapticManager.lightImpact()
-                    if let viewModel = viewModel { Task { await viewModel.trackShare(for: reel) } }
-                    let shareURL = URL(string: Config.Endpoints.shareBase + reel.id)
-                        ?? URL(string: reel.videoLink)
-                    let items: [Any] = shareURL != nil ? [shareURL!] : [reel.title]
-                    let activityVC = UIActivityViewController(activityItems: items, applicationActivities: nil)
-                    if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-                       let rootVC = windowScene.windows.first?.rootViewController {
-                        rootVC.present(activityVC, animated: true)
+                HStack(spacing: 16) {
+                    Button(action: {
+                        HapticManager.lightImpact()
+                        showReportSheet = true
+                    }) {
+                        Image(systemName: "flag")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(.secondary)
                     }
-                }) {
-                    Image(systemName: "square.and.arrow.up")
-                        .font(.system(size: 15, weight: .semibold))
+                    Button(action: {
+                        HapticManager.lightImpact()
+                        if let viewModel = viewModel { Task { await viewModel.trackShare(for: reel) } }
+                        let shareURL = URL(string: Config.Endpoints.shareBase + reel.id)
+                            ?? URL(string: reel.videoLink)
+                        let items: [Any] = shareURL != nil ? [shareURL!] : [reel.title]
+                        let activityVC = UIActivityViewController(activityItems: items, applicationActivities: nil)
+                        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                           let rootVC = windowScene.windows.first?.rootViewController {
+                            rootVC.present(activityVC, animated: true)
+                        }
+                    }) {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 15, weight: .semibold))
+                    }
                 }
             }
         }
         .toolbarBackground(.hidden, for: .navigationBar)
+        .confirmationDialog("Report Content", isPresented: $showReportSheet, titleVisibility: .visible) {
+            Button("Inappropriate or harmful") {
+                submitReport(reason: "inappropriate")
+            }
+            Button("Misinformation") {
+                submitReport(reason: "misinformation")
+            }
+            Button("Spam") {
+                submitReport(reason: "spam")
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Why are you reporting this content?")
+        }
+        .alert(reportSubmitted ? "Report Submitted" : "Report Failed",
+               isPresented: Binding(
+                   get: { reportSubmitted || reportError != nil },
+                   set: { if !$0 { reportSubmitted = false; reportError = nil } }
+               )) {
+            Button("OK", role: .cancel) {
+                reportSubmitted = false
+                reportError = nil
+            }
+        } message: {
+            if reportSubmitted {
+                Text("Thanks for the report. Our team will review this content.")
+            } else if let error = reportError {
+                Text(error)
+            }
+        }
+    }
+
+    private func submitReport(reason: String) {
+        guard let userId = userManager.currentUserId,
+              let sessionId = userManager.currentSessionId else { return }
+        Task {
+            do {
+                try await NetworkService.shared.reportContent(
+                    userId: userId,
+                    sessionId: sessionId,
+                    factCheckId: reel.id,
+                    reason: reason
+                )
+                reportSubmitted = true
+            } catch {
+                reportError = "Could not submit report. Please try again."
+            }
+        }
     }
 }
 

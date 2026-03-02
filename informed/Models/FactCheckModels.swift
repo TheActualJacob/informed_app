@@ -206,7 +206,7 @@ struct ReelUser: Codable, Identifiable {
         try c.encode(id, forKey: .id); try c.encode(username, forKey: .username)
     }
 }
-struct ReelEngagement: Codable { let viewCount: Int; let shareCount: Int }
+struct ReelEngagement: Codable { let viewCount: Int; var shareCount: Int }
 
 // MARK: - PublicReel
 
@@ -220,7 +220,7 @@ struct PublicReel: Identifiable, Codable {
     let checkedAt: String
     let datePosted: String?
     let uploadedBy: ReelUser
-    let engagement: ReelEngagement
+    var engagement: ReelEngagement
     let platform: String?
     let aiGenerated: String?
     let aiProbability: Double?

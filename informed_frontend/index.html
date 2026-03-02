@@ -894,6 +894,321 @@
   .hero-sub     { animation: up 0.55s 0.16s ease both; }
   .hero-actions { animation: up 0.55s 0.24s ease both; }
   .hero-visual  { animation: up 0.7s 0.18s ease both; }
+
+  /* ── WAITLIST MODAL ── */
+  .wl-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.35s ease;
+    background: rgba(5,8,16,0.82);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+  }
+
+  .wl-backdrop.open {
+    opacity: 1;
+    pointer-events: all;
+  }
+
+  .wl-modal {
+    position: relative;
+    background: var(--surface);
+    border: 1px solid rgba(99,179,255,0.18);
+    border-radius: 28px;
+    padding: 52px 48px 44px;
+    max-width: 480px;
+    width: 100%;
+    text-align: center;
+    overflow: hidden;
+    transform: scale(0.88) translateY(28px);
+    transition: transform 0.45s cubic-bezier(0.34,1.56,0.64,1), opacity 0.35s ease;
+    opacity: 0;
+    box-shadow:
+      0 0 0 1px rgba(59,130,246,0.08),
+      0 32px 80px rgba(0,0,0,0.7),
+      0 0 80px rgba(59,130,246,0.08);
+  }
+
+  .wl-backdrop.open .wl-modal {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+  }
+
+  /* glow orbs */
+  .wl-orb {
+    position: absolute;
+    border-radius: 50%;
+    pointer-events: none;
+  }
+
+  .wl-orb-1 {
+    width: 280px; height: 280px;
+    background: radial-gradient(circle, rgba(59,130,246,0.13) 0%, transparent 70%);
+    top: -100px; left: -80px;
+    animation: wl-drift-1 8s ease-in-out infinite;
+  }
+
+  .wl-orb-2 {
+    width: 220px; height: 220px;
+    background: radial-gradient(circle, rgba(99,179,255,0.09) 0%, transparent 70%);
+    bottom: -80px; right: -60px;
+    animation: wl-drift-2 10s ease-in-out infinite;
+  }
+
+  @keyframes wl-drift-1 {
+    0%,100% { transform: translate(0,0) scale(1); }
+    50% { transform: translate(20px,14px) scale(1.08); }
+  }
+
+  @keyframes wl-drift-2 {
+    0%,100% { transform: translate(0,0) scale(1); }
+    50% { transform: translate(-16px,-10px) scale(1.06); }
+  }
+
+  /* particles */
+  .wl-particles {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    overflow: hidden;
+  }
+
+  .wl-p {
+    position: absolute;
+    width: 2px; height: 2px;
+    border-radius: 50%;
+    background: rgba(99,179,255,0.55);
+    animation: wl-particle var(--dur) ease-in-out infinite var(--delay);
+  }
+
+  @keyframes wl-particle {
+    0%   { opacity: 0; transform: translate(0,0) scale(0.5); }
+    20%  { opacity: 1; }
+    80%  { opacity: 0.6; }
+    100% { opacity: 0; transform: translate(var(--tx), var(--ty)) scale(1.5); }
+  }
+
+  .wl-close {
+    position: absolute;
+    top: 18px; right: 18px;
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,0.04);
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.2s, border-color 0.2s;
+    color: var(--muted);
+  }
+
+  .wl-close:hover { background: rgba(255,255,255,0.09); border-color: rgba(99,179,255,0.3); color: var(--text); }
+  .wl-close svg { width: 14px; height: 14px; stroke: currentColor; stroke-width: 2.2; }
+
+  .wl-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    background: rgba(59,130,246,0.1);
+    border: 1px solid rgba(59,130,246,0.22);
+    border-radius: 100px;
+    padding: 5px 14px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--blue-bright);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 22px;
+  }
+
+  .wl-chip-dot {
+    width: 5px; height: 5px;
+    background: var(--blue-bright);
+    border-radius: 50%;
+    box-shadow: 0 0 6px var(--blue-bright);
+    animation: blink 1.8s ease-in-out infinite;
+  }
+
+  .wl-title {
+    font-family: 'Playfair Display', serif;
+    font-size: clamp(28px, 5vw, 38px);
+    font-weight: 900;
+    line-height: 1.08;
+    letter-spacing: -1.2px;
+    margin-bottom: 10px;
+    color: var(--text);
+  }
+
+  .wl-title em { font-style: italic; color: var(--blue-bright); }
+
+  .wl-date {
+    display: inline-block;
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--green-bright);
+    background: rgba(16,185,129,0.08);
+    border: 1px solid rgba(16,185,129,0.2);
+    border-radius: 8px;
+    padding: 6px 14px;
+    margin-bottom: 18px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .wl-sub {
+    font-size: 14.5px;
+    color: var(--muted);
+    line-height: 1.7;
+    margin-bottom: 30px;
+    font-weight: 300;
+  }
+
+  .wl-countdown {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 30px;
+  }
+
+  .wl-cd-block {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 14px 10px;
+    min-width: 62px;
+  }
+
+  .wl-cd-num {
+    font-family: 'Playfair Display', serif;
+    font-size: 28px;
+    font-weight: 900;
+    line-height: 1;
+    color: var(--blue-bright);
+    letter-spacing: -1px;
+  }
+
+  .wl-cd-lbl {
+    font-size: 9px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-top: 4px;
+    font-family: 'DM Mono', monospace;
+  }
+
+  .wl-divider { width: 8px; height: 2px; background: rgba(99,179,255,0.25); border-radius: 2px; align-self: center; margin-top: -6px; }
+
+  .wl-form { display: flex; flex-direction: column; gap: 12px; }
+
+  .wl-input-row {
+    display: flex;
+    gap: 10px;
+  }
+
+  .wl-input {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 0 18px;
+    height: 50px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    min-width: 0;
+  }
+
+  .wl-input::placeholder { color: rgba(122,143,173,0.55); }
+
+  .wl-input:focus {
+    border-color: rgba(59,130,246,0.45);
+    box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
+  }
+
+  .wl-submit {
+    height: 50px;
+    padding: 0 24px;
+    background: var(--blue);
+    color: white;
+    border: none;
+    border-radius: 12px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.2s;
+    box-shadow: 0 4px 18px rgba(59,130,246,0.3);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .wl-submit:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 24px rgba(59,130,246,0.44);
+  }
+
+  .wl-submit:active { transform: translateY(0); }
+
+  .wl-submit svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 2.2; flex-shrink: 0; }
+
+  .wl-note {
+    font-size: 11px;
+    color: rgba(122,143,173,0.5);
+    font-family: 'DM Mono', monospace;
+    letter-spacing: 0.03em;
+  }
+
+  /* success state */
+  .wl-success {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 0 4px;
+    animation: up 0.5s ease both;
+  }
+
+  .wl-success-icon {
+    width: 64px; height: 64px;
+    background: rgba(16,185,129,0.1);
+    border: 1px solid rgba(16,185,129,0.3);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    animation: wl-pop 0.5s cubic-bezier(0.34,1.56,0.64,1) both;
+  }
+
+  @keyframes wl-pop {
+    from { transform: scale(0); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+  }
+
+  .wl-success-icon svg { width: 30px; height: 30px; stroke: var(--green-bright); fill: none; stroke-width: 2.5; }
+  .wl-success h3 { font-family: 'Playfair Display', serif; font-size: 26px; font-weight: 900; letter-spacing: -0.8px; }
+  .wl-success p { font-size: 14px; color: var(--muted); line-height: 1.65; max-width: 300px; }
+
+  .wl-main { transition: opacity 0.3s, transform 0.3s; }
+  .wl-main.hidden { opacity: 0; transform: scale(0.95); pointer-events: none; display: none; }
+  .wl-success.visible { display: flex; }
+
+  @media (max-width: 520px) {
+    .wl-modal { padding: 44px 26px 36px; }
+    .wl-input-row { flex-direction: column; }
+    .wl-submit { width: 100%; justify-content: center; }
+    .wl-countdown { gap: 6px; }
+    .wl-cd-block { min-width: 52px; padding: 10px 10px 8px; }
+    .wl-cd-num { font-size: 22px; }
+  }
 </style>
 </head>
 <body>
@@ -1336,13 +1651,219 @@
   </div>
   <ul class="footer-links">
     <li><a href="#">Mission</a></li>
-    <li><a href="#">Privacy Policy</a></li>
-    <li><a href="#">Terms</a></li>
+    <li><a href="privacy.html">Privacy Policy</a></li>
+    <li><a href="terms.html">Terms</a></li>
     <li><a href="#">Press</a></li>
     <li><a href="#">Contact</a></li>
   </ul>
   <div class="footer-copy">© 2026 Informed. A social enterprise.</div>
 </footer>
+
+<!-- WAITLIST MODAL -->
+<div class="wl-backdrop" id="wlBackdrop" role="dialog" aria-modal="true" aria-label="Join the waitlist">
+  <div class="wl-modal" id="wlModal">
+
+    <!-- ambient orbs -->
+    <div class="wl-orb wl-orb-1"></div>
+    <div class="wl-orb wl-orb-2"></div>
+
+    <!-- particles -->
+    <div class="wl-particles" id="wlParticles"></div>
+
+    <button class="wl-close" id="wlClose" aria-label="Close">
+      <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+
+    <!-- MAIN CONTENT -->
+    <div class="wl-main" id="wlMain">
+      <div class="wl-chip"><span class="wl-chip-dot"></span>Coming Soon</div>
+
+      <h2 class="wl-title">Informed is launching<br><em>March 2nd.</em></h2>
+
+      <div class="wl-date">&#128197; March 2, 2026</div>
+
+      <p class="wl-sub">Be the first to fact-check your feed.<br>Join the waitlist and we'll notify you the moment we're live.</p>
+
+      <!-- Countdown -->
+      <div class="wl-countdown">
+        <div class="wl-cd-block">
+          <div class="wl-cd-num" id="cdDays">00</div>
+          <div class="wl-cd-lbl">Days</div>
+        </div>
+        <div class="wl-divider"></div>
+        <div class="wl-cd-block">
+          <div class="wl-cd-num" id="cdHours">00</div>
+          <div class="wl-cd-lbl">Hours</div>
+        </div>
+        <div class="wl-divider"></div>
+        <div class="wl-cd-block">
+          <div class="wl-cd-num" id="cdMins">00</div>
+          <div class="wl-cd-lbl">Mins</div>
+        </div>
+        <div class="wl-divider"></div>
+        <div class="wl-cd-block">
+          <div class="wl-cd-num" id="cdSecs">00</div>
+          <div class="wl-cd-lbl">Secs</div>
+        </div>
+      </div>
+
+      <!-- Form — uses FormSubmit to forward to ask.notivize@gmail.com -->
+      <form class="wl-form" id="wlForm" action="https://formsubmit.co/ask.notivize@gmail.com" method="POST" novalidate>
+        <input type="hidden" name="_subject" value="New Informed Waitlist Sign-up!">
+        <input type="hidden" name="_captcha" value="false">
+        <input type="hidden" name="_template" value="table">
+        <div class="wl-input-row">
+          <input
+            class="wl-input"
+            type="email"
+            name="email"
+            id="wlEmail"
+            placeholder="your@email.com"
+            autocomplete="email"
+            required
+          >
+          <button type="submit" class="wl-submit">
+            Notify Me
+            <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </button>
+        </div>
+        <div class="wl-note">No spam · Unsubscribe any time · Always free</div>
+      </form>
+    </div>
+
+    <!-- SUCCESS STATE -->
+    <div class="wl-success" id="wlSuccess">
+      <div class="wl-success-icon">
+        <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+      </div>
+      <h3>You're on the list!</h3>
+      <p>We'll send you a notification the moment Informed goes live on March 2nd. Get ready to fact-check your feed.</p>
+    </div>
+
+  </div>
+</div>
+
+<script>
+(function () {
+  /* ── open / close ── */
+  const backdrop = document.getElementById('wlBackdrop');
+  const closeBtn = document.getElementById('wlClose');
+
+  function openModal() {
+    backdrop.classList.add('open');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeModal() {
+    backdrop.classList.remove('open');
+    document.body.style.overflow = '';
+  }
+
+  // Intercept all download / app-store buttons
+  document.querySelectorAll(
+    '.btn-primary, .app-btn, .nav-cta[href="#download"]'
+  ).forEach(function (el) {
+    el.addEventListener('click', function (e) {
+      e.preventDefault();
+      openModal();
+    });
+  });
+
+  closeBtn.addEventListener('click', closeModal);
+
+  backdrop.addEventListener('click', function (e) {
+    if (e.target === backdrop) closeModal();
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') closeModal();
+  });
+
+  /* ── countdown ── */
+  var launch = new Date('2026-03-02T00:00:00');
+
+  function pad(n) { return String(n).padStart(2, '0'); }
+
+  function tick() {
+    var now = new Date();
+    var diff = launch - now;
+    if (diff <= 0) {
+      document.getElementById('cdDays').textContent  = '00';
+      document.getElementById('cdHours').textContent = '00';
+      document.getElementById('cdMins').textContent  = '00';
+      document.getElementById('cdSecs').textContent  = '00';
+      return;
+    }
+    var d = Math.floor(diff / 86400000);
+    var h = Math.floor((diff % 86400000) / 3600000);
+    var m = Math.floor((diff % 3600000)  / 60000);
+    var s = Math.floor((diff % 60000)    / 1000);
+    document.getElementById('cdDays').textContent  = pad(d);
+    document.getElementById('cdHours').textContent = pad(h);
+    document.getElementById('cdMins').textContent  = pad(m);
+    document.getElementById('cdSecs').textContent  = pad(s);
+  }
+
+  tick();
+  setInterval(tick, 1000);
+
+  /* ── particles ── */
+  var container = document.getElementById('wlParticles');
+  for (var i = 0; i < 18; i++) {
+    var p = document.createElement('div');
+    p.className = 'wl-p';
+    p.style.cssText = [
+      'left:' + (10 + Math.random() * 80) + '%',
+      'top:'  + (10 + Math.random() * 80) + '%',
+      '--tx:' + (Math.random() * 80 - 40) + 'px',
+      '--ty:' + (Math.random() * 80 - 40) + 'px',
+      '--dur:' + (4 + Math.random() * 6) + 's',
+      '--delay:-' + (Math.random() * 6) + 's'
+    ].join(';');
+    container.appendChild(p);
+  }
+
+  /* ── form submission ── */
+  var form   = document.getElementById('wlForm');
+  var main   = document.getElementById('wlMain');
+  var success = document.getElementById('wlSuccess');
+
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var email = document.getElementById('wlEmail').value.trim();
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      document.getElementById('wlEmail').focus();
+      document.getElementById('wlEmail').style.borderColor = 'var(--red)';
+      return;
+    }
+    document.getElementById('wlEmail').style.borderColor = '';
+
+    var formData = new FormData(form);
+
+    fetch(form.action, {
+      method: 'POST',
+      body: formData,
+      headers: { 'Accept': 'application/json' }
+    })
+    .then(function (res) {
+      if (res.ok || res.status === 200) {
+        showSuccess();
+      } else {
+        // Fallback: still show success to the user (email may still send)
+        showSuccess();
+      }
+    })
+    .catch(function () {
+      showSuccess();
+    });
+  });
+
+  function showSuccess() {
+    main.classList.add('hidden');
+    success.classList.add('visible');
+  }
+})();
+</script>
 
 </body>
 </html>

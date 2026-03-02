@@ -302,6 +302,216 @@ class NetworkService {
         }
     }
     
+    // MARK: - User Reels
+
+    func fetchUserReels(userId: String, sessionId: String, limit: Int = 100) async throws -> [UserReel] {
+        guard var urlComponents = URLComponents(string: Config.Endpoints.userReels) else {
+            throw NetworkError.invalidURL
+        }
+        urlComponents.queryItems = [
+            URLQueryItem(name: "userId", value: userId),
+            URLQueryItem(name: "sessionId", value: sessionId),
+            URLQueryItem(name: "limit", value: String(limit))
+        ]
+        guard let url = urlComponents.url else { throw NetworkError.invalidURL }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 30
+
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse else { throw NetworkError.invalidResponse }
+            if httpResponse.statusCode == 401 { throw NetworkError.unauthorized }
+            guard (200...299).contains(httpResponse.statusCode) else {
+                throw NetworkError.serverError(statusCode: httpResponse.statusCode)
+            }
+            let decoded = try JSONDecoder().decode(UserReelsResponse.self, from: data)
+            return decoded.reels
+        } catch let urlError as URLError {
+            throw mapURLError(urlError)
+        } catch let netErr as NetworkError {
+            throw netErr
+        } catch {
+            throw NetworkError.unknown(error)
+        }
+    }
+
+    // MARK: - Submission Status (Progress Polling)
+
+    func fetchSubmissionStatus(submissionId: String, userId: String, sessionId: String) async throws -> SubmissionStatusResponse {
+        guard var urlComponents = URLComponents(string: Config.Endpoints.submissionStatus + "/\(submissionId)") else {
+            throw NetworkError.invalidURL
+        }
+        urlComponents.queryItems = [
+            URLQueryItem(name: "userId", value: userId),
+            URLQueryItem(name: "sessionId", value: sessionId)
+        ]
+        guard let url = urlComponents.url else { throw NetworkError.invalidURL }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 15
+
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse else { throw NetworkError.invalidResponse }
+            if httpResponse.statusCode == 401 { throw NetworkError.unauthorized }
+            guard (200...299).contains(httpResponse.statusCode) else {
+                throw NetworkError.serverError(statusCode: httpResponse.statusCode)
+            }
+            return try JSONDecoder().decode(SubmissionStatusResponse.self, from: data)
+        } catch let urlError as URLError {
+            throw mapURLError(urlError)
+        } catch let netErr as NetworkError {
+            throw netErr
+        } catch {
+            throw NetworkError.unknown(error)
+        }
+    }
+
+    // MARK: - Public Feed
+
+    func fetchPublicFeed(userId: String, sessionId: String, page: Int, limit: Int, cursor: String? = nil) async throws -> PublicFeedResponse {
+        guard var urlComponents = URLComponents(string: Config.Endpoints.publicFeed) else {
+            throw NetworkError.invalidURL
+        }
+        var queryItems: [URLQueryItem] = [
+            URLQueryItem(name: "userId", value: userId),
+            URLQueryItem(name: "sessionId", value: sessionId),
+            URLQueryItem(name: "page", value: String(page)),
+            URLQueryItem(name: "limit", value: String(limit))
+        ]
+        if let cursor = cursor { queryItems.append(URLQueryItem(name: "cursor", value: cursor)) }
+        urlComponents.queryItems = queryItems
+        guard let url = urlComponents.url else { throw NetworkError.invalidURL }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 30
+
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse else { throw NetworkError.invalidResponse }
+            if httpResponse.statusCode == 401 { throw NetworkError.unauthorized }
+            guard (200...299).contains(httpResponse.statusCode) else {
+                throw NetworkError.serverError(statusCode: httpResponse.statusCode)
+            }
+            return try JSONDecoder().decode(PublicFeedResponse.self, from: data)
+        } catch let urlError as URLError {
+            throw mapURLError(urlError)
+        } catch let netErr as NetworkError {
+            throw netErr
+        } catch {
+            throw NetworkError.unknown(error)
+        }
+    }
+
+    // MARK: - Interaction Tracking
+
+    func trackInteraction(userId: String, sessionId: String, factCheckId: String, interactionType: String) async throws {
+        guard var urlComponents = URLComponents(string: Config.Endpoints.trackInteraction) else {
+            throw NetworkError.invalidURL
+        }
+        urlComponents.queryItems = [
+            URLQueryItem(name: "userId", value: userId),
+            URLQueryItem(name: "sessionId", value: sessionId)
+        ]
+        guard let url = urlComponents.url else { throw NetworkError.invalidURL }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let body: [String: String] = ["factCheckId": factCheckId, "interactionType": interactionType]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        request.timeoutInterval = 15
+
+        do {
+            let (_, response) = try await session.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse,
+                  (200...299).contains(httpResponse.statusCode) else {
+                throw NetworkError.serverError(statusCode: (response as? HTTPURLResponse)?.statusCode ?? 500)
+            }
+        } catch let urlError as URLError {
+            throw mapURLError(urlError)
+        } catch let netErr as NetworkError {
+            throw netErr
+        } catch {
+            throw NetworkError.unknown(error)
+        }
+    }
+
+    // MARK: - Account Management
+
+    func deleteAccount(userId: String, sessionId: String) async throws {
+        guard var urlComponents = URLComponents(string: Config.Endpoints.deleteAccount) else {
+            throw NetworkError.invalidURL
+        }
+        urlComponents.queryItems = [
+            URLQueryItem(name: "userId", value: userId),
+            URLQueryItem(name: "sessionId", value: sessionId)
+        ]
+        guard let url = urlComponents.url else { throw NetworkError.invalidURL }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 30
+
+        do {
+            let (_, response) = try await session.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw NetworkError.invalidResponse
+            }
+            if httpResponse.statusCode == 401 { throw NetworkError.unauthorized }
+            guard (200...299).contains(httpResponse.statusCode) else {
+                throw NetworkError.serverError(statusCode: httpResponse.statusCode)
+            }
+        } catch let urlError as URLError {
+            throw mapURLError(urlError)
+        } catch let netErr as NetworkError {
+            throw netErr
+        } catch {
+            throw NetworkError.unknown(error)
+        }
+    }
+
+    func reportContent(userId: String, sessionId: String, factCheckId: String, reason: String) async throws {
+        guard var urlComponents = URLComponents(string: Config.Endpoints.reportContent) else {
+            throw NetworkError.invalidURL
+        }
+        urlComponents.queryItems = [
+            URLQueryItem(name: "userId", value: userId),
+            URLQueryItem(name: "sessionId", value: sessionId)
+        ]
+        guard let url = urlComponents.url else { throw NetworkError.invalidURL }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let body: [String: String] = ["factCheckId": factCheckId, "reason": reason]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        request.timeoutInterval = 15
+
+        do {
+            let (_, response) = try await session.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw NetworkError.invalidResponse
+            }
+            if httpResponse.statusCode == 401 { throw NetworkError.unauthorized }
+            guard (200...299).contains(httpResponse.statusCode) else {
+                throw NetworkError.serverError(statusCode: httpResponse.statusCode)
+            }
+        } catch let urlError as URLError {
+            throw mapURLError(urlError)
+        } catch let netErr as NetworkError {
+            throw netErr
+        } catch {
+            throw NetworkError.unknown(error)
+        }
+    }
+
     // MARK: - Helper Methods
     
     private func mapURLError(_ error: URLError) -> NetworkError {

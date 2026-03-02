@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Privacy Policy — Informed</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400;1,700&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #050810;
+    --surface: #0b1121;
+    --surface2: #0f1729;
+    --border: rgba(99,179,255,0.1);
+    --blue: #3B82F6;
+    --blue-bright: #60A5FA;
+    --blue-glow: rgba(59,130,246,0.2);
+    --text: #EEF2FF;
+    --muted: #7A8FAD;
+    --green: #10B981;
+  }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 400;
+    overflow-x: hidden;
+    min-height: 100vh;
+  }
+
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  /* NAV */
+  nav {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 200;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 52px;
+    background: rgba(5,8,16,0.75);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .nav-logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    text-decoration: none;
+  }
+
+  .nav-logo img {
+    width: 30px;
+    height: 30px;
+    object-fit: contain;
+  }
+
+  .nav-logo-text {
+    font-family: 'Playfair Display', serif;
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text);
+    letter-spacing: -0.4px;
+  }
+
+  .nav-back {
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 14px;
+    transition: color 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .nav-back:hover { color: var(--text); }
+
+  /* PAGE CONTENT */
+  .page-wrap {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 140px 32px 96px;
+  }
+
+  .page-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--blue-bright);
+    margin-bottom: 16px;
+  }
+
+  .page-title {
+    font-family: 'Playfair Display', serif;
+    font-size: clamp(32px, 5vw, 52px);
+    font-weight: 900;
+    line-height: 1.1;
+    letter-spacing: -1px;
+    color: var(--text);
+    margin-bottom: 12px;
+  }
+
+  .page-updated {
+    font-size: 13px;
+    color: var(--muted);
+    margin-bottom: 56px;
+  }
+
+  .section {
+    margin-bottom: 48px;
+    padding: 32px 36px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+  }
+
+  .section h2 {
+    font-family: 'Playfair Display', serif;
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .section h2::before {
+    content: '';
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--blue-bright);
+    flex-shrink: 0;
+  }
+
+  .section p {
+    font-size: 15px;
+    line-height: 1.75;
+    color: rgba(238, 242, 255, 0.75);
+    margin-bottom: 12px;
+  }
+
+  .section p:last-child { margin-bottom: 0; }
+
+  .section ul {
+    list-style: none;
+    margin-top: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .section ul li {
+    font-size: 15px;
+    line-height: 1.6;
+    color: rgba(238, 242, 255, 0.75);
+    padding-left: 18px;
+    position: relative;
+  }
+
+  .section ul li::before {
+    content: '—';
+    position: absolute;
+    left: 0;
+    color: var(--blue-bright);
+    font-size: 12px;
+    top: 1px;
+  }
+
+  .highlight-box {
+    background: rgba(59,130,246,0.08);
+    border: 1px solid rgba(59,130,246,0.2);
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin-top: 16px;
+  }
+
+  .highlight-box p {
+    font-size: 14px !important;
+    color: var(--blue-bright) !important;
+    margin-bottom: 0 !important;
+  }
+
+  a.inline-link {
+    color: var(--blue-bright);
+    text-decoration: none;
+    border-bottom: 1px solid rgba(96,165,250,0.3);
+    transition: border-color 0.2s;
+  }
+
+  a.inline-link:hover { border-color: var(--blue-bright); }
+
+  /* FOOTER */
+  footer {
+    padding: 40px 52px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+
+  .footer-brand { display: flex; align-items: center; gap: 9px; }
+  .footer-brand img { width: 22px; height: 22px; object-fit: contain; }
+  .footer-brand span { font-family: 'Playfair Display', serif; font-size: 17px; font-weight: 700; color: var(--text); }
+
+  .footer-links { display: flex; gap: 28px; list-style: none; }
+  .footer-links a { color: var(--muted); text-decoration: none; font-size: 13px; transition: color 0.2s; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-size: 12px; color: var(--muted); }
+
+  @media (max-width: 640px) {
+    nav { padding: 16px 20px; }
+    .page-wrap { padding: 120px 20px 72px; }
+    .section { padding: 24px 20px; }
+    footer { padding: 32px 24px; flex-direction: column; gap: 24px; text-align: center; }
+    .footer-links { flex-wrap: wrap; justify-content: center; }
+  }
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <a href="index.html" class="nav-logo">
+    <img src="logo.png" alt="Informed">
+    <span class="nav-logo-text">Informed</span>
+  </a>
+  <a href="index.html" class="nav-back">← Back to Home</a>
+</nav>
+
+<!-- CONTENT -->
+<div class="page-wrap">
+  <p class="page-label">Legal</p>
+  <h1 class="page-title">Privacy Policy</h1>
+  <p class="page-updated">Last updated: March 2, 2026 &nbsp;·&nbsp; Effective: March 2, 2026</p>
+
+  <div class="section">
+    <h2>Overview</h2>
+    <p>Informed ("we," "our," or "us") is committed to protecting your privacy. This Privacy Policy explains what information we collect when you use the Informed app and website, how we use it, and the choices you have.</p>
+    <p>By using Informed, you agree to the practices described in this policy. If you do not agree, please do not use the app.</p>
+  </div>
+
+  <div class="section">
+    <h2>Information We Collect</h2>
+    <p>We collect information in the following ways:</p>
+    <ul>
+      <li><strong>Account information</strong> — your name and email address when you register or join our waitlist.</li>
+      <li><strong>Usage data</strong> — articles read, sources followed, features used, and in-app interactions, to personalise and improve your experience.</li>
+      <li><strong>Device information</strong> — device model, OS version, unique device identifiers, and IP address for analytics and security.</li>
+      <li><strong>Crash and diagnostic data</strong> — error logs and performance data to identify and fix bugs.</li>
+      <li><strong>Communications</strong> — messages or feedback you send to us directly.</li>
+    </ul>
+    <div class="highlight-box">
+      <p>We do not sell your personal information to third parties. Ever.</p>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>How We Use Your Information</h2>
+    <p>We use the information we collect to:</p>
+    <ul>
+      <li>Provide, operate, and improve the Informed app and its features.</li>
+      <li>Personalise your news feed and bias-detection results.</li>
+      <li>Send you app updates, security notices, and product announcements (you can opt out at any time).</li>
+      <li>Analyse usage trends to understand how our service is used and make it better.</li>
+      <li>Detect, prevent, and address fraud, abuse, or security incidents.</li>
+      <li>Comply with applicable legal obligations.</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <h2>Sharing Your Information</h2>
+    <p>We do not sell, rent, or trade your personal data. We may share it only in these limited circumstances:</p>
+    <ul>
+      <li><strong>Service providers</strong> — trusted third-party vendors (e.g. cloud hosting, analytics, crash reporting) who process data on our behalf under strict confidentiality agreements.</li>
+      <li><strong>Legal requirements</strong> — when required by law, court order, or governmental authority.</li>
+      <li><strong>Business transfers</strong> — in connection with a merger, acquisition, or sale of assets, with notice provided to you.</li>
+      <li><strong>With your consent</strong> — for any other purpose, only with your explicit permission.</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <h2>Data Retention</h2>
+    <p>We retain your personal information for as long as your account is active or as needed to provide our services. You may request deletion of your account and associated data at any time by contacting us at <a href="mailto:privacy@informed.app" class="inline-link">privacy@informed.app</a>. We will fulfil deletion requests within 30 days, subject to any legal retention obligations.</p>
+  </div>
+
+  <div class="section">
+    <h2>Your Rights</h2>
+    <p>Depending on where you live, you may have rights regarding your personal data, including:</p>
+    <ul>
+      <li><strong>Access</strong> — request a copy of the data we hold about you.</li>
+      <li><strong>Correction</strong> — ask us to correct inaccurate or incomplete information.</li>
+      <li><strong>Deletion</strong> — request that we delete your personal data.</li>
+      <li><strong>Portability</strong> — receive your data in a machine-readable format.</li>
+      <li><strong>Opt-out</strong> — unsubscribe from marketing communications at any time.</li>
+      <li><strong>Restriction / Objection</strong> — restrict or object to certain processing of your data.</li>
+    </ul>
+    <p>To exercise any of these rights, email us at <a href="mailto:privacy@informed.app" class="inline-link">privacy@informed.app</a>.</p>
+  </div>
+
+  <div class="section">
+    <h2>Cookies &amp; Tracking</h2>
+    <p>Our website uses minimal cookies for session management and anonymous analytics. Our iOS app does not use browser cookies; limited on-device identifiers are used solely to improve app performance and personalisation.</p>
+    <p>We do not use cross-site tracking or serve third-party advertising.</p>
+  </div>
+
+  <div class="section">
+    <h2>Children's Privacy</h2>
+    <p>Informed is not directed to children under the age of 13. We do not knowingly collect personal information from anyone under 13. If you believe a child has provided us with personal data, please contact us and we will delete it promptly.</p>
+  </div>
+
+  <div class="section">
+    <h2>Security</h2>
+    <p>We implement industry-standard security measures — including encryption in transit and at rest — to protect your data. No method of transmission over the internet is 100% secure, and we cannot guarantee absolute security, but we take our responsibility seriously and review our practices regularly.</p>
+  </div>
+
+  <div class="section">
+    <h2>Changes to This Policy</h2>
+    <p>We may update this Privacy Policy from time to time. When we do, we will revise the "Last updated" date at the top of this page and, for material changes, notify you via the app or by email. Your continued use of Informed after changes are posted constitutes acceptance of the updated policy.</p>
+  </div>
+
+  <div class="section">
+    <h2>Contact Us</h2>
+    <p>If you have questions, concerns, or requests about this Privacy Policy or your personal data, please reach out:</p>
+    <ul>
+      <li>Email: <a href="mailto:privacy@informed.app" class="inline-link">privacy@informed.app</a></li>
+      <li>Website: <a href="https://informed.app" class="inline-link">informed.app</a></li>
+    </ul>
+  </div>
+</div>
+
+<!-- FOOTER -->
+<footer>
+  <div class="footer-brand">
+    <img src="logo.png" alt="Informed">
+    <span>Informed</span>
+  </div>
+  <ul class="footer-links">
+    <li><a href="index.html">Home</a></li>
+    <li><a href="privacy.html">Privacy Policy</a></li>
+    <li><a href="terms.html">Terms</a></li>
+  </ul>
+  <div class="footer-copy">© 2026 Informed. A social enterprise.</div>
+</footer>
+
+</body>
+</html>

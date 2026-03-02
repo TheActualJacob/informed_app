@@ -12,7 +12,7 @@ struct Config {
     // MARK: - App Group
     
     /// Shared container identifier for sharing data between app and extensions
-    static let appGroupName = "group.com.jacob.informed"
+    static let appGroupName = "group.rob"
     
     // MARK: - Initialization
     
@@ -42,6 +42,7 @@ struct Config {
         static let shareReel = Config.endpoint("/share-reel")
         static let getUserReels = Config.endpoint("/get-user-reels")
         static let registerDevice = Config.endpoint("/register-device")
+        static let updatePushToken = Config.endpoint("/update-push-token")
         
         // New endpoints for enhanced features
         static let publicFeed = Config.endpoint("/api/public-feed")
@@ -52,6 +53,9 @@ struct Config {
         
         // Real-time progress tracking
         static let submissionStatus = Config.endpoint("/api/submission-status")
+
+        // Live Activity per-activity push token registration
+        static let registerActivityToken = Config.endpoint("/api/register-activity-token")
 
         // Full history restore on login
         static let myReels = Config.endpoint("/api/my-reels")
@@ -64,5 +68,9 @@ struct Config {
         // Shareable web preview — append a reelID to build the full URL
         // e.g. Config.Endpoints.shareBase + "abc-123-uuid"
         static let shareBase = Config.endpoint("/share/")
+
+        // Account management
+        static let deleteAccount = Config.endpoint("/api/delete-account")
+        static let reportContent = Config.endpoint("/api/report-content")
     }
 }

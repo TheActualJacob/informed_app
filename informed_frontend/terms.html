@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Terms of Service — Informed</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400;1,700&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #050810;
+    --surface: #0b1121;
+    --surface2: #0f1729;
+    --border: rgba(99,179,255,0.1);
+    --blue: #3B82F6;
+    --blue-bright: #60A5FA;
+    --blue-glow: rgba(59,130,246,0.2);
+    --text: #EEF2FF;
+    --muted: #7A8FAD;
+    --green: #10B981;
+  }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 400;
+    overflow-x: hidden;
+    min-height: 100vh;
+  }
+
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  /* NAV */
+  nav {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 200;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 52px;
+    background: rgba(5,8,16,0.75);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .nav-logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    text-decoration: none;
+  }
+
+  .nav-logo img {
+    width: 30px;
+    height: 30px;
+    object-fit: contain;
+  }
+
+  .nav-logo-text {
+    font-family: 'Playfair Display', serif;
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text);
+    letter-spacing: -0.4px;
+  }
+
+  .nav-back {
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 14px;
+    transition: color 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .nav-back:hover { color: var(--text); }
+
+  /* PAGE CONTENT */
+  .page-wrap {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 140px 32px 96px;
+  }
+
+  .page-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--blue-bright);
+    margin-bottom: 16px;
+  }
+
+  .page-title {
+    font-family: 'Playfair Display', serif;
+    font-size: clamp(32px, 5vw, 52px);
+    font-weight: 900;
+    line-height: 1.1;
+    letter-spacing: -1px;
+    color: var(--text);
+    margin-bottom: 12px;
+  }
+
+  .page-updated {
+    font-size: 13px;
+    color: var(--muted);
+    margin-bottom: 56px;
+  }
+
+  .section {
+    margin-bottom: 48px;
+    padding: 32px 36px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+  }
+
+  .section h2 {
+    font-family: 'Playfair Display', serif;
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .section h2::before {
+    content: '';
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--blue-bright);
+    flex-shrink: 0;
+  }
+
+  .section p {
+    font-size: 15px;
+    line-height: 1.75;
+    color: rgba(238, 242, 255, 0.75);
+    margin-bottom: 12px;
+  }
+
+  .section p:last-child { margin-bottom: 0; }
+
+  .section ul {
+    list-style: none;
+    margin-top: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .section ul li {
+    font-size: 15px;
+    line-height: 1.6;
+    color: rgba(238, 242, 255, 0.75);
+    padding-left: 18px;
+    position: relative;
+  }
+
+  .section ul li::before {
+    content: '—';
+    position: absolute;
+    left: 0;
+    color: var(--blue-bright);
+    font-size: 12px;
+    top: 1px;
+  }
+
+  a.inline-link {
+    color: var(--blue-bright);
+    text-decoration: none;
+    border-bottom: 1px solid rgba(96,165,250,0.3);
+    transition: border-color 0.2s;
+  }
+
+  a.inline-link:hover { border-color: var(--blue-bright); }
+
+  .notice-box {
+    background: rgba(245,158,11,0.07);
+    border: 1px solid rgba(245,158,11,0.2);
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin-bottom: 48px;
+  }
+
+  .notice-box p {
+    font-size: 14px;
+    line-height: 1.6;
+    color: rgba(245,158,11,0.85);
+    margin: 0;
+  }
+
+  /* FOOTER */
+  footer {
+    padding: 40px 52px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+
+  .footer-brand { display: flex; align-items: center; gap: 9px; }
+  .footer-brand img { width: 22px; height: 22px; object-fit: contain; }
+  .footer-brand span { font-family: 'Playfair Display', serif; font-size: 17px; font-weight: 700; color: var(--text); }
+
+  .footer-links { display: flex; gap: 28px; list-style: none; }
+  .footer-links a { color: var(--muted); text-decoration: none; font-size: 13px; transition: color 0.2s; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-size: 12px; color: var(--muted); }
+
+  @media (max-width: 640px) {
+    nav { padding: 16px 20px; }
+    .page-wrap { padding: 120px 20px 72px; }
+    .section { padding: 24px 20px; }
+    footer { padding: 32px 24px; flex-direction: column; gap: 24px; text-align: center; }
+    .footer-links { flex-wrap: wrap; justify-content: center; }
+  }
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <a href="index.html" class="nav-logo">
+    <img src="logo.png" alt="Informed">
+    <span class="nav-logo-text">Informed</span>
+  </a>
+  <a href="index.html" class="nav-back">← Back to Home</a>
+</nav>
+
+<!-- CONTENT -->
+<div class="page-wrap">
+  <p class="page-label">Legal</p>
+  <h1 class="page-title">Terms of Service</h1>
+  <p class="page-updated">Last updated: March 2, 2026 &nbsp;·&nbsp; Effective: March 2, 2026</p>
+
+  <div class="notice-box">
+    <p>Please read these Terms carefully before using Informed. By downloading, installing, or using the app, you agree to be bound by these Terms. If you do not agree, do not use the app.</p>
+  </div>
+
+  <div class="section">
+    <h2>1. About Informed</h2>
+    <p>Informed is a news aggregation and media literacy platform that analyses articles for bias, credibility, and factual consistency, helping users consume information more critically. The service is operated by Informed ("we," "us," or "our").</p>
+  </div>
+
+  <div class="section">
+    <h2>2. Eligibility</h2>
+    <p>You must be at least 13 years old to use Informed. By using the app you represent that you meet this age requirement. If you are under 18, you must have permission from a parent or legal guardian.</p>
+  </div>
+
+  <div class="section">
+    <h2>3. Your Account</h2>
+    <p>When you create an account, you are responsible for:</p>
+    <ul>
+      <li>Providing accurate and up-to-date information.</li>
+      <li>Keeping your login credentials secure and confidential.</li>
+      <li>All activity that occurs under your account.</li>
+    </ul>
+    <p>Please notify us immediately at <a href="mailto:support@informed.app" class="inline-link">support@informed.app</a> if you suspect any unauthorised use of your account.</p>
+  </div>
+
+  <div class="section">
+    <h2>4. Acceptable Use</h2>
+    <p>You agree not to use Informed to:</p>
+    <ul>
+      <li>Violate any applicable law or regulation.</li>
+      <li>Impersonate any person or entity, or misrepresent your affiliation with any person or entity.</li>
+      <li>Attempt to reverse-engineer, decompile, or extract the source code of the app.</li>
+      <li>Scrape, crawl, or systematically extract data from the service without our written permission.</li>
+      <li>Introduce malware, exploits, or other harmful code.</li>
+      <li>Use the service to distribute spam, harassment, or harmful content.</li>
+      <li>Circumvent, disable, or interfere with security-related features of the app.</li>
+    </ul>
+    <p>We reserve the right to suspend or terminate accounts that violate these rules.</p>
+  </div>
+
+  <div class="section">
+    <h2>5. Intellectual Property</h2>
+    <p>All content, features, UI design, branding, logos, and software comprising the Informed service are owned by us or our licensors and are protected by applicable intellectual property laws.</p>
+    <p>We grant you a limited, non-exclusive, non-transferable, revocable licence to use the Informed app for your personal, non-commercial use in accordance with these Terms.</p>
+    <p>You may not copy, modify, distribute, sell, or lease any part of the Informed service or its content without our express written consent.</p>
+  </div>
+
+  <div class="section">
+    <h2>6. Third-Party Content</h2>
+    <p>Informed surfaces articles and information from third-party publishers. We do not endorse, guarantee the accuracy of, or take responsibility for any third-party content. Links to external sites are provided for convenience; visiting them is at your own risk.</p>
+  </div>
+
+  <div class="section">
+    <h2>7. Bias &amp; Accuracy Ratings</h2>
+    <p>Our bias detection and credibility scores are produced algorithmically and are provided for informational and educational purposes only. They do not constitute legal, journalistic, or editorial judgements. We make no warranty that these ratings are error-free, and we are not liable for decisions you make based on them.</p>
+  </div>
+
+  <div class="section">
+    <h2>8. Disclaimers</h2>
+    <p>THE INFORMED SERVICE IS PROVIDED "AS IS" AND "AS AVAILABLE" WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, OR NON-INFRINGEMENT.</p>
+    <p>We do not warrant that the service will be uninterrupted, error-free, or free of viruses or other harmful components.</p>
+  </div>
+
+  <div class="section">
+    <h2>9. Limitation of Liability</h2>
+    <p>TO THE FULLEST EXTENT PERMITTED BY APPLICABLE LAW, INFORMED SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES ARISING OUT OF OR RELATED TO YOUR USE OF THE SERVICE, EVEN IF WE HAVE BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.</p>
+    <p>Our total liability to you for any claims arising under these Terms shall not exceed the amount you paid us in the twelve months preceding the claim, or $10 USD if you have not made any payments.</p>
+  </div>
+
+  <div class="section">
+    <h2>10. Indemnification</h2>
+    <p>You agree to indemnify and hold harmless Informed and its officers, directors, employees, and agents from any claims, damages, liabilities, and expenses (including reasonable legal fees) arising from your use of the service, your violation of these Terms, or your violation of any third-party rights.</p>
+  </div>
+
+  <div class="section">
+    <h2>11. Termination</h2>
+    <p>We may suspend or terminate your access to Informed at any time, with or without notice, for any reason, including if we believe you have violated these Terms. You may also delete your account at any time from within the app settings or by contacting us.</p>
+    <p>Upon termination, your right to use the service ceases immediately. Provisions that by their nature should survive termination (including intellectual property, disclaimers, and limitations of liability) will remain in effect.</p>
+  </div>
+
+  <div class="section">
+    <h2>12. Changes to These Terms</h2>
+    <p>We may update these Terms from time to time. We will notify you of material changes via the app or by email and update the "Last updated" date above. Continued use of Informed after changes are posted constitutes your acceptance of the revised Terms.</p>
+  </div>
+
+  <div class="section">
+    <h2>13. Governing Law</h2>
+    <p>These Terms are governed by and construed in accordance with the laws of the jurisdiction in which Informed is incorporated, without regard to conflict-of-law principles. Any disputes will be resolved in the courts of that jurisdiction, and you consent to personal jurisdiction there.</p>
+  </div>
+
+  <div class="section">
+    <h2>14. Contact Us</h2>
+    <p>If you have questions about these Terms, please contact us:</p>
+    <ul>
+      <li>Email: <a href="mailto:legal@informed.app" class="inline-link">legal@informed.app</a></li>
+      <li>Website: <a href="https://informed.app" class="inline-link">informed.app</a></li>
+    </ul>
+  </div>
+</div>
+
+<!-- FOOTER -->
+<footer>
+  <div class="footer-brand">
+    <img src="logo.png" alt="Informed">
+    <span>Informed</span>
+  </div>
+  <ul class="footer-links">
+    <li><a href="index.html">Home</a></li>
+    <li><a href="privacy.html">Privacy Policy</a></li>
+    <li><a href="terms.html">Terms</a></li>
+  </ul>
+  <div class="footer-copy">© 2026 Informed. A social enterprise.</div>
+</footer>
+
+</body>
+</html>

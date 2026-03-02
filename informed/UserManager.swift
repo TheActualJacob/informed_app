@@ -46,7 +46,7 @@ class UserManager: ObservableObject {
         KeychainManager.shared.saveSessionId(sessionId)
         
         // Also save to App Group for Share Extension access
-        let appGroupName = "group.com.jacob.informed"
+        let appGroupName = "group.rob"
         if let sharedDefaults = UserDefaults(suiteName: appGroupName) {
             sharedDefaults.set(userId, forKey: userIdKey)
             sharedDefaults.set(username, forKey: usernameKey)
@@ -72,6 +72,14 @@ class UserManager: ObservableObject {
         }
     }
     
+    func deleteAccount() async throws {
+        guard let userId = currentUserId, let sessionId = currentSessionId else {
+            throw NetworkError.unauthorized
+        }
+        try await NetworkService.shared.deleteAccount(userId: userId, sessionId: sessionId)
+        logout()
+    }
+
     func logout() {
         UserDefaults.standard.removeObject(forKey: userIdKey)
         UserDefaults.standard.removeObject(forKey: usernameKey)
@@ -80,7 +88,7 @@ class UserManager: ObservableObject {
         KeychainManager.shared.deleteSessionId()
         
         // Also remove from App Group
-        let appGroupName = "group.com.jacob.informed"
+        let appGroupName = "group.rob"
         if let sharedDefaults = UserDefaults(suiteName: appGroupName) {
             sharedDefaults.removeObject(forKey: userIdKey)
             sharedDefaults.removeObject(forKey: usernameKey)

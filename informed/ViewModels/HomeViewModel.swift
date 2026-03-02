@@ -37,6 +37,9 @@ class HomeViewModel: ObservableObject {
     @Published var personalizedFeed: [PublicReel] = []
     @Published var isFeedLoading: Bool = false
     @Published var feedSource: String = "chronological" // "personalized" | "chronological"
+    /// True for the entire duration of the in-flight network request (not cleared early
+    /// when cache is present). Used to prevent concurrent loadPersonalizedFeed() calls.
+    private var isFeedFetching: Bool = false
     
     // Shared state
     @Published var isLoading: Bool = false
@@ -54,6 +57,7 @@ class HomeViewModel: ObservableObject {
     
     private var debounceTask: Task<Void, Never>?
     private var searchDebounceTask: Task<Void, Never>?
+    private var feedRefreshDebounceTask: Task<Void, Never>?
     var userId: String = "default-user"
     var sessionId: String = ""
     
@@ -122,11 +126,17 @@ class HomeViewModel: ObservableObject {
     // MARK: - Personalized Feed
     
     func loadPersonalizedFeed() async {
-        guard !isFeedLoading else { return }
-        // Only show spinner when there is nothing cached to display yet
+        // isFeedFetching stays true for the full duration of the request so concurrent
+        // calls can't slip through when cached data causes isFeedLoading to clear early.
+        guard !isFeedFetching else { return }
+        isFeedFetching = true
+        defer { isFeedFetching = false }
+
+        // Only show the loading spinner when there is nothing cached to display yet.
         let hasCache = !personalizedFeed.isEmpty
-        isFeedLoading = true
-        if hasCache { isFeedLoading = false }   // hide spinner — cache already visible
+        if !hasCache { isFeedLoading = true }
+        defer { isFeedLoading = false }
+
         do {
             let response = try await NetworkService.shared.fetchPersonalizedFeed(
                 userId: userId,
@@ -145,7 +155,6 @@ class HomeViewModel: ObservableObject {
             print("⚠️ Could not load personalized feed: \(error)")
             if personalizedFeed.isEmpty { personalizedFeed = [] }
         }
-        isFeedLoading = false
     }
     
     func refresh() {
@@ -293,13 +302,8 @@ class HomeViewModel: ObservableObject {
             )
         }
 
-        // Insert a local .processing placeholder immediately so My Reels shows activity
-        let placeholderReel = SharedReel(
-            id: submissionId, url: link, submittedAt: Date(),
-            status: .processing, resultId: nil, errorMessage: nil, factCheckData: nil
-        )
-        SharedReelManager.shared.reels.insert(placeholderReel, at: 0)
-        SharedReelManager.shared.saveReels()
+        // Capture the placeholder submission date before the request so all paths use the same value.
+        let placeholderSubmittedAt = Date()
 
         do {
             // POST /fact-check — now returns 202 with submission_id immediately
@@ -310,25 +314,28 @@ class HomeViewModel: ObservableObject {
 
             if factCheckData.isAsyncSubmission {
                 // ── New async flow ──────────────────────────────────────
-                // Backend accepted the submission. The backend may return a different
-                // submission_id than we generated — use it if present.
-                if let backendSid = factCheckData.submissionId, !backendSid.isEmpty {
-                    if backendSid != submissionId {
-                        // Update placeholder reel id to match backend's id
-                        if let idx = SharedReelManager.shared.reels.firstIndex(where: { $0.id == submissionId }) {
-                            var updated = SharedReelManager.shared.reels[idx]
-                            SharedReelManager.shared.reels[idx] = SharedReel(
-                                id: backendSid, url: updated.url, submittedAt: updated.submittedAt,
-                                status: .processing, resultId: nil, errorMessage: nil, factCheckData: nil
-                            )
-                            SharedReelManager.shared.saveReels()
-                        }
-                        submissionId = backendSid
-                        if #available(iOS 16.1, *) {
-                            currentSubmissionId = backendSid
-                        }
+                // Resolve the final submission ID before inserting into reels[] so the
+                // placeholder is inserted exactly once with the confirmed backend ID.
+                // This eliminates the SwiftUI identity rebind that caused cell re-animation.
+                if let backendSid = factCheckData.submissionId, !backendSid.isEmpty, backendSid != submissionId {
+                    // Re-register the Live Activity under the backend's submission ID
+                    // so progress polling (which uses backendSid) can find and update it.
+                    if #available(iOS 16.1, *) {
+                        ReelProcessingActivityManager.shared.reRegisterActivity(
+                            oldSubmissionId: submissionId, newSubmissionId: backendSid
+                        )
+                        currentSubmissionId = backendSid
                     }
+                    submissionId = backendSid
                 }
+
+                // Insert the placeholder into reels[] now that we have the confirmed ID.
+                let placeholderReel = SharedReel(
+                    id: submissionId, url: link, submittedAt: placeholderSubmittedAt,
+                    status: .processing, resultId: nil, errorMessage: nil, factCheckData: nil
+                )
+                SharedReelManager.shared.reels.insert(placeholderReel, at: 0)
+                SharedReelManager.shared.saveReels()
 
                 // Start progress polling — on completion it will call
                 // syncHistoryFromBackend() which fetches the full result
@@ -439,9 +446,15 @@ class HomeViewModel: ObservableObject {
     // MARK: - External Feed Update
 
     /// Called when a fact-check completes outside of HomeViewModel (e.g. Share Extension).
-    /// Refreshes the personalized feed so the new item appears.
+    /// Coalesces rapid back-to-back calls (e.g. from syncHistoryFromBackend + syncCompletedFactChecksFromAppGroup
+    /// firing simultaneously) into a single feed reload after a short idle window.
     func refreshFeedAfterExternalFactCheck() {
-        Task { await loadPersonalizedFeed() }
+        feedRefreshDebounceTask?.cancel()
+        feedRefreshDebounceTask = Task {
+            try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 s idle window
+            guard !Task.isCancelled else { return }
+            await loadPersonalizedFeed()
+        }
     }
 
     // MARK: - Helper Methods

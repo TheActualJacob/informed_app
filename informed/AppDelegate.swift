@@ -26,6 +26,18 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         
         // Setup Live Activity tap handling for iOS 16.1+
         if #available(iOS 16.1, *) {
+            // Inject the push token handler so ReelProcessingActivityManager can register
+            // per-activity APNs tokens without importing NotificationManager (which is
+            // main-app-only and not available to the Share/Widget extensions).
+            ReelProcessingActivityManager.shared.onActivityPushToken = { token, submissionId in
+                await NotificationManager.shared.sendActivityPushTokenToBackend(token, submissionId: submissionId)
+            }
+            // Inject the background-state check so startActivity can guard against
+            // ActivityKit Error 7 without referencing UIApplication.shared directly
+            // (which is unavailable in Share/Widget extension targets).
+            ReelProcessingActivityManager.shared.isAppInBackground = {
+                UIApplication.shared.applicationState == .background
+            }
             setupLiveActivityHandling()
         }
         
@@ -289,11 +301,19 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         didReceiveRemoteNotification userInfo: [AnyHashable : Any],
         fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
     ) {
-        print("📬 Remote notification received: \(userInfo)")
+        print("📬 Remote notification received (background): \(userInfo)")
         
-        // Handle the notification
         Task { @MainActor in
-            NotificationManager.shared.handleNotification(userInfo: userInfo)
+            // Mirror the foreground start_processing path so background APNs pushes
+            // also trigger Live Activity creation when the Share Extension has queued work.
+            if let action = userInfo["action"] as? String, action == "start_processing" {
+                print("🎬 Background start_processing push — checking pending Live Activities")
+                if #available(iOS 16.1, *) {
+                    await SharedReelManager.shared.checkAndStartPendingLiveActivities()
+                }
+            } else {
+                NotificationManager.shared.handleNotification(userInfo: userInfo)
+            }
         }
         
         completionHandler(.newData)
@@ -304,25 +324,48 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     @available(iOS 16.1, *)
     private func setupLiveActivityHandling() {
         Task { @MainActor in
-            // Monitor all active Live Activities
+            // 1. Observe Push-to-Start Live Activity tokens (iOS 17.2+)
+            if #available(iOS 17.2, *) {
+                Task {
+                    for await pushToStartToken in Activity<ReelProcessingActivityAttributes>.pushToStartTokenUpdates {
+                        let tokenString = pushToStartToken.map { String(format: "%02x", $0) }.joined()
+                        print("🔑 APNs Push-To-Start Token (LIVE ACTIVITY): \(tokenString)")
+                        
+                        // Save this locally explicitly for the Share Extension or Backend to securely transmit.
+                        if let sharedDefaults = UserDefaults(suiteName: "group.rob") {
+                            sharedDefaults.set(tokenString, forKey: "live_activity_push_to_start_token")
+                            print("💾 Saved Push-To-Start token to App Group")
+                        }
+                        
+                        // Auto-register with backend right now
+                        Task {
+                            await NotificationManager.shared.sendPushToStartTokenToBackend(tokenString)
+                        }                    }
+                }
+            }
+            
+            // 2. Monitor all active Live Activities (e.g. ones started by Share Extension
+            //    before the main app launched this session)
             for activity in Activity<ReelProcessingActivityAttributes>.activities {
-                // Set up monitoring for this activity
+                let submissionId = activity.attributes.submissionId
+                
                 Task {
                     for await activityState in activity.activityStateUpdates {
                         if activityState == .dismissed {
-                            print("🔄 Live Activity dismissed: \(activity.attributes.submissionId)")
+                            print("🔄 Live Activity dismissed: \(submissionId)")
                         }
                     }
                 }
                 
-                // Listen for user interaction (taps)
-                Task {
-                    for await pushToken in activity.pushTokenUpdates {
-                        let tokenString = pushToken.map { String(format: "%02x", $0) }.joined()
-                        print("🔑 Live Activity push token: \(tokenString)")
-                        // Optionally send this token to your backend for remote updates
-                    }
-                }
+                // Register this activity's push token with the backend.
+                ReelProcessingActivityManager.shared.observePushToken(
+                    for: activity,
+                    submissionId: submissionId
+                )
+                // Also flush any token the Share Extension already stored in App Group —
+                // covers the case where the main app was launched fresh after the Share
+                // Extension ran and the token was never forwarded.
+                ReelProcessingActivityManager.shared.flushAppGroupPushToken(submissionId: submissionId)
             }
         }
     }

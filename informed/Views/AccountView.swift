@@ -13,6 +13,9 @@ struct AccountView: View {
     @EnvironmentObject var reelManager: SharedReelManager
     @StateObject private var viewModel = AccountViewModel()
     @State private var showLogoutConfirmation = false
+    @State private var showDeleteAccountConfirmation = false
+    @State private var isDeletingAccount = false
+    @State private var deleteAccountError: String?
     
     var body: some View {
         NavigationView {
@@ -177,6 +180,43 @@ struct AccountView: View {
                     }
                     .padding(.horizontal)
                     .padding(.top, Theme.Spacing.xl)
+
+                    // Delete Account Button
+                    Button(action: {
+                        HapticManager.mediumImpact()
+                        showDeleteAccountConfirmation = true
+                    }) {
+                        HStack {
+                            if isDeletingAccount {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .red))
+                                    .scaleEffect(0.85)
+                            } else {
+                                Image(systemName: "person.crop.circle.badge.minus")
+                            }
+                            Text(isDeletingAccount ? "Deleting…" : "Delete Account")
+                        }
+                        .font(.subheadline)
+                        .foregroundColor(.red)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.red.opacity(0.08))
+                        .cornerRadius(Theme.CornerRadius.md)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: Theme.CornerRadius.md)
+                                .stroke(Color.red.opacity(0.3), lineWidth: 1)
+                        )
+                    }
+                    .disabled(isDeletingAccount)
+                    .padding(.horizontal)
+
+                    if let error = deleteAccountError {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundColor(.red)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
+                    }
                     
                     Spacer()
                 }
@@ -191,6 +231,23 @@ struct AccountView: View {
                 Button("Cancel", role: .cancel) {}
             } message: {
                 Text("Are you sure you want to sign out?")
+            }
+            .confirmationDialog("Delete Account", isPresented: $showDeleteAccountConfirmation, titleVisibility: .visible) {
+                Button("Delete Account", role: .destructive) {
+                    Task {
+                        isDeletingAccount = true
+                        deleteAccountError = nil
+                        do {
+                            try await userManager.deleteAccount()
+                        } catch {
+                            isDeletingAccount = false
+                            deleteAccountError = "Could not delete account. Please try again or contact privacy@informed-app.com."
+                        }
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This will permanently delete your account and all associated data. This action cannot be undone.")
             }
             .onAppear {
                 viewModel.loadStats()

@@ -33,18 +33,21 @@ struct PrivacyPolicyView: View {
                     """
                     We collect only the minimum data necessary to provide the fact-checking service:
 
+                    • Username and email address (provided at registration)
+                    • A securely-stored session identifier to authenticate your requests
                     • The social media links you submit for fact-checking
-                    • A randomly-generated anonymous user ID stored only on your device
-                    • Basic usage analytics (feature usage counts, no personal data)
+                    • Your device push notification token (to notify you when a fact-check completes)
+                    • Basic usage analytics (views, shares — no precise location or contacts)
 
-                    We do not collect your name, email, location, contacts, or any other personally identifiable information.
+                    We do not collect your name, phone number, location, or contacts.
                     """)
 
                 PrivacySection(title: "How We Use Your Data", icon: "gearshape.fill",
                     """
                     • Links you submit are processed by our AI to extract and verify claims.
-                    • Fact-check results are stored to power the public Discover feed.
-                    • Anonymous usage data helps us improve the app.
+                    • Fact-check results and your username are shown in the public Discover feed.
+                    • Your device token is used solely to deliver push notifications about your submissions.
+                    • Usage events (views, shares) help us improve the app.
 
                     We never sell your data to third parties.
                     """)
@@ -68,8 +71,8 @@ struct PrivacyPolicyView: View {
                 PrivacySection(title: "Your Rights", icon: "person.fill.checkmark",
                     """
                     • You can clear your local fact-check history at any time via the History screen.
-                    • You can delete your anonymous account at any time from the Account screen.
-                    • You can contact us to request deletion of any server-side data linked to your anonymous ID.
+                    • You can permanently delete your account and all associated data from the Account screen. This removes your profile, history, and session data from our servers.
+                    • You can contact us at privacy@informed-app.com to request deletion of any remaining server-side data.
                     """)
 
                 // Contact

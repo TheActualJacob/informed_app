@@ -73,7 +73,7 @@ struct StoredFactCheckData: Codable {
     let reelID: String?
     let title: String
     let summary: String
-    let thumbnailURL: String?
+    var thumbnailURL: String?
     /// 1–3 claims. Old persisted records migrate via custom init(from:).
     let claims: [ClaimEntry]
     let datePosted: String?
@@ -233,7 +233,7 @@ class SharedReelManager: ObservableObject {
     // MARK: - Cleanup Stale App Group Submissions
     
     private func cleanupStaleAppGroupSubmissions() {
-        let appGroupName = "group.com.jacob.informed"
+        let appGroupName = "group.rob"
         guard let sharedDefaults = UserDefaults(suiteName: appGroupName) else {
             return
         }
@@ -243,18 +243,18 @@ class SharedReelManager: ObservableObject {
         }
         
         let now = Date().timeIntervalSince1970
-        let twoMinutesAgo = now - 120 // 2 minutes
-        
-        // Keep only submissions from the last 2 minutes
+        let fiveMinutesAgo = now - 300 // 5 minutes — matches the polling window (60 polls × 3s)
+
+        // Keep only submissions from the last 5 minutes
         let recentSubmissions = submissions.filter { submission in
             guard let submittedAt = submission["submitted_at"] as? TimeInterval else {
                 return false
             }
-            return submittedAt > twoMinutesAgo
+            return submittedAt > fiveMinutesAgo
         }
         
         if recentSubmissions.count < submissions.count {
-            print("🧹 Cleaned up \(submissions.count - recentSubmissions.count) stale submissions from App Group")
+            print("🧹 Cleaned up \(submissions.count - recentSubmissions.count) stale App Group submissions (>5 min old)")
             sharedDefaults.set(recentSubmissions, forKey: "pending_submissions")
             sharedDefaults.synchronize()
         }
@@ -502,18 +502,14 @@ class SharedReelManager: ObservableObject {
         isUploading = true
         uploadError = nil
         lastUploadSuccess = false
-        
-        // Create a new reel record
-        let newReel = SharedReel(
-            id: UUID().uuidString,
-            url: instagramURL,
-            submittedAt: Date(),
-            status: .pending
-        )
-        
-        // Add to local storage immediately
-        reels.insert(newReel, at: 0)
-        saveReels()
+
+        // Capture submission timestamp before the request so all code paths use the same value.
+        let placeholderSubmittedAt = Date()
+
+        // Generate a client-side ID used only for the initial request.
+        // The placeholder is NOT inserted into reels[] until we have the confirmed backend ID
+        // to avoid a SwiftUI identity rebind when the backend assigns a different ID.
+        let clientSid = UUID().uuidString
         
         // Get user ID and session ID
         let userId = UserManager.shared.currentUserId ?? "anonymous"
@@ -521,7 +517,6 @@ class SharedReelManager: ObservableObject {
         
         // If we have a homeViewModel reference, trigger the same UI flow as pasting a link
         if let viewModel = homeViewModel {
-            // Set the processing state to show the loading banner
             viewModel.processingLink = instagramURL
             if let url = URL(string: instagramURL) {
                 viewModel.processingThumbnailURL = url
@@ -530,30 +525,36 @@ class SharedReelManager: ObservableObject {
         
         do {
             let request = FactCheckRequest(link: instagramURL, userId: userId,
-                                           sessionId: sessionId, submissionId: newReel.id)
+                                           sessionId: sessionId, submissionId: clientSid)
             print("📤 Sending fact check request for shared reel...")
 
             let submission = try await sendFactCheck(request)
             print("✅ Submission response: status=\(submission.status)")
 
             if submission.status == "processing" || submission.status == "submitting" {
-                // Async 202 flow — start polling; result will arrive via syncHistoryFromBackend
-                let backendSid = submission.submissionId
-                if backendSid != newReel.id {
-                    // Backend assigned a different id — re-key the placeholder reel
-                    if let idx = reels.firstIndex(where: { $0.id == newReel.id }) {
-                        reels[idx] = SharedReel(id: backendSid, url: newReel.url,
-                                                submittedAt: newReel.submittedAt,
-                                                status: .processing)
-                        saveReels()
-                    }
-                }
-                startProgressPolling(submissionId: backendSid)
+                // Async 202 flow — resolve the confirmed backend ID before inserting
+                // into reels[] so the placeholder is always inserted with the stable ID.
+                let confirmedSid = submission.submissionId != clientSid ? submission.submissionId : clientSid
+                let newReel = SharedReel(
+                    id: confirmedSid,
+                    url: instagramURL,
+                    submittedAt: placeholderSubmittedAt,
+                    status: .processing
+                )
+                reels.insert(newReel, at: 0)
+                saveReels()
+                startProgressPolling(submissionId: confirmedSid)
                 await MainActor.run { isUploading = false; lastUploadSuccess = true }
                 return true
             }
 
-            // Legacy sync response — submission.legacyData contains the full result
+            // Legacy sync response — submission.legacyData contains the full result.
+            // Insert a temporary placeholder so updateReelStatus can find the reel by ID.
+            let legacyReel = SharedReel(id: clientSid, url: instagramURL,
+                                        submittedAt: placeholderSubmittedAt, status: .pending)
+            reels.insert(legacyReel, at: 0)
+            saveReels()
+
             guard let legacy = submission.legacyData else {
                 // status=="completed" but no data — do a sync to fetch it
                 scheduleThumbnailRefresh()
@@ -572,7 +573,7 @@ class SharedReelManager: ObservableObject {
                 aiGenerated: legacy.aiGenerated,
                 aiProbability: legacy.aiProbability
             )
-            updateReelStatus(id: newReel.id, status: .completed,
+            updateReelStatus(id: clientSid, status: .completed,
                              resultId: legacy.title, factCheckData: storedData)
             if let viewModel = homeViewModel {
                 viewModel.refreshFeedAfterExternalFactCheck()
@@ -587,7 +588,7 @@ class SharedReelManager: ObservableObject {
             
             await MainActor.run {
                 uploadError = "Failed to fact-check: \(error.localizedDescription)"
-                updateReelStatus(id: newReel.id, status: .failed, errorMessage: error.localizedDescription)
+                updateReelStatus(id: clientSid, status: .failed, errorMessage: error.localizedDescription)
                 isUploading = false
                 
                 // Clear processing state on error
@@ -627,10 +628,16 @@ class SharedReelManager: ObservableObject {
                 }
             }
 
+            // Wait before the first poll so the submission has time to be inserted
+            // into the backend DB (the /fact-check HTTP round-trip + Celery task
+            // enqueue can take a couple of seconds after the Share Extension fires).
+            // Without this, poll #1 hits a 404 and logs a spurious error.
+            try? await Task.sleep(nanoseconds: 5_000_000_000) // 5 s
+
             var isCompleted = false
             var pollCount = 0
             let maxPolls = 60 // 60 polls * 3s = 3 minutes max
-            
+
             while !isCompleted && pollCount < maxPolls {
                 pollCount += 1
                 
@@ -663,7 +670,7 @@ class SharedReelManager: ObservableObject {
                         }
                         // Clear the processing banner now that this submission is done.
                         await MainActor.run {
-                            let stillPending = (UserDefaults(suiteName: "group.com.jacob.informed")?
+                            let stillPending = (UserDefaults(suiteName: "group.rob")?
                                 .array(forKey: "pending_submissions") as? [[String: Any]])?.count ?? 0
                             if stillPending == 0 { self.activeProcessingURL = nil }
                         }
@@ -680,14 +687,9 @@ class SharedReelManager: ObservableObject {
                         // Sync App Group in case the Share Extension also wrote completed data
                         // (picks up real title/verdict for the UI, no-op if key is absent).
                         syncCompletedFactChecksFromAppGroup()
-                        // Dismiss the Live Activity after a short display window.
-                        Task {
-                            try? await Task.sleep(nanoseconds: 3_000_000_000)
-                            await ReelProcessingActivityManager.shared.endActivity(
-                                submissionId: submissionId,
-                                dismissalPolicy: .default
-                            )
-                        }
+                        // Leave the Live Activity running in its completed state.
+                        // dismissAllCompletedLiveActivities() will end it when the user
+                        // opens the app, keeping the Dynamic Island visible until then.
                         break
                     } else if statusResponse.status.lowercased() == "failed" {
                         print("❌ [ProgressPolling] Submission failed")
@@ -696,13 +698,28 @@ class SharedReelManager: ObservableObject {
                             ReelProcessingActivityManager.removeFromAppGroupPendingSubmissions(submissionId: submissionId)
                         }
                         await MainActor.run {
-                            let stillPending = (UserDefaults(suiteName: "group.com.jacob.informed")?
+                            let stillPending = (UserDefaults(suiteName: "group.rob")?
                                 .array(forKey: "pending_submissions") as? [[String: Any]])?.count ?? 0
                             if stillPending == 0 { self.activeProcessingURL = nil }
                         }
+                        // Prefer the backend's current_stage (now a user-friendly message
+                        // set by friendly_error_for_live_activity on the server). Fall back
+                        // to errorMessage if currentStage is empty.
+                        let rawMessage = statusResponse.currentStage.isEmpty
+                            ? (statusResponse.errorMessage ?? "")
+                            : statusResponse.currentStage
+                        // Run through the client-side friendly filter as a safety net so
+                        // nothing technical can ever leak to the user.
+                        let displayMessage = ReelProcessingActivityManager.friendlyErrorMessage(rawMessage)
+                        // Update the local SharedReel to .failed so SharedReelsView shows
+                        // the error card instead of leaving the cell stuck in "processing".
+                        await MainActor.run {
+                            updateReelStatus(id: submissionId, status: .failed,
+                                             errorMessage: displayMessage)
+                        }
                         await ReelProcessingActivityManager.shared.failActivity(
                             submissionId: submissionId,
-                            errorMessage: statusResponse.currentStage
+                            errorMessage: rawMessage
                         )
                         isCompleted = true
                         break
@@ -712,10 +729,14 @@ class SharedReelManager: ObservableObject {
                     try await Task.sleep(nanoseconds: 3_000_000_000)
                     
                 } catch {
-                    print("⚠️ [ProgressPolling] Error fetching status: \(error.localizedDescription)")
-                    
-                    // On error, wait and retry (don't fail immediately)
-                    try? await Task.sleep(nanoseconds: 5_000_000_000) // 5s on error
+                    // Poll 1-2 errors are expected if the submission hasn't reached the DB yet
+                    // (race between Share Extension HTTP request and our first poll).
+                    if pollCount <= 2 {
+                        print("⏳ [ProgressPolling] Poll \(pollCount) not ready yet (submission may still be inserting) — retrying in 5s")
+                    } else {
+                        print("⚠️ [ProgressPolling] Error fetching status (poll \(pollCount)): \(error.localizedDescription)")
+                    }
+                    try? await Task.sleep(nanoseconds: 5_000_000_000) // 5s back-off on error
                 }
             }
             
@@ -725,7 +746,7 @@ class SharedReelManager: ObservableObject {
                     ReelProcessingActivityManager.removeFromAppGroupPendingSubmissions(submissionId: submissionId)
                 }
                 await MainActor.run {
-                    let stillPending = (UserDefaults(suiteName: "group.com.jacob.informed")?
+                    let stillPending = (UserDefaults(suiteName: "group.rob")?
                         .array(forKey: "pending_submissions") as? [[String: Any]])?.count ?? 0
                     if stillPending == 0 { self.activeProcessingURL = nil }
                 }
@@ -737,42 +758,15 @@ class SharedReelManager: ObservableObject {
         }
     }
     
-    /// Fetches current submission status from backend
+    /// Fetches current submission status from backend via the shared NetworkService session.
     private func fetchSubmissionStatus(submissionId: String) async throws -> SubmissionStatusResponse {
         guard let userId = UserManager.shared.currentUserId,
               let sessionId = UserManager.shared.currentSessionId else {
             throw URLError(.userAuthenticationRequired)
         }
-        
-        // Construct URL: GET /api/submission-status/:id
-        let urlString = "\(Config.Endpoints.submissionStatus)/\(submissionId)"
-        guard var urlComponents = URLComponents(string: urlString) else {
-            throw URLError(.badURL)
-        }
-        
-        // Add authentication query parameters
-        urlComponents.queryItems = [
-            URLQueryItem(name: "userId", value: userId),
-            URLQueryItem(name: "sessionId", value: sessionId)
-        ]
-        
-        guard let url = urlComponents.url else {
-            throw URLError(.badURL)
-        }
-        
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.timeoutInterval = 10 // Short timeout for polling
-        
-        let (data, response) = try await URLSession.shared.data(for: request)
-        
-        guard let httpResponse = response as? HTTPURLResponse,
-              (200...299).contains(httpResponse.statusCode) else {
-            throw URLError(.badServerResponse)
-        }
-        
-        let decoder = JSONDecoder()
-        return try decoder.decode(SubmissionStatusResponse.self, from: data)
+        return try await NetworkService.shared.fetchSubmissionStatus(
+            submissionId: submissionId, userId: userId, sessionId: sessionId
+        )
     }
     
     // MARK: - Status Updates
@@ -822,7 +816,7 @@ class SharedReelManager: ObservableObject {
     // MARK: - Sync Completed Fact-Checks from Share Extension
     
     func syncCompletedFactChecksFromAppGroup() {
-        let appGroupName = "group.com.jacob.informed"
+        let appGroupName = "group.rob"
         
         guard let sharedDefaults = UserDefaults(suiteName: appGroupName) else {
             print("⚠️ Could not access App Group: \(appGroupName)")
@@ -856,16 +850,10 @@ class SharedReelManager: ObservableObject {
             if let existingIndex = reels.firstIndex(where: { $0.id == id }) {
                 let existing = reels[existingIndex]
                 if existing.status == .completed {
-                    // Fully completed already — just clean up the Live Activity
-                    print("ℹ️ Fact-check \(id) already completed, ending Live Activity")
-                    if #available(iOS 16.1, *) {
-                        Task {
-                            await ReelProcessingActivityManager.shared.endActivity(
-                                submissionId: id,
-                                dismissalPolicy: .immediate
-                            )
-                        }
-                    }
+                    // Already fully completed — nothing more to do here. The activity
+                    // will be cleaned up by dismissAllCompletedLiveActivities when the
+                    // user foregrounds the app.
+                    print("ℹ️ Fact-check \(id) already completed, skipping (will dismiss on foreground)")
                     continue
                 }
                 // Otherwise it's a placeholder .processing reel — fall through
@@ -932,24 +920,17 @@ class SharedReelManager: ObservableObject {
                 print("✅ Synced completed fact-check \(id) to SharedReelManager with full data")
             }
             
-            // Complete Live Activity for iOS 16.1+ - show completion briefly then dismiss
+            // Update the Live Activity to its completed state. Don't end it here —
+            // it stays in the Dynamic Island showing the result until the user opens
+            // the app, at which point dismissAllCompletedLiveActivities ends it.
             if #available(iOS 16.1, *) {
                 Task {
                     let title = factCheckData["title"] as? String ?? "Fact-Check Complete"
                     let verdict = factCheckData["verdict"] as? String ?? "View Results"
-                    
-                    // Update to completion state
                     await ReelProcessingActivityManager.shared.completeActivity(
                         submissionId: id,
                         title: title,
                         verdict: verdict
-                    )
-                    
-                    // Then dismiss after 3 seconds (reduced from 8 for faster cleanup)
-                    try? await Task.sleep(nanoseconds: 3_000_000_000)
-                    await ReelProcessingActivityManager.shared.endActivity(
-                        submissionId: id,
-                        dismissalPolicy: .default
                     )
                 }
             }
@@ -995,22 +976,74 @@ class SharedReelManager: ObservableObject {
 
     // MARK: - Thumbnail Refresh
 
-    /// Schedules a background `syncHistoryFromBackend()` to run once after a short
-    /// delay so that newly-completed reels get their real CDN thumbnail URL from the
-    /// backend (the direct fact-check response sometimes returns a social-page URL
-    /// that fails the hasRealThumbnail check in LinkPreviewView).
+    /// Returns true when `urlString` is a real CDN image URL rather than a social page URL.
+    /// Mirrors the `hasRealThumbnail` logic used in LinkPreviewView / FactDetailView.
+    private static func isCDNThumbnail(_ urlString: String?) -> Bool {
+        guard let s = urlString?.lowercased(), !s.isEmpty else { return false }
+        let socialPagePatterns = [
+            "instagram.com/reel", "instagram.com/p/",
+            "tiktok.com/@", "tiktok.com/t/",
+            "twitter.com/", "x.com/",
+            "threads.net/",
+            "youtube.com/shorts/", "youtu.be/"
+        ]
+        return !socialPagePatterns.contains(where: { s.contains($0) })
+    }
+
+    /// Schedules a targeted thumbnail patch to run once after a short delay.
+    /// Only updates `factCheckData.thumbnailURL` fields that currently hold a social-page
+    /// URL but now have a real CDN URL on the backend. Does NOT replace the whole reels[]
+    /// array or trigger a feed refresh, eliminating the T+2s animated list swap.
     func scheduleThumbnailRefresh() {
         guard !thumbnailRefreshScheduled else { return }
         thumbnailRefreshScheduled = true
-        print("🖼️ [ThumbnailRefresh] Scheduling background sync to resolve thumbnails...")
+        print("🖼️ [ThumbnailRefresh] Scheduling targeted thumbnail patch...")
         Task {
-            // Brief delay so any in-flight saves/writes finish first
+            // Brief delay so the backend has time to persist the CDN URL.
             try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
-            await syncHistoryFromBackend()
-            await MainActor.run {
-                self.thumbnailRefreshScheduled = false
+            await patchStaleThumbnails()
+            await MainActor.run { self.thumbnailRefreshScheduled = false }
+        }
+    }
+
+    /// Fetches user reels and updates only the thumbnail URLs that have graduated from
+    /// social-page placeholders to real CDN images. No full list replacement or feed refresh.
+    private func patchStaleThumbnails() async {
+        guard let userId = UserManager.shared.currentUserId,
+              let sessionId = UserManager.shared.currentSessionId else { return }
+
+        do {
+            let userReels = try await fetchUserReels(userId: userId, sessionId: sessionId)
+            // Build an id → CDN-thumbnail map, ignoring entries without a real thumbnail.
+            let thumbnailMap: [String: String] = userReels.reduce(into: [:]) { map, reel in
+                if let url = reel.thumbnailUrl, Self.isCDNThumbnail(url) {
+                    map[reel.id] = url
+                }
             }
-            print("🖼️ [ThumbnailRefresh] Background sync complete — thumbnails refreshed")
+            guard !thumbnailMap.isEmpty else { return }
+
+            var changed = false
+            for idx in reels.indices {
+                let reel = reels[idx]
+                guard reel.factCheckData != nil else { continue }
+                let currentThumb = reels[idx].factCheckData?.thumbnailURL
+                // Only patch when the local thumbnail is absent or still a social-page URL.
+                guard !Self.isCDNThumbnail(currentThumb) else { continue }
+                if let newThumb = thumbnailMap[reel.id] {
+                    reels[idx].factCheckData?.thumbnailURL = newThumb
+                    changed = true
+                    print("🖼️ [ThumbnailRefresh] Patched thumbnail for \(reel.id.prefix(8))")
+                }
+            }
+
+            if changed {
+                saveReels()
+                print("🖼️ [ThumbnailRefresh] Thumbnail patch complete")
+            } else {
+                print("🖼️ [ThumbnailRefresh] No stale thumbnails found — skipping save")
+            }
+        } catch {
+            print("⚠️ [ThumbnailRefresh] Failed to fetch thumbnails: \(error)")
         }
     }
     
@@ -1030,6 +1063,12 @@ class SharedReelManager: ObservableObject {
     
     /// Syncs user's complete reel history from the backend
     func syncHistoryFromBackend() async {
+        // Prevent multiple concurrent syncs from racing to replace reels[].
+        guard !isSyncing else {
+            print("⏭️ syncHistoryFromBackend skipped — sync already in progress")
+            return
+        }
+
         guard let userId = UserManager.shared.currentUserId,
               let sessionId = UserManager.shared.currentSessionId else {
             print("⚠️ Cannot sync: No user credentials")
@@ -1139,7 +1178,7 @@ class SharedReelManager: ObservableObject {
                 // doesn't know about yet, then layer backend results on top.
                 let cutoff = Date().addingTimeInterval(-300)
                 let appGroupPendingIds: Set<String> = {
-                    guard let defaults = UserDefaults(suiteName: "group.com.jacob.informed"),
+                    guard let defaults = UserDefaults(suiteName: "group.rob"),
                           let subs = defaults.array(forKey: "pending_submissions") as? [[String: Any]] else {
                         return []
                     }
@@ -1172,40 +1211,9 @@ class SharedReelManager: ObservableObject {
         }
     }
     
-    /// Fetches user's reels from the backend
+    /// Fetches user's reels from the backend via the shared NetworkService session.
     private func fetchUserReels(userId: String, sessionId: String) async throws -> [UserReel] {
-        guard var urlComponents = URLComponents(string: Config.Endpoints.userReels) else {
-            throw URLError(.badURL)
-        }
-        
-        urlComponents.queryItems = [
-            URLQueryItem(name: "userId", value: userId),
-            URLQueryItem(name: "sessionId", value: sessionId),
-            URLQueryItem(name: "limit", value: "50")
-        ]
-        
-        guard let url = urlComponents.url else {
-            throw URLError(.badURL)
-        }
-        
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.timeoutInterval = 30
-        
-        let (data, response) = try await URLSession.shared.data(for: request)
-        
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw URLError(.badServerResponse)
-        }
-        
-        guard (200...299).contains(httpResponse.statusCode) else {
-            throw URLError(.badServerResponse)
-        }
-        
-        let decoder = JSONDecoder()
-        let userReelsResponse = try decoder.decode(UserReelsResponse.self, from: data)
-        return userReelsResponse.reels
+        try await NetworkService.shared.fetchUserReels(userId: userId, sessionId: sessionId)
     }
     
     // MARK: - Live Activity Management
@@ -1225,7 +1233,7 @@ class SharedReelManager: ObservableObject {
         // NOTE: Access the App Group BEFORE the debounce check so that the
         // latest_submission_id_for_polling flag is always consumed (even when
         // the debounce fires) and so the orphan-sweep guard below always runs.
-        let appGroupName = "group.com.jacob.informed"
+        let appGroupName = "group.rob"
         guard let sharedDefaults = UserDefaults(suiteName: appGroupName) else {
             print("❌ [LiveActivity] Could not access App Group: \(appGroupName)")
             return
@@ -1257,7 +1265,15 @@ class SharedReelManager: ObservableObject {
         lastActivityCheckTime = now
         
         print("📂 [LiveActivity] Accessing App Group: \(appGroupName)")
-        
+
+        // ── App Group diagnostic: dump all keys so we can see what Share Ext wrote ──
+        let allKeys = sharedDefaults.dictionaryRepresentation().keys.sorted()
+        print("🔑 [LiveActivity] App Group keys (\(allKeys.count)): \(allKeys.joined(separator: ", "))")
+        // Check the write-test key the Share Extension deposits
+        let diagTs = sharedDefaults.double(forKey: "_share_ext_diag_ts")
+        print("🔑 [LiveActivity] Share Ext diag timestamp: \(diagTs > 0 ? "✅ \(diagTs)" : "❌ not present — Share Extension hasn't been run yet")")
+        // ──────────────────────────────────────────────────────────────────────────────
+
         // Check and clear the hasPendingReel flag from Share Extension
         let hasPendingReel = sharedDefaults.bool(forKey: "hasPendingReel")
         if hasPendingReel {
@@ -1384,25 +1400,28 @@ class SharedReelManager: ObservableObject {
                 break
             }
             
-            print("🎬 [LiveActivity] Starting Live Activity for submission: \(submissionId)")
+            print("🎬 [LiveActivity] Preparing to start Live Activity for submission: \(submissionId)")
             print("   URL: \(url)")
             print("   Age: \(Int(age))s")
-            
-            // Start Live Activity for this pending submission
+
+            // Always call startActivity — it handles both cases internally:
+            //  • If the Share Extension already started an activity for this ID → wires up
+            //    observePushToken (safe in background).
+            //  • If no activity exists yet and app is in background → skips creation
+            //    (ActivityKit Error 7) and logs; the activity will start on next foreground.
+            //  • If no activity exists and app is in foreground → creates a new one.
             await ReelProcessingActivityManager.shared.startActivity(
                 submissionId: submissionId,
                 reelURL: url,
                 thumbnailURL: nil
             )
+            startedCount += 1
 
-            // ── FIX: begin progress polling for every newly-started activity so
-            // subsequent reels don't rely solely on the latest_submission_id_for_polling
-            // flag (which may have already been consumed for an earlier reel). ──
+            // ── FIX: begin progress polling for every newly-started activity
+            // (or delayed activity) so progress is fresh. ──
             if !pollingIdsToStart.contains(submissionId) {
                 pollingIdsToStart.append(submissionId)
             }
-
-            startedCount += 1
         }
         
         // Start/resume progress polling for all submissions gathered above.

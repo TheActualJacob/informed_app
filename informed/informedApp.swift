@@ -150,7 +150,7 @@ struct informedApp: App {
         // share-extension reels (whose placeholder SharedReel hasn't been inserted
         // into reelManager.reels yet) are NOT treated as orphans. ──
         let appGroupPendingIds: Set<String> = {
-            guard let defaults = UserDefaults(suiteName: "group.com.jacob.informed"),
+            guard let defaults = UserDefaults(suiteName: "group.rob"),
                   let subs = defaults.array(forKey: "pending_submissions") as? [[String: Any]] else {
                 return []
             }
@@ -166,6 +166,8 @@ struct informedApp: App {
         print("🔬 [GHOST_DIAG]   App Group in-flight IDs: \(appGroupPendingIds.map { $0.prefix(8) })")
 
         // 1. End activities whose matching reel is already in a terminal state.
+        //    Use .default so the Lock Screen card lingers for up to 4 hours — the
+        //    user can glance at the result even after leaving the app.
         let terminalIds = terminalReels.map { $0.id }
         for submissionId in terminalIds {
             // Don't end if it's also listed as in-flight in the App Group — that would
@@ -175,11 +177,12 @@ struct informedApp: App {
             print("🔬 [GHOST_DIAG]   Ending terminal reel activity sid=\(submissionId.prefix(8))")
             await ReelProcessingActivityManager.shared.endActivity(
                 submissionId: submissionId,
-                dismissalPolicy: .immediate
+                dismissalPolicy: .default
             )
         }
 
         // 2. End system activities that are already in an ended/dismissed state.
+        //    These are truly dead — clean them up immediately.
         for activity in Activity<ReelProcessingActivityAttributes>.activities {
             if activity.activityState == .ended || activity.activityState == .dismissed {
                 print("🔬 [GHOST_DIAG]   Ending already-ended system activity sid=\(activity.attributes.submissionId.prefix(8))")
@@ -252,7 +255,7 @@ struct informedApp: App {
         
         Task { @MainActor in
             // Check if there's a new submission flag
-            let appGroupName = "group.com.jacob.informed"
+            let appGroupName = "group.rob"
             if let sharedDefaults = UserDefaults(suiteName: appGroupName) {
                 let timestamp = sharedDefaults.double(forKey: "new_submission_timestamp")
                 if timestamp > 0 {

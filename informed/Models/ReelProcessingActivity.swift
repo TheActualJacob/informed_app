@@ -615,32 +615,75 @@ class ReelProcessingActivityManager: ObservableObject {
         }
     }
     
-    /// Converts raw backend/network error strings into short, user-readable messages
-    private static func friendlyErrorMessage(_ raw: String) -> String {
+    /// Converts raw backend/network error strings into short, user-readable messages.
+    /// The backend's friendly_error_for_live_activity() already maps most exceptions
+    /// before they arrive here, so this function acts as a final safety net for any
+    /// message that might slip through — especially from local network failures.
+    static func friendlyErrorMessage(_ raw: String) -> String {
         let lower = raw.lowercased()
+
+        // Pipe-separated backend errors ("error_type|||user message") — take the user half
+        if raw.contains("|||") {
+            let userPart = raw.components(separatedBy: "|||").last?.trimmingCharacters(in: .whitespaces) ?? ""
+            if !userPart.isEmpty { return friendlyErrorMessage(userPart) }
+        }
+
+        // AI service overload / 503
+        if lower.contains("503") || lower.contains("overloaded") || lower.contains("high demand")
+            || (lower.contains("unavailable") && lower.contains("model")) {
+            return "AI service is busy — please try again"
+        }
+
+        // Quota / rate limiting
+        if lower.contains("quota") || lower.contains("rate limit") || lower.contains("429")
+            || lower.contains("too many requests") || lower.contains("resource exhausted") {
+            return "Too many requests — please try again soon"
+        }
+
+        // Network / connectivity
         if lower.contains("timeout") || lower.contains("timed out") {
             return "Took too long — please try again"
         }
-        if lower.contains("network") || lower.contains("internet") || lower.contains("offline") {
+        if lower.contains("network") || lower.contains("internet") || lower.contains("offline")
+            || lower.contains("connection") {
             return "No internet connection"
         }
+
+        // Video availability
         if lower.contains("not found") || lower.contains("404") {
             return "Video not found or unavailable"
         }
-        if lower.contains("private") || lower.contains("unauthori") || lower.contains("forbidden") {
+        if lower.contains("age") || lower.contains("sign in") {
+            return "Video is age-restricted"
+        }
+        if lower.contains("private") || lower.contains("unauthori") || lower.contains("forbidden")
+            || lower.contains("geo") || lower.contains("region") {
             return "Video is private or restricted"
         }
         if lower.contains("unsupported") || lower.contains("platform") {
             return "Unsupported video format"
         }
-        if lower.contains("processing") {
-            return "Processing error — please try again"
+
+        // Download / audio processing
+        if lower.contains("download") || lower.contains("yt-dlp") || lower.contains("ytdlp") {
+            return "Could not download video — please try again"
         }
-        // Truncate long raw messages so they fit in the island
-        if raw.count > 60 {
-            return String(raw.prefix(57)) + "…"
+        if lower.contains("transcri") || lower.contains("audio") || lower.contains("speech") {
+            return "Could not process audio — please try again"
         }
-        return raw
+
+        // Generic backend failure labels — replace with cleaner copy
+        if lower.contains("processing") || lower.contains("failed") || lower.contains("error") {
+            return "Something went wrong — please try again"
+        }
+
+        // If the message is already short and looks human-readable, use it directly
+        if raw.count <= 60 && !raw.contains("{") && !raw.contains("http") && !raw.contains("stack") {
+            return raw
+        }
+
+        // Final fallback — never show raw technical output
+        return "Something went wrong — please try again"
     }
     
     // MARK: - App Group Cleanup
