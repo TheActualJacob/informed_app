@@ -10,14 +10,6 @@
                 <string>factcheckapp</string>
             </array>
         </dict>
-        <dict>
-            <key>CFBundleURLName</key>
-            <string>Google Sign-In</string>
-            <key>CFBundleURLSchemes</key>
-            <array>
-                <string>com.googleusercontent.apps.422333423549-cdbbmdht65oqn0o16ijo1q5snahuisvj</string>
-            </array>
-        </dict>
     </array>
     <key>NSSupportsLiveActivities</key>
     <true/>

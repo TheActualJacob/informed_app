@@ -7,7 +7,6 @@
 
 import SwiftUI
 import ActivityKit
-import GoogleSignIn
 
 @main
 struct informedApp: App {
@@ -126,9 +125,6 @@ struct informedApp: App {
             } else {
                 AuthenticationView()
                     .environmentObject(userManager)
-                    .onOpenURL { url in
-                        GIDSignIn.sharedInstance.handle(url)
-                    }
             }
         }
     }
@@ -362,28 +358,53 @@ struct informedApp: App {
         )
 
         // 3. Sync from backend then open the detail view.
-        //    We always sync first because the reel may still be a processing
-        //    placeholder locally (the Share Extension path completes asynchronously).
-        //    After the sync, SharedReelsView's onChange(pendingDeepLinkId) will fire
-        //    and navigate to the detail if factCheckData is available.
+        //    We retry up to 3 times with brief back-off so that:
+        //      a) any concurrent sync already underway can finish first, and
+        //      b) if the backend hasn't written the record yet we give it a moment.
         Task { @MainActor in
-            // Run a quick sync so the completed reel data appears in reels[].
-            await reelManager.syncHistoryFromBackend()
-
-            // Try to find the completed reel now that we have fresh data.
-            if let reel = reelManager.reels.first(where: { $0.id == submissionId }),
-               reel.status == .completed,
-               let factCheckData = reel.factCheckData {
-                // Signal SharedReelsView to open the detail view.
-                let item = factCheckData.toFactCheckItem(originalLink: reel.url)
+            let found = await resolveCompletedReel(submissionId: submissionId)
+            if let item = found {
                 reelManager.pendingDeepLinkItem = item
             } else {
-                // Reel is still not complete or has no factCheckData — just land
-                // on My Reels so the user can see its status.
-                print("⚠️ [openFactCheck] Reel \(submissionId.prefix(8)) not completed after sync — staying on My Reels list")
+                print("⚠️ [openFactCheck] Reel \(submissionId.prefix(8)) not found after retries — staying on My Reels list")
             }
         }
 
         HapticManager.successImpact()
+    }
+
+    /// Tries up to 3 times to find a completed reel for `submissionId`.
+    /// Each attempt waits for any in-progress sync to finish, then runs a
+    /// fresh sync and looks up the reel. Delays between retries give the
+    /// backend time to finish writing the fact-check record.
+    @MainActor
+    private func resolveCompletedReel(submissionId: String) async -> FactCheckItem? {
+        let retryDelaysNs: [UInt64] = [0, 1_500_000_000, 3_000_000_000] // 0s, 1.5s, 3s
+
+        for (attempt, delayNs) in retryDelaysNs.enumerated() {
+            if delayNs > 0 {
+                try? await Task.sleep(nanoseconds: delayNs)
+            }
+
+            // If another sync is already running, wait for it to finish before
+            // triggering a new one — otherwise the guard in syncHistoryFromBackend
+            // returns immediately and we'd query stale data.
+            while reelManager.isSyncing {
+                try? await Task.sleep(nanoseconds: 150_000_000) // poll every 150ms
+            }
+
+            await reelManager.syncHistoryFromBackend()
+
+            if let reel = reelManager.reels.first(where: { $0.id == submissionId }),
+               reel.status == .completed,
+               let factCheckData = reel.factCheckData {
+                print("✅ [openFactCheck] Found completed reel on attempt \(attempt + 1)")
+                return factCheckData.toFactCheckItem(originalLink: reel.url)
+            }
+
+            print("⏳ [openFactCheck] Reel \(submissionId.prefix(8)) not ready on attempt \(attempt + 1) — will retry")
+        }
+
+        return nil
     }
 }

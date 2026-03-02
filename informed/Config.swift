@@ -75,11 +75,5 @@ struct Config {
 
         // Social auth
         static let authApple = Config.endpoint("/auth/apple")
-        static let authGoogle = Config.endpoint("/auth/google")
     }
-
-    // MARK: - Google Sign-In
-    // Set this to your iOS OAuth 2.0 Client ID from Google Cloud Console.
-    // Format: XXXXXXXXXX-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX.apps.googleusercontent.com
-    static let googleClientID = "422333423549-cdbbmdht65oqn0o16ijo1q5snahuisvj.apps.googleusercontent.com"
 }
