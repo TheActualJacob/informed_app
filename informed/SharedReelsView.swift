@@ -367,6 +367,7 @@ struct ReelStatusCard: View {
                                 .font(.caption)
                                 .foregroundColor(.gray)
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(8)
                         .background(Color.brandRed.opacity(0.1))
                         .cornerRadius(8)

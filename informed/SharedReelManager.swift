@@ -272,16 +272,18 @@ class SharedReelManager: ObservableObject {
         let key = storageKey(for: currentUserId)
         if let data = UserDefaults.standard.data(forKey: key),
            let decoded = try? JSONDecoder().decode([SharedReel].self, from: data) {
-            // Drop stale processing/pending placeholders older than 5 minutes.
+            // Drop stale processing/pending placeholders older than 5 minutes,
+            // and drop any failed reels persisted by older app versions.
             let cutoff = Date().addingTimeInterval(-300)
             let cleaned = decoded.filter { reel in
+                if reel.status == .failed { return false }
                 if reel.status == .processing || reel.status == .pending {
                     return reel.submittedAt > cutoff
                 }
                 return true
             }
             let dropped = decoded.count - cleaned.count
-            if dropped > 0 { print("🧹 Dropped \(dropped) stale processing/pending reel(s) on load") }
+            if dropped > 0 { print("🧹 Dropped \(dropped) stale/failed reel(s) on load") }
             self.reels = cleaned
             print("📱 Loaded \(cleaned.count) stored reels for user \(currentUserId ?? "anonymous")")
         } else {
@@ -295,7 +297,14 @@ class SharedReelManager: ObservableObject {
         // here as it may have already advanced to a different user mid-flight.
         let key = storageKey(for: currentUserId)
         let reelsToSave = reels.filter { reel in
+            // Never persist in-flight placeholders (no data yet).
             if (reel.status == .processing || reel.status == .pending) && reel.factCheckData == nil {
+                return false
+            }
+            // Never persist failed reels — error cards are session-only so they
+            // don't accumulate across launches. They re-appear if the user retries
+            // and fails again, but otherwise clear themselves on next app start.
+            if reel.status == .failed {
                 return false
             }
             return true
@@ -531,10 +540,15 @@ class SharedReelManager: ObservableObject {
             let submission = try await sendFactCheck(request)
             print("✅ Submission response: status=\(submission.status)")
 
-            if submission.status == "processing" || submission.status == "submitting" {
+            if submission.status == "processing" || submission.status == "submitting"
+                || submission.status == "completed" {
                 // Async 202 flow — resolve the confirmed backend ID before inserting
                 // into reels[] so the placeholder is always inserted with the stable ID.
+                // The "completed" case means this URL was already fact-checked; the
+                // first poll will return "completed" immediately and trigger the full
+                // completion flow (completeActivity + syncHistoryFromBackend).
                 let confirmedSid = submission.submissionId != clientSid ? submission.submissionId : clientSid
+                let skipWait = submission.status == "completed"
                 let newReel = SharedReel(
                     id: confirmedSid,
                     url: instagramURL,
@@ -543,7 +557,7 @@ class SharedReelManager: ObservableObject {
                 )
                 reels.insert(newReel, at: 0)
                 saveReels()
-                startProgressPolling(submissionId: confirmedSid)
+                startProgressPolling(submissionId: confirmedSid, skipInitialWait: skipWait)
                 await MainActor.run { isUploading = false; lastUploadSuccess = true }
                 return true
             }
@@ -607,7 +621,7 @@ class SharedReelManager: ObservableObject {
     
     /// Polls backend for submission progress and updates Live Activity
     /// - Parameter submissionId: The unique submission ID from backend
-    func startProgressPolling(submissionId: String) {
+    func startProgressPolling(submissionId: String, skipInitialWait: Bool = false) {
         guard #available(iOS 16.1, *) else { return }
 
         // Avoid spawning a duplicate polling task for the same submission.
@@ -617,7 +631,7 @@ class SharedReelManager: ObservableObject {
         }
         activePollingIds.insert(submissionId)
         
-        print("🔄 [ProgressPolling] Starting progress polling for: \(submissionId)")
+        print("🔄 [ProgressPolling] Starting progress polling for: \(submissionId) (skipInitialWait=\(skipInitialWait))")
         
         Task {
             defer {
@@ -632,7 +646,10 @@ class SharedReelManager: ObservableObject {
             // into the backend DB (the /fact-check HTTP round-trip + Celery task
             // enqueue can take a couple of seconds after the Share Extension fires).
             // Without this, poll #1 hits a 404 and logs a spurious error.
-            try? await Task.sleep(nanoseconds: 5_000_000_000) // 5 s
+            // Skip the wait for duplicate URLs that are already marked completed.
+            if !skipInitialWait {
+                try? await Task.sleep(nanoseconds: 5_000_000_000) // 5 s
+            }
 
             var isCompleted = false
             var pollCount = 0
@@ -1196,7 +1213,13 @@ class SharedReelManager: ObservableObject {
                     return reel.submittedAt > cutoff && appGroupPendingIds.contains(reel.id)
                 }
                 let remoteIds = Set(syncedReels.map { $0.id })
-                let uniqueLocalReels = localPendingReels.filter { !remoteIds.contains($0.id) }
+                // Also collect URLs of completed synced reels so we can drop any
+                // local placeholders that represent the same video (ID mismatch when
+                // a duplicate URL was submitted — submissionId ≠ uniqueID).
+                let completedRemoteURLs = Set(syncedReels.filter { $0.status == .completed }.map { $0.url })
+                let uniqueLocalReels = localPendingReels.filter {
+                    !remoteIds.contains($0.id) && !completedRemoteURLs.contains($0.url)
+                }
 
                 reels = uniqueLocalReels + syncedReels
                 saveReels()

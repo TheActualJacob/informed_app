@@ -312,8 +312,8 @@ class HomeViewModel: ObservableObject {
                 submissionId: submissionId
             )
 
-            if factCheckData.isAsyncSubmission {
-                // ── New async flow ──────────────────────────────────────
+            if factCheckData.isAsyncSubmission || factCheckData.isAlreadyCompleted {
+                // ── Async 202 flow (processing) OR duplicate-URL fast-complete flow ──
                 // Resolve the final submission ID before inserting into reels[] so the
                 // placeholder is inserted exactly once with the confirmed backend ID.
                 // This eliminates the SwiftUI identity rebind that caused cell re-animation.
@@ -337,12 +337,14 @@ class HomeViewModel: ObservableObject {
                 SharedReelManager.shared.reels.insert(placeholderReel, at: 0)
                 SharedReelManager.shared.saveReels()
 
-                // Start progress polling — on completion it will call
-                // syncHistoryFromBackend() which fetches the full result
-                SharedReelManager.shared.startProgressPolling(submissionId: submissionId)
-                // Clear the search field; banner stays until polling completes
+                // For already-completed duplicates skip the 5-second initial wait;
+                // the first poll will return "completed" immediately and trigger
+                // completeActivity + syncHistoryFromBackend.
+                let skipWait = factCheckData.isAlreadyCompleted
+                SharedReelManager.shared.startProgressPolling(submissionId: submissionId,
+                                                              skipInitialWait: skipWait)
                 self.searchText = ""
-                print("✅ Submission accepted (202). Polling for sid=\(submissionId.prefix(8))…")
+                print("✅ Submission accepted (202). Polling for sid=\(submissionId.prefix(8))… (skipWait=\(skipWait))")
                 return
             }
 

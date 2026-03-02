@@ -197,8 +197,14 @@ struct FactCheckData: Codable {
                            explanation: exp, summary: sum, sources: src)]
     }
 
-    /// True when backend returned the async 202 flow (no fact-check data yet)
+    /// True when backend returned the async 202 flow (submission is still processing)
     var isAsyncSubmission: Bool {
         submissionId != nil && (status == "processing" || status == "submitting")
+    }
+
+    /// True when the 202 response is for a duplicate URL the backend already has completed.
+    /// The submission record is already marked "completed" — no Celery task will run.
+    var isAlreadyCompleted: Bool {
+        submissionId != nil && status == "completed"
     }
 }

@@ -377,8 +377,19 @@ struct informedApp: App {
     /// Each attempt waits for any in-progress sync to finish, then runs a
     /// fresh sync and looks up the reel. Delays between retries give the
     /// backend time to finish writing the fact-check record.
+    ///
+    /// For duplicate-URL submissions the server assigns a new `submissionId`
+    /// but after sync the reel appears under the original `uniqueID`. We
+    /// capture the submission's URL before the first sync so we can fall back
+    /// to a URL-based lookup when the ID no longer matches.
     @MainActor
     private func resolveCompletedReel(submissionId: String) async -> FactCheckItem? {
+        // Capture the URL linked to this submissionId while the placeholder may
+        // still be present. After syncHistoryFromBackend replaces reels[], the
+        // placeholder (id=submissionId) may be gone but a completed reel with
+        // the same URL will have taken its place.
+        let submissionURL = reelManager.reels.first(where: { $0.id == submissionId })?.url
+
         let retryDelaysNs: [UInt64] = [0, 1_500_000_000, 3_000_000_000] // 0s, 1.5s, 3s
 
         for (attempt, delayNs) in retryDelaysNs.enumerated() {
@@ -395,10 +406,21 @@ struct informedApp: App {
 
             await reelManager.syncHistoryFromBackend()
 
+            // Primary: exact ID match (normal processing flow).
             if let reel = reelManager.reels.first(where: { $0.id == submissionId }),
                reel.status == .completed,
                let factCheckData = reel.factCheckData {
-                print("✅ [openFactCheck] Found completed reel on attempt \(attempt + 1)")
+                print("✅ [openFactCheck] Found completed reel by ID on attempt \(attempt + 1)")
+                return factCheckData.toFactCheckItem(originalLink: reel.url)
+            }
+
+            // Fallback: URL match (duplicate-URL path where submissionId ≠ uniqueID).
+            if let url = submissionURL,
+               let reel = reelManager.reels.first(where: {
+                   $0.url == url && $0.status == .completed && $0.factCheckData != nil
+               }),
+               let factCheckData = reel.factCheckData {
+                print("✅ [openFactCheck] Found completed reel by URL on attempt \(attempt + 1)")
                 return factCheckData.toFactCheckItem(originalLink: reel.url)
             }
 
