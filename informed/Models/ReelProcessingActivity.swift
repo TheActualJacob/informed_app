@@ -246,6 +246,10 @@ class ReelProcessingActivityManager: ObservableObject {
     /// Holds completion info for activities that couldn't be shown because the app was in the
     /// background when polling finished. Drained by `drainPendingCompletedActivities()` on foreground.
     private var pendingCompletedInfo: [String: (title: String, verdict: String, url: String)] = [:]
+    /// Holds error messages for submissions that failed (limit_reached, timeout, etc.) while the
+    /// app was in the background and no Live Activity existed. Drained by
+    /// `drainPendingFailedActivities()` on foreground so the user sees an error island.
+    private var pendingFailedInfo: [String: String] = [:]
     /// Injected by the main app target on startup. Called with each (token, submissionId) pair
     /// whenever a Live Activity's APNs push token is issued or rotated.
     /// Extensions leave this nil — they handle token forwarding via App Group storage instead.
@@ -662,6 +666,57 @@ class ReelProcessingActivityManager: ObservableObject {
     
     // MARK: - Drain Pending Completions
 
+    /// Creates a brief failed Live Activity for every submission that errored (limit_reached etc.)
+    /// while the app was in the background and no activity existed.
+    /// Call this from the foreground `scenePhase == .active` handler.
+    @available(iOS 16.1, *)
+    func drainPendingFailedActivities() async {
+        guard !isAppInBackground(), !pendingFailedInfo.isEmpty else { return }
+        let pending = pendingFailedInfo
+        pendingFailedInfo = [:]
+        print("🔄 [ActivityManager] Draining \(pending.count) pending failed activity(ies)")
+        for (submissionId, errorMessage) in pending {
+            let url = reelURLForSubmissionId(submissionId)
+            await startActivityInFailedState(submissionId: submissionId, url: url, errorMessage: errorMessage)
+        }
+    }
+
+    /// Creates a brief failed Live Activity for a submission that errored out.
+    @available(iOS 16.1, *)
+    private func startActivityInFailedState(submissionId: String, url: String, errorMessage: String) async {
+        guard !isAppInBackground() else { return }
+        let authInfo = ActivityAuthorizationInfo()
+        guard authInfo.areActivitiesEnabled else { return }
+        let friendlyMessage = Self.friendlyErrorMessage(errorMessage)
+        let attributes = ReelProcessingActivityAttributes(
+            reelURL: url, submissionId: submissionId, startTime: Date()
+        )
+        let failedState = ReelProcessingActivityAttributes.ContentState(
+            status: .failed,
+            progress: 0,
+            statusMessage: friendlyMessage,
+            title: nil, verdict: nil,
+            thumbnailURL: nil, estimatedSecondsRemaining: 0
+        )
+        do {
+            let activity = try Activity<ReelProcessingActivityAttributes>.request(
+                attributes: attributes,
+                content: ActivityContent(state: failedState, staleDate: nil),
+                pushType: .token
+            )
+            currentActivities[submissionId] = activity
+            HapticManager.errorImpact()
+            print("✅ [ActivityManager] Started failed Live Activity for \(submissionId.prefix(8)): \(friendlyMessage)")
+            // Auto-dismiss after 8 seconds
+            Task {
+                try? await Task.sleep(nanoseconds: 8_000_000_000)
+                await endActivity(submissionId: submissionId, dismissalPolicy: .immediate)
+            }
+        } catch {
+            print("⚠️ [ActivityManager] Failed to start error activity for \(submissionId.prefix(8)): \(error.localizedDescription)")
+        }
+    }
+
     /// Creates a brief completed Live Activity for every submission that finished while the app
     /// was in the background (and therefore could not create an activity at that time).
     /// Call this from the foreground `scenePhase == .active` handler.
@@ -727,6 +782,20 @@ class ReelProcessingActivityManager: ObservableObject {
         }
     }
 
+    // MARK: - Cleanup
+
+    /// Removes `currentActivities` entries that no longer have a matching live system activity.
+    /// Called on foreground after the orphan sweep so stale references don't accumulate.
+    @available(iOS 16.1, *)
+    func cleanupStaleTrackedActivities() {
+        let systemIds = Set(Activity<ReelProcessingActivityAttributes>.activities.map { $0.attributes.submissionId })
+        let stale = currentActivities.keys.filter { !systemIds.contains($0) }
+        for sid in stale {
+            currentActivities.removeValue(forKey: sid)
+            print("🧹 [ActivityManager] Cleared stale currentActivities entry for \(sid.prefix(8)) (no matching system activity)")
+        }
+    }
+
     // MARK: - End Activity
     
     func endActivity(submissionId: String, dismissalPolicy: ActivityUIDismissalPolicy = .default) async {
@@ -778,7 +847,12 @@ class ReelProcessingActivityManager: ObservableObject {
         }
         
         guard let activity = activity else {
-            print("⚠️ [ActivityManager] failActivity: no activity found for \(submissionId)")
+            // No existing island — queue it so drainPendingFailedActivities() can create one
+            // on foreground and the user still sees the error notification.
+            if pendingFailedInfo[submissionId] == nil {
+                pendingFailedInfo[submissionId] = errorMessage
+                print("📥 [ActivityManager] failActivity: no activity found for \(submissionId.prefix(8)) — queued for foreground display")
+            }
             return
         }
         

@@ -284,7 +284,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         
         do {
             // Fetch the fact-check data from backend using the same endpoint
-            let request = FactCheckRequest(link: instagramURL, userId: userId, sessionId: sessionId)
+            let request = FactCheckRequest(link: instagramURL, userId: userId, sessionId: sessionId, deviceId: DeviceManager.deviceId)
             let _ = try await sendFactCheck(request)
             
             print("✅ Fetched fact-check data")

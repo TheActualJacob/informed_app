@@ -85,6 +85,7 @@ class NetworkService {
 
         var body: [String: String] = ["link": link]
         if let sid = submissionId { body["submission_id"] = sid }
+        body["device_id"] = DeviceManager.deviceId
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         do {
@@ -206,7 +207,8 @@ class NetworkService {
         
         let body: [String: Any] = [
             "device_token": token,
-            "platform": "ios"
+            "platform": "ios",
+            "device_id": DeviceManager.deviceId
         ]
         
         request.httpBody = try JSONSerialization.data(withJSONObject: body)

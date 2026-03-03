@@ -314,8 +314,28 @@ class ShareViewController: UIViewController {
                 }
             } else {
                 print("❌ Server error: \(httpResponse.statusCode)")
-                if let data = data, let errorText = String(data: data, encoding: .utf8) {
-                    print("   Error details: \(errorText)")
+                if let data = data {
+                    if let errorText = String(data: data, encoding: .utf8) {
+                        print("   Error details: \(errorText)")
+                    }
+                    // Detect limit_reached immediately from the extension's own POST response.
+                    // Update the island to show the error right away instead of leaving it
+                    // stuck at 10% until the main app's polling fallback discovers it.
+                    if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                       let errorKey = json["error"] as? String, errorKey == "limit_reached" {
+                        print("⚠️ [ShareExtension] limit_reached — failing island for \(submissionId.prefix(8))")
+                        if #available(iOS 16.1, *) {
+                            self.failLiveActivity(submissionId: submissionId, message: "Daily limit reached")
+                        }
+                        // Remove from pending so the main app doesn't start polling a 404 forever.
+                        if let defaults = UserDefaults(suiteName: "group.rob"),
+                           var subs = defaults.array(forKey: "pending_submissions") as? [[String: Any]] {
+                            subs.removeAll { ($0["id"] as? String) == submissionId }
+                            defaults.set(subs, forKey: "pending_submissions")
+                            defaults.synchronize()
+                            print("🗑️ [ShareExtension] Removed \(submissionId.prefix(8)) from pending_submissions (limit_reached)")
+                        }
+                    }
                 }
             }
         }
@@ -469,6 +489,32 @@ class ShareViewController: UIViewController {
     /// the extension shares the same App Group entitlement as the main app.
     /// The activity is visible immediately – no need to open the main app first.
     @available(iOS 16.1, *)
+    /// Looks up the Live Activity for `submissionId` and transitions it to the `.failed` error
+    /// state. Auto-dismisses after 8 seconds so the island doesn't linger.
+    @available(iOS 16.1, *)
+    private func failLiveActivity(submissionId: String, message: String) {
+        guard let activity = Activity<ReelProcessingActivityAttributes>.activities.first(where: {
+            $0.attributes.submissionId == submissionId
+        }) else {
+            print("⚠️ [ShareExtension] failLiveActivity: no activity found for \(submissionId.prefix(8))")
+            return
+        }
+        let failedState = ReelProcessingActivityAttributes.ContentState(
+            status: .failed,
+            progress: activity.content.state.progress,
+            statusMessage: message,
+            title: nil, verdict: nil,
+            thumbnailURL: nil, estimatedSecondsRemaining: 0
+        )
+        Task {
+            await activity.update(ActivityContent(state: failedState, staleDate: nil))
+            print("✅ [ShareExtension] Updated island to failed state: \(message)")
+            // Auto-dismiss after 8 seconds so it doesn't linger.
+            try? await Task.sleep(nanoseconds: 8_000_000_000)
+            await activity.end(ActivityContent(state: failedState, staleDate: nil), dismissalPolicy: .immediate)
+        }
+    }
+
     private func startLiveActivity(submissionId: String, url: String) {
         print("🚀 [ShareExtension] Starting Live Activity for: \(submissionId)")
         

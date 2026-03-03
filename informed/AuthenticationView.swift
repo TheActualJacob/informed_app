@@ -7,6 +7,7 @@ struct UserRegistration: Codable {
     let username: String
     let email: String
     let password: String
+    let deviceId: String?
 }
 
 struct UserResponse: Codable {
@@ -19,6 +20,7 @@ struct UserResponse: Codable {
 struct UserLogin: Codable {
     let email: String
     let password: String
+    let deviceId: String?
 }
 
 struct LoginResponse: Codable {
@@ -39,6 +41,7 @@ struct AppleAuthRequest: Codable {
     let identityToken: String
     let fullName: FullName?
     let deviceToken: String?
+    let deviceId: String?
 
     struct FullName: Codable {
         let givenName: String?
@@ -503,7 +506,8 @@ struct AuthenticationView: View {
             do {
                 let loginRequest = UserLogin(
                     email: email,
-                    password: password
+                    password: password,
+                    deviceId: DeviceManager.deviceId
                 )
                 
                 let loginResponse = try await loginUser(loginRequest)
@@ -547,7 +551,8 @@ struct AuthenticationView: View {
                 let registration = UserRegistration(
                     username: username,
                     email: email,
-                    password: password
+                    password: password,
+                    deviceId: DeviceManager.deviceId
                 )
                 
                 let userResponse = try await createUser(registration)
@@ -621,7 +626,8 @@ struct AuthenticationView: View {
                     familyName: $0.familyName
                 )
             },
-            deviceToken: nil
+            deviceToken: nil,
+            deviceId: DeviceManager.deviceId
         )
 
         Task {

@@ -92,6 +92,9 @@ struct informedApp: App {
                                     // Show completed Dynamic Island badges for any fact-checks
                                     // that finished while the app was in the background.
                                     await ReelProcessingActivityManager.shared.drainPendingCompletedActivities()
+                                    // Show error Dynamic Island badges for any fact-checks that
+                                    // failed (limit_reached, timeout, etc.) in background.
+                                    await ReelProcessingActivityManager.shared.drainPendingFailedActivities()
                                 }
                                 // Only check for new pending submissions after cleanup is done
                                 checkForPendingSharedURL()
@@ -227,6 +230,14 @@ struct informedApp: App {
         for a in remaining {
             print("🔬 [GHOST_DIAG]   • sid=\(a.attributes.submissionId.prefix(8)) state=\(a.activityState) progress=\(Int(a.content.state.progress*100))%")
         }
+
+        // Purge any stale currentActivities entries that have no matching system activity.
+        // These accumulate when an activity is ended by iOS (e.g. push-to-start auto-dismiss)
+        // without our endActivity() being called, or when a session ends without cleanup.
+        if #available(iOS 16.1, *) {
+            ReelProcessingActivityManager.shared.cleanupStaleTrackedActivities()
+        }
+
         print("✅ [App] Dismissed completed/failed/orphan Live Activities on foreground")
     }
 
@@ -352,13 +363,24 @@ struct informedApp: App {
 
     @MainActor
     private func openFactCheck(submissionId: String) {
-        // 1. Dismiss the Live Activity right away
+        // 1. Dismiss the Live Activity — but ONLY if it's already completed/failed.
+        //    If the fact-check is still in progress, leave the island visible so the
+        //    user can continue watching progress in the Dynamic Island after tapping in.
+        //    FactDetailView.onAppear handles dismissal once the result is actually shown.
         if #available(iOS 16.1, *) {
-            Task {
-                await ReelProcessingActivityManager.shared.endActivity(
-                    submissionId: submissionId,
-                    dismissalPolicy: .immediate
-                )
+            let existingActivity = Activity<ReelProcessingActivityAttributes>.activities.first {
+                $0.attributes.submissionId == submissionId
+            }
+            let alreadyDone = existingActivity.map {
+                $0.content.state.status == .completed || $0.content.state.status == .failed
+            } ?? false
+            if alreadyDone {
+                Task {
+                    await ReelProcessingActivityManager.shared.endActivity(
+                        submissionId: submissionId,
+                        dismissalPolicy: .immediate
+                    )
+                }
             }
         }
 

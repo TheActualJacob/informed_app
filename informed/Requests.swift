@@ -22,6 +22,7 @@ func sendFactCheck(_ info: FactCheckRequest) async throws -> FactCheckSubmission
 
     var body: [String: String] = ["link": info.link]
     if let sid = info.submissionId { body["submission_id"] = sid }
+    if let did = info.deviceId { body["device_id"] = did }
     request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
     let (data, response) = try await URLSession.shared.data(for: request)
@@ -56,6 +57,7 @@ struct FactCheckRequest: Codable {
     let userId: String
     let sessionId: String
     var submissionId: String?
+    var deviceId: String?
 }
 
 /// 202 response from POST /fact-check

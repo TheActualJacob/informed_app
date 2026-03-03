@@ -410,21 +410,30 @@ class HomeViewModel: ObservableObject {
                         self.processingLink = nil; self.processingThumbnailURL = nil
                         if #available(iOS 16.1, *) {
                             ReelProcessingActivityManager.removeFromAppGroupPendingSubmissions(submissionId: submissionId)
+                            // End the island FIRST (while still at 10%), then navigate.
+                            // Posting ShowFactCheckDetail before endActivity completes causes
+                            // FactDetailView.onAppear to see a submitting-state island (not
+                            // completed/failed) and skip it — leaving it stuck at 10%.
                             Task { @MainActor in
-                                // Duplicate resolved instantly — dismiss immediately so the island
-                                // doesn't linger at 10%.
                                 await ReelProcessingActivityManager.shared.endActivity(
                                     submissionId: submissionId, dismissalPolicy: .immediate
                                 )
+                                NotificationCenter.default.post(
+                                    name: NSNotification.Name("ShowFactCheckDetail"),
+                                    object: nil,
+                                    userInfo: ["factCheckItem": navItem]
+                                )
+                                await SharedReelManager.shared.syncHistoryFromBackend()
                             }
                             currentSubmissionId = nil
+                        } else {
+                            NotificationCenter.default.post(
+                                name: NSNotification.Name("ShowFactCheckDetail"),
+                                object: nil,
+                                userInfo: ["factCheckItem": navItem]
+                            )
+                            Task { await SharedReelManager.shared.syncHistoryFromBackend() }
                         }
-                        NotificationCenter.default.post(
-                            name: NSNotification.Name("ShowFactCheckDetail"),
-                            object: nil,
-                            userInfo: ["factCheckItem": navItem]
-                        )
-                        Task { await SharedReelManager.shared.syncHistoryFromBackend() }
                         return
                     }
 
@@ -435,23 +444,29 @@ class HomeViewModel: ObservableObject {
                     if let existingReel, let data = existingReel.factCheckData {
                         print("♻️ [Duplicate] Navigating from local cache")
                         self.processingLink = nil; self.processingThumbnailURL = nil
+                        let navItem = data.toFactCheckItem(originalLink: link)
                         if #available(iOS 16.1, *) {
                             ReelProcessingActivityManager.removeFromAppGroupPendingSubmissions(submissionId: submissionId)
                             Task { @MainActor in
-                                // Duplicate resolved instantly — dismiss immediately.
                                 await ReelProcessingActivityManager.shared.endActivity(
                                     submissionId: submissionId, dismissalPolicy: .immediate
                                 )
+                                NotificationCenter.default.post(
+                                    name: NSNotification.Name("ShowFactCheckDetail"),
+                                    object: nil,
+                                    userInfo: ["factCheckItem": navItem]
+                                )
+                                await SharedReelManager.shared.syncHistoryFromBackend()
                             }
                             currentSubmissionId = nil
+                        } else {
+                            NotificationCenter.default.post(
+                                name: NSNotification.Name("ShowFactCheckDetail"),
+                                object: nil,
+                                userInfo: ["factCheckItem": navItem]
+                            )
+                            Task { await SharedReelManager.shared.syncHistoryFromBackend() }
                         }
-                        let navItem = data.toFactCheckItem(originalLink: link)
-                        NotificationCenter.default.post(
-                            name: NSNotification.Name("ShowFactCheckDetail"),
-                            object: nil,
-                            userInfo: ["factCheckItem": navItem]
-                        )
-                        Task { await SharedReelManager.shared.syncHistoryFromBackend() }
                         return
                     }
                     // ── Tier 3: fall through to poll ─────────────────────────────────────

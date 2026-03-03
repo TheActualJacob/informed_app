@@ -554,7 +554,8 @@ class SharedReelManager: ObservableObject {
         
         do {
             let request = FactCheckRequest(link: instagramURL, userId: userId,
-                                           sessionId: sessionId, submissionId: clientSid)
+                                           sessionId: sessionId, submissionId: clientSid,
+                                           deviceId: DeviceManager.deviceId)
             print("📤 Sending fact check request for shared reel...")
 
             let submission = try await sendFactCheck(request)
@@ -890,7 +891,7 @@ class SharedReelManager: ObservableObject {
                            let userId = UserManager.shared.currentUserId, let sessionId = UserManager.shared.currentSessionId {
                             fallbackSentForSubmissions.insert(submissionId)
                             do {
-                                let request = FactCheckRequest(link: url, userId: userId, sessionId: sessionId, submissionId: submissionId)
+                                let request = FactCheckRequest(link: url, userId: userId, sessionId: sessionId, submissionId: submissionId, deviceId: DeviceManager.deviceId)
                                 _ = try await sendFactCheck(request)
                                 print("🔄 [ProgressPolling] Main app fallback: sent fact-check for \(submissionId.prefix(8)) (Share Extension request may have been killed)")
                             } catch let fallbackError {
