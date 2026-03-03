@@ -56,9 +56,6 @@ class HomeViewModel: ObservableObject {
     // Signals HomeView to dismiss the keyboard (set true, HomeView resets it)
     @Published var dismissKeyboard: Bool = false
     
-    // Set to push an existing fact-check result directly (already-completed duplicate)
-    @Published var navigateToFactCheckItem: FactCheckItem?
-    
     // MARK: - Properties
     
     private var debounceTask: Task<Void, Never>?
@@ -307,17 +304,26 @@ class HomeViewModel: ObservableObject {
             self.searchText = ""
             self.errorMessage = nil
             HapticManager.selection()
-            // Delay navigation by one run-loop tick so SwiftUI commits the
-            // searchText / view-state changes before the NavigationLink fires.
             let navItem = localData.toFactCheckItem(originalLink: link)
-            Task { @MainActor in
-                try? await Task.sleep(nanoseconds: 200_000_000) // 0.2 s
-                self.navigateToFactCheckItem = navItem
-            }
+            // ShowFactCheckDetail atomically sets selectedTab=2 AND pendingDeepLinkItem
+            // in one DispatchQueue.main.async block, so SharedReelsView always sees the
+            // item in .onChange or .onAppear regardless of whether it was already mounted.
+            NotificationCenter.default.post(
+                name: NSNotification.Name("ShowFactCheckDetail"),
+                object: nil,
+                userInfo: ["factCheckItem": navItem]
+            )
+            Task { await SharedReelManager.shared.syncHistoryFromBackend() }
             return
         }
 
         self.processingLink = link
+        // Detach the debounce task reference BEFORE clearing searchText.
+        // Setting searchText = "" triggers handleSearchTextChange("") which calls
+        // debounceTask?.cancel() — and debounceTask IS this running task.
+        // Cancelling it causes URLSession to throw URLError.cancelled, silently
+        // aborting the entire fact-check with no error shown and no navigation.
+        debounceTask = nil
         self.searchText = ""  // Clear immediately so user cannot re-submit
         self.errorMessage = nil
         if let url = URL(string: link) { self.processingThumbnailURL = url }
@@ -402,17 +408,20 @@ class HomeViewModel: ObservableObject {
                         if #available(iOS 16.1, *) {
                             ReelProcessingActivityManager.removeFromAppGroupPendingSubmissions(submissionId: submissionId)
                             Task { @MainActor in
+                                // Duplicate resolved instantly — dismiss immediately so the island
+                                // doesn't linger at 10%.
                                 await ReelProcessingActivityManager.shared.endActivity(
-                                    submissionId: submissionId, dismissalPolicy: .default
+                                    submissionId: submissionId, dismissalPolicy: .immediate
                                 )
                             }
                             currentSubmissionId = nil
                         }
-                        let navItemCopy = navItem
-                        Task { @MainActor in
-                            try? await Task.sleep(nanoseconds: 200_000_000) // 0.2 s
-                            self.navigateToFactCheckItem = navItemCopy
-                        }
+                        NotificationCenter.default.post(
+                            name: NSNotification.Name("ShowFactCheckDetail"),
+                            object: nil,
+                            userInfo: ["factCheckItem": navItem]
+                        )
+                        Task { await SharedReelManager.shared.syncHistoryFromBackend() }
                         return
                     }
 
@@ -426,17 +435,20 @@ class HomeViewModel: ObservableObject {
                         if #available(iOS 16.1, *) {
                             ReelProcessingActivityManager.removeFromAppGroupPendingSubmissions(submissionId: submissionId)
                             Task { @MainActor in
+                                // Duplicate resolved instantly — dismiss immediately.
                                 await ReelProcessingActivityManager.shared.endActivity(
-                                    submissionId: submissionId, dismissalPolicy: .default
+                                    submissionId: submissionId, dismissalPolicy: .immediate
                                 )
                             }
                             currentSubmissionId = nil
                         }
                         let navItem = data.toFactCheckItem(originalLink: link)
-                        Task { @MainActor in
-                            try? await Task.sleep(nanoseconds: 200_000_000) // 0.2 s
-                            self.navigateToFactCheckItem = navItem
-                        }
+                        NotificationCenter.default.post(
+                            name: NSNotification.Name("ShowFactCheckDetail"),
+                            object: nil,
+                            userInfo: ["factCheckItem": navItem]
+                        )
+                        Task { await SharedReelManager.shared.syncHistoryFromBackend() }
                         return
                     }
                     // ── Tier 3: fall through to poll ─────────────────────────────────────
@@ -596,17 +608,21 @@ class HomeViewModel: ObservableObject {
     // MARK: - Helper Methods
 
     /// Returns true when two social-media URLs refer to the same piece of content,
-    /// ignoring tracking query parameters (igsh, igshid, fbclid, etc.) and trailing slashes.
-    /// This prevents false "no match" results when the same reel is submitted multiple times
-    /// with slightly different share URLs.
+    /// ignoring tracking query parameters (igsh, igshid, is_from_webapp, etc.),
+    /// `www.` prefixes (www.tiktok.com == tiktok.com), and trailing slashes.
     private func urlsMatch(_ a: String, _ b: String) -> Bool {
         guard a != b else { return true }          // exact match fast-path
         guard let ua = URL(string: a),
               let ub = URL(string: b) else { return false }
+        // Strip www. so www.tiktok.com and tiktok.com resolve to the same host.
+        func normalizedHost(_ u: URL) -> String {
+            let h = (u.host ?? "").lowercased()
+            return h.hasPrefix("www.") ? String(h.dropFirst(4)) : h
+        }
         let pathA = ua.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         let pathB = ub.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         return ua.scheme?.lowercased() == ub.scheme?.lowercased() &&
-               ua.host?.lowercased()   == ub.host?.lowercased()   &&
+               normalizedHost(ua)      == normalizedHost(ub)      &&
                pathA                   == pathB
     }
 
