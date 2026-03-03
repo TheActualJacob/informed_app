@@ -144,9 +144,7 @@ struct informedApp: App {
         }
         let trackedKeys = ReelProcessingActivityManager.shared.currentActivities.keys.map { $0.prefix(8) }
         print("🔬 [GHOST_DIAG]   currentActivities keys: \(trackedKeys)")
-        let terminalReels = reelManager.reels.filter { $0.status == .completed || $0.status == .failed }
         let pendingReels  = reelManager.reels.filter { $0.status == .pending   || $0.status == .processing }
-        print("🔬 [GHOST_DIAG]   Terminal reels: \(terminalReels.map { $0.id.prefix(8) })")
         print("🔬 [GHOST_DIAG]   Pending/processing reels: \(pendingReels.map { $0.id.prefix(8) })")
 
         // ── FIX: also read the App Group's pending_submissions so that in-flight
@@ -168,23 +166,7 @@ struct informedApp: App {
         }()
         print("🔬 [GHOST_DIAG]   App Group in-flight IDs: \(appGroupPendingIds.map { $0.prefix(8) })")
 
-        // 1. End activities whose matching reel is already in a terminal state.
-        //    Use .default so the Lock Screen card lingers for up to 4 hours — the
-        //    user can glance at the result even after leaving the app.
-        let terminalIds = terminalReels.map { $0.id }
-        for submissionId in terminalIds {
-            // Don't end if it's also listed as in-flight in the App Group — that would
-            // mean it was completed locally from a prior sync but a new submission with
-            // the same UUID is now in flight (extremely unlikely, but safe to guard).
-            if appGroupPendingIds.contains(submissionId) { continue }
-            print("🔬 [GHOST_DIAG]   Ending terminal reel activity sid=\(submissionId.prefix(8))")
-            await ReelProcessingActivityManager.shared.endActivity(
-                submissionId: submissionId,
-                dismissalPolicy: .default
-            )
-        }
-
-        // 2. End system activities that are already in an ended/dismissed state.
+        // 1. End system activities that are already in an ended/dismissed state.
         //    These are truly dead — clean them up immediately.
         for activity in Activity<ReelProcessingActivityAttributes>.activities {
             if activity.activityState == .ended || activity.activityState == .dismissed {
@@ -196,14 +178,25 @@ struct informedApp: App {
             }
         }
 
-        // 3. Orphan sweep: end any *active* system activity whose submissionId has no
-        //    matching pending/processing reel AND is not in the App Group's pending list.
+        // 2. Orphan sweep: end any *active* system activity that is stuck IN-PROGRESS
+        //    (not yet showing a completed/failed result) with no matching pending reel.
+        //
+        //    Completed/failed activities are intentionally LEFT ALIVE here — the user
+        //    should see "Tap to view results" on the Dynamic Island until they open the
+        //    app and navigate to My Reels.  ContentView and SharedReelsView dismiss them
+        //    with .immediate once the user has actually seen their results.
         let activeProcessingIds = Set(pendingReels.map { $0.id }).union(appGroupPendingIds)
         for activity in Activity<ReelProcessingActivityAttributes>.activities
         where activity.activityState == .active {
             let sid = activity.attributes.submissionId
+            let activityStatus = activity.content.state.status
+            // Skip completed/failed states — these are valid result notifications.
+            if activityStatus == .completed || activityStatus == .failed {
+                print("🔬 [GHOST_DIAG]   ✅ Keeping completed/failed activity sid=\(sid.prefix(8)) — user hasn't seen result yet")
+                continue
+            }
             if !activeProcessingIds.contains(sid) {
-                print("🔬 [GHOST_DIAG]   🧹 Orphan sweep: ending ghost sid=\(sid.prefix(8)) progress=\(Int(activity.content.state.progress*100))%")
+                print("🔬 [GHOST_DIAG]   🧹 Orphan sweep: ending ghost in-progress sid=\(sid.prefix(8)) progress=\(Int(activity.content.state.progress*100))%")
                 await ReelProcessingActivityManager.shared.endActivity(
                     submissionId: sid,
                     dismissalPolicy: .immediate
