@@ -49,7 +49,7 @@ final class SubscriptionManager: ObservableObject {
     static let entitlementID    = "pro"
 
     // RevenueCat public API key
-    static let revenueCatAPIKey = "test_PwntiSghuGhWdNjbQkjbtHCGbTn"
+    static let revenueCatAPIKey = "appl_MzFXoJPTkITfCZLOmoXrJAPMeNp"
 
     // MARK: - Published state
 
