@@ -573,16 +573,31 @@ class ReelProcessingActivityManager: ObservableObject {
     func completeActivity(submissionId: String, title: String, verdict: String) async {
         // Prefer the tracked instance; fall back to a system-level lookup so we
         // don't silently bail when a race caused the activity to be missed.
-        let activity: Activity<ReelProcessingActivityAttributes>?
+        var activity: Activity<ReelProcessingActivityAttributes>?
         if let tracked = currentActivities[submissionId] {
-            activity = tracked
-        } else {
-            activity = Activity<ReelProcessingActivityAttributes>.activities.first {
+            // Guard against stale references: push-to-start activities created by
+            // the OS in the background may have already been ended by the time
+            // the main app foregrounds. If the tracked object's activityState is
+            // .ended or .dismissed, clear it so we fall through to
+            // startActivityInCompletedState and show the 'Tap to view' island.
+            if tracked.activityState == .ended || tracked.activityState == .dismissed {
+                print("⚠️ [ActivityManager] completeActivity: tracked activity for \(submissionId.prefix(8)) is stale (state=\(tracked.activityState)) — clearing and recreating")
+                currentActivities.removeValue(forKey: submissionId)
+                activity = nil
+            } else {
+                activity = tracked
+            }
+        }
+
+        if activity == nil {
+            // Try system-level lookup for activities we don't have a live reference for.
+            let found = Activity<ReelProcessingActivityAttributes>.activities.first {
                 $0.attributes.submissionId == submissionId
             }
-            if let a = activity {
+            if let a = found {
                 print("⚠️ [ActivityManager] completeActivity: found untracked system activity for \(submissionId) — using it")
                 currentActivities[submissionId] = a
+                activity = a
             }
         }
         

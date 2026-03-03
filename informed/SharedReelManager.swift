@@ -1355,10 +1355,24 @@ class SharedReelManager: ObservableObject {
                 // written the new reel to user_history (race condition after Share Extension
                 // or fast polling completion). Without this merge step, the reel count
                 // drops from N+1 → N on every sync until the backend catches up.
+                //
+                // IMPORTANT: also dedup by URL path (ignoring ?igsh= query params) so
+                // a local reel whose submissionId ≠ backend unique_id doesn't show up
+                // as a second identical card alongside the backend copy.
+                let completedRemoteURLPaths: Set<String> = Set(
+                    syncedReels.filter { $0.status == .completed }.compactMap {
+                        URL(string: $0.url)?.path
+                            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+                    }
+                )
                 let localCompletedNotYetSynced = reels.filter { reel in
-                    reel.status == .completed &&
-                    !remoteIds.contains(reel.id) &&
-                    reel.submittedAt > cutoff
+                    guard reel.status == .completed,
+                          !remoteIds.contains(reel.id),
+                          reel.submittedAt > cutoff else { return false }
+                    // Drop if the backend already has a completed reel for the same URL path
+                    let localPath = URL(string: reel.url)?.path
+                        .trimmingCharacters(in: CharacterSet(charactersIn: "/")) ?? reel.url
+                    return !completedRemoteURLPaths.contains(localPath)
                 }
 
                 reels = uniqueLocalReels + localCompletedNotYetSynced + syncedReels
