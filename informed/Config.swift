@@ -9,6 +9,10 @@ struct Config {
     /// Change this value when your backend server IP/port changes
     static let backendURL = "https://informed-production.up.railway.app"
     
+    /// The base URL used for shareable web preview links
+    /// Uses the custom Cloudflare domain so shared links look clean
+    static let shareBaseURL = "https://informed-app.com"
+    
     // MARK: - App Group
     
     /// Shared container identifier for sharing data between app and extensions
@@ -67,11 +71,12 @@ struct Config {
 
         // Shareable web preview — append a reelID to build the full URL
         // e.g. Config.Endpoints.shareBase + "abc-123-uuid"
-        static let shareBase = Config.endpoint("/share/")
+        static let shareBase = "\(Config.shareBaseURL)/share/"
 
         // Account management
         static let deleteAccount = Config.endpoint("/api/delete-account")
         static let reportContent = Config.endpoint("/api/report-content")
+        static let blockUser = Config.endpoint("/api/block-user")
 
         // Social auth
         static let authApple = Config.endpoint("/auth/apple")

@@ -15,6 +15,7 @@ class FeedViewModel: ObservableObject {
    @Published var isLoading: Bool = false
    @Published var isLoadingMore: Bool = false
    @Published var errorMessage: String?
+   @Published var blockedUserIds: Set<String> = []
    
    // Pagination
    @Published var currentPage: Int = 1
@@ -33,6 +34,8 @@ class FeedViewModel: ObservableObject {
            publicReels = cache.publicReels
            hasMore     = true  // allow pull-to-refresh even with cached data
        }
+       // Load persisted blocked users so the feed is filtered immediately.
+       loadBlockedUsers()
        // The actual network load is triggered by the app-level TaskGroup in
        // informedApp.task, so we don't kick it off here.
    }
@@ -75,8 +78,10 @@ class FeedViewModel: ObservableObject {
        
        do {
            let response = try await fetchPublicFeed(page: 1, limit: pageSize)
+           let filtered = blockedUserIds.isEmpty ? response.reels
+               : response.reels.filter { !blockedUserIds.contains($0.uploadedBy.id) }
            withAnimation(.easeInOut(duration: 0.25)) {
-               publicReels = response.reels
+               publicReels = filtered
                currentPage = response.pagination.currentPage
                hasMore     = response.pagination.hasMore
                totalCount  = response.pagination.totalCount
@@ -120,8 +125,10 @@ class FeedViewModel: ObservableObject {
            let nextPage = currentPage + 1
            let response = try await fetchPublicFeed(page: nextPage, limit: pageSize)
            
-           // Append new reels
-           publicReels.append(contentsOf: response.reels)
+           // Append new reels, excluding any blocked users
+           let filtered = blockedUserIds.isEmpty ? response.reels
+               : response.reels.filter { !blockedUserIds.contains($0.uploadedBy.id) }
+           publicReels.append(contentsOf: filtered)
            currentPage = response.pagination.currentPage
            hasMore = response.pagination.hasMore
            nextCursor = response.pagination.nextCursor
@@ -191,5 +198,35 @@ class FeedViewModel: ObservableObject {
            userId: userId, sessionId: sessionId,
            factCheckId: factCheckId, interactionType: interactionType
        )
+   }
+
+   // MARK: - Block User
+
+   func blockUser(blockedUserId: String, blockedUsername: String) async {
+       // Immediately remove from feed & persist locally for instant feedback
+       blockedUserIds.insert(blockedUserId)
+       publicReels.removeAll { $0.uploadedBy.id == blockedUserId }
+       persistBlockedUsers()
+
+       // Fire-and-forget sync to backend
+       guard let userId = UserManager.shared.currentUserId,
+             let sessionId = UserManager.shared.currentSessionId else { return }
+       do {
+           try await NetworkService.shared.blockUser(
+               userId: userId, sessionId: sessionId, blockedUserId: blockedUserId
+           )
+           print("🚫 Blocked user: \(blockedUsername)")
+       } catch {
+           print("⚠️ Block failed to sync to backend: \(error)")
+       }
+   }
+
+   private func loadBlockedUsers() {
+       let saved = UserDefaults.standard.stringArray(forKey: "informed_blocked_user_ids") ?? []
+       blockedUserIds = Set(saved)
+   }
+
+   private func persistBlockedUsers() {
+       UserDefaults.standard.set(Array(blockedUserIds), forKey: "informed_blocked_user_ids")
    }
 }

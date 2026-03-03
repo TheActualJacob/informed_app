@@ -21,20 +21,6 @@ struct HomeView: View {
             ZStack(alignment: .bottom) {
                 Color.backgroundLight.ignoresSafeArea()
 
-                // Hidden programmatic navigation link for already-completed duplicates
-                NavigationLink(
-                    destination: Group {
-                        if let item = viewModel.navigateToFactCheckItem {
-                            FactDetailView(item: item)
-                        }
-                    },
-                    isActive: Binding(
-                        get: { viewModel.navigateToFactCheckItem != nil },
-                        set: { if !$0 { viewModel.navigateToFactCheckItem = nil } }
-                    )
-                ) { EmptyView() }
-                    .hidden()
-
                 VStack(spacing: 0) {
                     // ── Header ───────────────────────────────────────────────
                     VStack(spacing: 0) {

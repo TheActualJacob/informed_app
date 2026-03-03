@@ -320,6 +320,7 @@ struct PublicReelDetailView: View {
     @State private var showReportSheet = false
     @State private var reportSubmitted = false
     @State private var reportError: String?
+    @State private var blockSuccessMessage: String?
     
     var body: some View {
         ScrollView {
@@ -469,19 +470,22 @@ struct PublicReelDetailView: View {
             }
         }
         .toolbarBackground(.hidden, for: .navigationBar)
-        .confirmationDialog("Report Content", isPresented: $showReportSheet, titleVisibility: .visible) {
-            Button("Inappropriate or harmful") {
+        .confirmationDialog("Content Actions", isPresented: $showReportSheet, titleVisibility: .visible) {
+            Button("Block @\(reel.uploadedBy.username)", role: .destructive) {
+                blockUserAction()
+            }
+            Button("Report: Inappropriate or harmful") {
                 submitReport(reason: "inappropriate")
             }
-            Button("Misinformation") {
+            Button("Report: Misinformation") {
                 submitReport(reason: "misinformation")
             }
-            Button("Spam") {
+            Button("Report: Spam") {
                 submitReport(reason: "spam")
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Why are you reporting this content?")
+            Text("What would you like to do with this content?")
         }
         .alert(reportSubmitted ? "Report Submitted" : "Report Failed",
                isPresented: Binding(
@@ -498,6 +502,26 @@ struct PublicReelDetailView: View {
             } else if let error = reportError {
                 Text(error)
             }
+        }
+    }
+
+        .alert("User Blocked", isPresented: Binding(
+            get: { blockSuccessMessage != nil },
+            set: { if !$0 { blockSuccessMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) { blockSuccessMessage = nil }
+        } message: {
+            if let msg = blockSuccessMessage { Text(msg) }
+        }
+    }
+
+    private func blockUserAction() {
+        Task {
+            await viewModel?.blockUser(
+                blockedUserId: reel.uploadedBy.id,
+                blockedUsername: reel.uploadedBy.username
+            )
+            blockSuccessMessage = "@\(reel.uploadedBy.username) has been blocked. Their content will no longer appear in your feed."
         }
     }
 
