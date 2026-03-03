@@ -520,8 +520,8 @@ class HomeViewModel: ObservableObject {
                     await ReelProcessingActivityManager.shared.completeActivity(
                         submissionId: sid, title: factCheckData.title ?? "", verdict: primaryClaim.verdict
                     )
-                    try? await Task.sleep(nanoseconds: 3_000_000_000)
-                    await ReelProcessingActivityManager.shared.endActivity(submissionId: sid, dismissalPolicy: .default)
+                    // Do NOT call endActivity here — the island stays visible ("Tap to view results")
+                    // until the user opens FactDetailView, which dismisses it via .onAppear.
                 }
             } else {
                 currentSubmissionId = nil

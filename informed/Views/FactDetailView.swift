@@ -7,6 +7,7 @@
 
 import SwiftUI
 import SafariServices
+import ActivityKit
 
 struct FactDetailView: View {
     let item: FactCheckItem
@@ -159,6 +160,24 @@ struct FactDetailView: View {
                     }
                 }
         )
+        .onAppear {
+            // Dismiss any completed Live Activities now that the user is
+            // actually viewing their result. This is the only correct place
+            // to dismiss — earlier hooks (tab switch, My Reels onAppear) all
+            // fire before the user has seen anything.
+            if #available(iOS 16.1, *) {
+                Task {
+                    for activity in Activity<ReelProcessingActivityAttributes>.activities
+                    where activity.content.state.status == .completed
+                       || activity.content.state.status == .failed {
+                        await activity.end(
+                            ActivityContent(state: activity.content.state, staleDate: nil),
+                            dismissalPolicy: .immediate
+                        )
+                    }
+                }
+            }
+        }
     }
 
     // MARK: - Swipe Hint Banner

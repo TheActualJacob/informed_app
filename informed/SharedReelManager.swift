@@ -724,11 +724,37 @@ class SharedReelManager: ObservableObject {
                             title: statusResponse.title ?? "Fact-Check Complete",
                             verdict: "Tap to view results"
                         )
-                        // Sync App Group in case the Share Extension also wrote completed data.
-                        syncCompletedFactChecksFromAppGroup()
-                        // Background sync so My Reels tab shows the new reel — but don't
-                        // gate navigation on it; embedded data in the status response is
-                        // sufficient to navigate immediately.
+
+                        // Eagerly update the SharedReel with full fact-check data from the
+                        // status response so My Reels shows the result card immediately,
+                        // without waiting for syncHistoryFromBackend to return.
+                        let eagerClaims = (statusResponse.claims ?? []).map { $0.toClaimEntry() }
+                        if !eagerClaims.isEmpty {
+                            let eagerData = StoredFactCheckData(
+                                title: statusResponse.title ?? "",
+                                summary: eagerClaims[0].summary,
+                                thumbnailURL: statusResponse.thumbnailUrl,
+                                claims: eagerClaims,
+                                datePosted: nil,
+                                platform: statusResponse.platform,
+                                aiGenerated: statusResponse.aiGenerated,
+                                aiProbability: statusResponse.aiProbability
+                            )
+                            await MainActor.run {
+                                self.updateReelStatus(
+                                    id: submissionId, status: .completed,
+                                    resultId: statusResponse.title,
+                                    factCheckData: eagerData
+                                )
+                            }
+                        }
+
+                        // Note: syncCompletedFactChecksFromAppGroup is intentionally NOT called
+                        // here. The Darwin factCheckComplete notification fires the moment the
+                        // Share Extension writes to the App Group, and that handler calls
+                        // syncCompletedFactChecksFromAppGroup (with its own completeActivity).
+                        // Calling it again from the polling path produces a double buzz.
+                        // The background sync below keeps My Reels up to date instead.
                         Task { await self.syncHistoryFromBackend() }
 
                         // ── Navigate using embedded data (no local-cache dependency) ─────

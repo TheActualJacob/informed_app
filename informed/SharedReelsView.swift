@@ -88,13 +88,8 @@ struct SharedReelsView: View {
                     await reelManager.syncHistoryFromBackend()
                 }
 
-                // Dismiss any completed Live Activities since user is now viewing the results
-                if #available(iOS 16.1, *) {
-                    Task {
-                        print("🎬 User opened My Reels tab - dismissing completed Live Activities")
-                        await dismissCompletedActivities()
-                    }
-                }
+                // Live Activity dismissal happens in FactDetailView.onAppear
+                // (the only point where the user has actually seen their result).
             }
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -152,19 +147,6 @@ struct SharedReelsView: View {
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .abbreviated
         return formatter.localizedString(for: date, relativeTo: Date())
-    }
-    
-    @available(iOS 16.1, *)
-    private func dismissCompletedActivities() async {
-        let terminalIds = reelManager.reels
-            .filter { $0.status == .completed || $0.status == .failed }
-            .map { $0.id }
-        for submissionId in terminalIds {
-            await ReelProcessingActivityManager.shared.endActivity(
-                submissionId: submissionId,
-                dismissalPolicy: .immediate
-            )
-        }
     }
 }
 

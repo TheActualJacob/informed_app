@@ -503,8 +503,6 @@ struct PublicReelDetailView: View {
                 Text(error)
             }
         }
-    }
-
         .alert("User Blocked", isPresented: Binding(
             get: { blockSuccessMessage != nil },
             set: { if !$0 { blockSuccessMessage = nil } }

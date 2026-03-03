@@ -612,14 +612,24 @@ class ReelProcessingActivityManager: ObservableObject {
             thumbnailURL: activity.content.state.thumbnailURL,
             estimatedSecondsRemaining: 0
         )
-        
+
+        // Guard: if the activity is already in completed state (e.g. the Darwin
+        // notification handler already called completeActivity moments ago), skip
+        // the AlertConfiguration so we don't fire a second buzz.
+        if activity.content.state.status == .completed {
+            print("ℹ️ [ActivityManager] completeActivity: already completed for \(submissionId.prefix(8)) — skipping alert")
+            // Still update content in case title/verdict differs, but no alert.
+            await activity.update(ActivityContent(state: completedState, staleDate: nil))
+            return
+        }
+
         // AlertConfiguration triggers the Dynamic Island to auto-expand
         let alertConfig = AlertConfiguration(
             title: "Fact-check complete!",
             body: LocalizedStringResource(stringLiteral: "\(title) — \(verdict)"),
             sound: .default
         )
-        
+
         await activity.update(
             ActivityContent(state: completedState, staleDate: nil),
             alertConfiguration: alertConfig

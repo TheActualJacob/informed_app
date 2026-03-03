@@ -48,12 +48,6 @@ struct ContentView: View {
         .accentColor(.brandBlue)
         .onChange(of: selectedTab) { oldValue, newValue in
             if newValue == 2 {
-                if #available(iOS 16.1, *) {
-                    Task {
-                        print("🎬 User switched to My Reels tab - dismissing completed activities")
-                        await dismissCompletedActivitiesForMyReels()
-                    }
-                }
                 // Sync so newly completed reels appear immediately on tab switch
                 Task {
                     await SharedReelManager.shared.syncHistoryFromBackend()
@@ -93,18 +87,6 @@ struct ContentView: View {
         }
     }
 
-    @available(iOS 16.1, *)
-    private func dismissCompletedActivitiesForMyReels() async {
-        let terminalIds = SharedReelManager.shared.reels
-            .filter { $0.status == .completed || $0.status == .failed }
-            .map { $0.id }
-        for submissionId in terminalIds {
-            await ReelProcessingActivityManager.shared.endActivity(
-                submissionId: submissionId,
-                dismissalPolicy: .immediate
-            )
-        }
-    }
 }
 
 // MARK: - Preview
