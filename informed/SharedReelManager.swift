@@ -10,6 +10,24 @@ import SwiftUI
 import Combine
 import ActivityKit
 
+// MARK: - StatusClaimEntry → ClaimEntry bridge
+// StatusClaimEntry is defined in ReelProcessingActivity.swift (compiled into ALL
+// targets). ClaimEntry lives only in the main-app target, so the conversion
+// extension must live here rather than in the shared file.
+extension StatusClaimEntry {
+    func toClaimEntry() -> ClaimEntry {
+        ClaimEntry(
+            claim: claim,
+            verdict: verdict,
+            claimAccuracyRating: claimAccuracyRating,
+            explanation: explanation,
+            summary: summary,
+            sources: sources,
+            category: category
+        )
+    }
+}
+
 enum FactCheckStatus: String, Codable {
     case pending = "Pending"
     case processing = "Processing"
@@ -729,7 +747,7 @@ class SharedReelManager: ObservableObject {
                             let navURL = submissionURL ?? ""
 
                             // ── Tier 1: embedded claims from status response ─────────────
-                            let embeddedClaims = statusResponse.claims ?? []
+                            let embeddedClaims = (statusResponse.claims ?? []).map { $0.toClaimEntry() }
                             if !embeddedClaims.isEmpty {
                                 print("♻️ [Polling] Navigating from embedded status-response data")
                                 let stored = StoredFactCheckData(

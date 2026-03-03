@@ -29,7 +29,7 @@ struct SubmissionStatusResponse: Codable {
     let platform: String?
     let aiGenerated: String?
     let aiProbability: Double?
-    let claims: [ClaimEntry]?
+    let claims: [StatusClaimEntry]?
 
     enum CodingKeys: String, CodingKey {
         case submissionId              = "submission_id"
@@ -47,7 +47,7 @@ struct SubmissionStatusResponse: Codable {
         case aiProbability
         case claims
     }
-    
+
     /// Converts backend status string to ProcessingStatus enum
     func toProcessingStatus() -> ProcessingStatus {
         switch status.lowercased() {
@@ -69,10 +69,55 @@ struct SubmissionStatusResponse: Codable {
             return .processing
         }
     }
-    
+
     /// Returns progress as 0.0 to 1.0
     var normalizedProgress: Double {
         return Double(progressPercentage) / 100.0
+    }
+}
+
+/// Lightweight claim struct for decoding the embedded claims inside
+/// `SubmissionStatusResponse`. Lives in a file compiled into ALL targets
+/// (main app + widget/Live Activity extensions).
+/// The main-app-only `SharedReelManager` converts these to `ClaimEntry`.
+struct StatusClaimEntry: Codable {
+    let claim: String
+    let verdict: String
+    let claimAccuracyRating: String
+    let explanation: String
+    let summary: String
+    let sources: [String]
+    let category: String?
+
+    enum CodingKeys: String, CodingKey {
+        case claim, verdict, explanation, summary, sources, category
+        case claimAccuracyRating
+        case claimAccuracyRatingSnake = "claim_accuracy_rating"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        claim   = try c.decode(String.self, forKey: .claim)
+        verdict = try c.decode(String.self, forKey: .verdict)
+        claimAccuracyRating =
+            (try? c.decodeIfPresent(String.self, forKey: .claimAccuracyRating)) ??
+            (try? c.decodeIfPresent(String.self, forKey: .claimAccuracyRatingSnake)) ??
+            "50%"
+        explanation = (try? c.decodeIfPresent(String.self, forKey: .explanation)) ?? ""
+        summary     = (try? c.decodeIfPresent(String.self, forKey: .summary))     ?? ""
+        sources     = (try? c.decodeIfPresent([String].self, forKey: .sources))   ?? []
+        category    = try? c.decodeIfPresent(String.self, forKey: .category)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(claim,               forKey: .claim)
+        try c.encode(verdict,             forKey: .verdict)
+        try c.encode(claimAccuracyRating, forKey: .claimAccuracyRating)
+        try c.encode(explanation,         forKey: .explanation)
+        try c.encode(summary,             forKey: .summary)
+        try c.encode(sources,             forKey: .sources)
+        try c.encodeIfPresent(category,   forKey: .category)
     }
 }
 
