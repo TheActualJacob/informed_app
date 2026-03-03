@@ -775,6 +775,15 @@ class SharedReelManager: ObservableObject {
 
                             guard self.homeViewModel != nil else { return }
 
+                            // Do NOT navigate while in the background — the island is still
+                            // visible on the lock screen / Dynamic Island and opening
+                            // FactDetailView in background would immediately fire endActivity.
+                            // The user will tap the island or open the app themselves.
+                            guard !ReelProcessingActivityManager.shared.isAppInBackground() else {
+                                print("⏸️ [Polling] App in background — deferring ShowFactCheckDetail navigation until foreground")
+                                return
+                            }
+
                             let navURL = submissionURL ?? ""
 
                             // ── Tier 1: embedded claims from status response ─────────────
