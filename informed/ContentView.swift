@@ -6,6 +6,7 @@ import ActivityKit
 struct ContentView: View {
     @EnvironmentObject var userManager: UserManager
     @EnvironmentObject var reelManager: SharedReelManager
+    @EnvironmentObject var subscriptionManager: SubscriptionManager
     @State private var selectedTab: Int = 0
 
     init() {
@@ -40,12 +41,16 @@ struct ContentView: View {
 
             AccountView()
                 .tabItem {
-                    Image(systemName: "person.circle.fill")
-                    Text("Account")
+                    Image(systemName: subscriptionManager.isPro ? "star.circle.fill" : "person.circle.fill")
+                    Text(subscriptionManager.isPro ? "+Account" : "Account")
                 }
                 .tag(3)
         }
         .accentColor(.brandBlue)
+        .sheet(isPresented: $subscriptionManager.showPaywall) {
+            PaywallView(limitType: subscriptionManager.paywallLimitType)
+                .environmentObject(subscriptionManager)
+        }
         .onChange(of: selectedTab) { oldValue, newValue in
             if newValue == 2 {
                 // Sync so newly completed reels appear immediately on tab switch
@@ -97,5 +102,6 @@ struct ContentView_Previews: PreviewProvider {
             .environmentObject(UserManager())
             .environmentObject(NotificationManager.shared)
             .environmentObject(SharedReelManager.shared)
+            .environmentObject(SubscriptionManager.shared)
     }
 }

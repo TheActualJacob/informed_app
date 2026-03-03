@@ -7,6 +7,7 @@
 
 import SwiftUI
 import ActivityKit
+import RevenueCat
 
 @main
 struct informedApp: App {
@@ -14,6 +15,7 @@ struct informedApp: App {
     @StateObject private var userManager = UserManager.shared
     @StateObject private var notificationManager = NotificationManager.shared
     @StateObject private var reelManager = SharedReelManager.shared
+    @StateObject private var subscriptionManager = SubscriptionManager.shared
 
     // App-level ViewModels — kept alive across tab switches so cached data
     // is always available and never reset when the user navigates away.
@@ -36,6 +38,7 @@ struct informedApp: App {
                     .environmentObject(reelManager)
                     .environmentObject(homeViewModel)
                     .environmentObject(feedViewModel)
+                    .environmentObject(subscriptionManager)
                     .onOpenURL { url in
                         handleIncomingURL(url)
                     }
@@ -98,6 +101,12 @@ struct informedApp: App {
                         }
                     }
                     .task {
+                        // Configure RevenueCat and sync subscription state
+                        subscriptionManager.configure()
+                        if let userId = userManager.currentUserId {
+                            subscriptionManager.identify(userId: userId)
+                        }
+
                         // Request notification permissions on first launch
                         if notificationManager.authorizationStatus == .notDetermined {
                             _ = await notificationManager.requestNotificationPermissions()
@@ -113,6 +122,7 @@ struct informedApp: App {
                         await withTaskGroup(of: Void.self) { group in
                             group.addTask { await homeViewModel.loadInitialData() }
                             group.addTask { await feedViewModel.loadFeedIfNeeded() }
+                            group.addTask { await subscriptionManager.refreshUsage() }
                         }
                     }
                     .alert("Success", isPresented: $showSuccessAlert) {

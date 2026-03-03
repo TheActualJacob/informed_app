@@ -350,6 +350,9 @@ class HomeViewModel: ObservableObject {
                 submissionId: submissionId
             )
 
+            // Refresh usage counter in background so the pill badge updates
+            Task { await SubscriptionManager.shared.refreshUsage() }
+
             if factCheckData.isAsyncSubmission || factCheckData.isAlreadyCompleted {
                 // ── Async 202 flow (processing) OR duplicate-URL fast-complete flow ──
 
@@ -555,6 +558,19 @@ class HomeViewModel: ObservableObject {
                     currentSubmissionId = nil
                 }
                 self.processingLink = nil; self.processingThumbnailURL = nil
+                return
+            }
+            if case .limitReached(let type, _, _) = networkError {
+                // Limit reached — show paywall, silently clean up (no error toast)
+                SharedReelManager.shared.reels.removeAll { $0.id == submissionId }
+                SharedReelManager.shared.saveReels()
+                if #available(iOS 16.1, *) {
+                    ReelProcessingActivityManager.removeFromAppGroupPendingSubmissions(submissionId: submissionId)
+                    Task { @MainActor in await ReelProcessingActivityManager.shared.endActivity(submissionId: submissionId, dismissalPolicy: .immediate) }
+                    currentSubmissionId = nil
+                }
+                self.processingLink = nil; self.processingThumbnailURL = nil
+                await MainActor.run { SubscriptionManager.shared.handleLimitReached(type: type) }
                 return
             }
             let msg = networkError.errorDescription ?? "An error occurred"

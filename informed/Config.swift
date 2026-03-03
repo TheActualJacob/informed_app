@@ -80,5 +80,10 @@ struct Config {
 
         // Social auth
         static let authApple = Config.endpoint("/auth/apple")
+
+        // Subscription & usage
+        static let usageStatus         = Config.endpoint("/api/usage-status")
+        static let subscriptionSync    = Config.endpoint("/api/subscription/sync")
+        static let subscriptionWebhook = Config.endpoint("/api/subscription/webhook")
     }
 }

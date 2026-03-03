@@ -11,6 +11,7 @@ struct HomeView: View {
     @EnvironmentObject var viewModel: HomeViewModel
     @EnvironmentObject var userManager: UserManager
     @EnvironmentObject var reelManager: SharedReelManager
+    @EnvironmentObject var subscriptionManager: SubscriptionManager
     @FocusState private var isSearchFocused: Bool
 
     // Namespace for scroll-to-top
@@ -58,7 +59,7 @@ struct HomeView: View {
                                 }
                             } else {
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text("informed")
+                                    Text(subscriptionManager.isPro ? "+informed" : "informed")
                                         .font(.system(size: 28, weight: .black))
                                         .foregroundStyle(
                                             LinearGradient(
@@ -75,6 +76,8 @@ struct HomeView: View {
                                     }
                                 }
                                 Spacer()
+                                UsageCounterView()
+                                    .environmentObject(subscriptionManager)
                             }
                         }
                         .padding(.horizontal)

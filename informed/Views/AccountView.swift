@@ -11,6 +11,7 @@ struct AccountView: View {
     @EnvironmentObject var userManager: UserManager
     @EnvironmentObject var notificationManager: NotificationManager
     @EnvironmentObject var reelManager: SharedReelManager
+    @EnvironmentObject var subscriptionManager: SubscriptionManager
     @StateObject private var viewModel = AccountViewModel()
     @State private var showLogoutConfirmation = false
     @State private var showDeleteAccountConfirmation = false
@@ -54,6 +55,26 @@ struct AccountView: View {
                                 .background(Color.secondary.opacity(0.1))
                                 .cornerRadius(Theme.CornerRadius.sm)
                         }
+
+                        // Pro badge
+                        if subscriptionManager.isPro {
+                            HStack(spacing: 5) {
+                                Text("✦")
+                                    .font(.caption.weight(.bold))
+                                Text("+informed Pro")
+                                    .font(.caption.weight(.bold))
+                            }
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 5)
+                            .background(
+                                LinearGradient(
+                                    colors: [Color.brandBlue, Color.brandTeal],
+                                    startPoint: .leading, endPoint: .trailing
+                                )
+                            )
+                            .cornerRadius(20)
+                        }
                     }
                     .padding(.top, Theme.Spacing.xl)
                     
@@ -84,8 +105,50 @@ struct AccountView: View {
                         .redacted(reason: viewModel.isLoading ? .placeholder : [])
                     }
                     .padding(.horizontal)
-                    
-                    // Main Menu Section
+
+                    // Upgrade banner for free users
+                    if !subscriptionManager.isPro {
+                        NavigationLink(destination: SubscriptionView().environmentObject(subscriptionManager)) {
+                            HStack(spacing: 12) {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    HStack(spacing: 4) {
+                                        Text("✦")
+                                            .font(.subheadline.weight(.bold))
+                                        Text("+informed Pro")
+                                            .font(.subheadline.weight(.bold))
+                                    }
+                                    .foregroundStyle(
+                                        LinearGradient(
+                                            colors: [Color.brandBlue, Color.brandTeal],
+                                            startPoint: .leading, endPoint: .trailing
+                                        )
+                                    )
+                                    Text("\(subscriptionManager.usage.dailyRemaining) checks left today · Upgrade for 15/day")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding()
+                            .background(Color.cardBackground)
+                            .cornerRadius(Theme.CornerRadius.md)
+                            .shadow(color: .black.opacity(0.05), radius: 4, y: 2)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: Theme.CornerRadius.md)
+                                    .stroke(
+                                        LinearGradient(
+                                            colors: [Color.brandBlue.opacity(0.4), Color.brandTeal.opacity(0.4)],
+                                            startPoint: .leading, endPoint: .trailing
+                                        ),
+                                        lineWidth: 1
+                                    )
+                            )
+                        }
+                        .padding(.horizontal)
+                    }
                     VStack(spacing: 0) {
                         // History
                         NavigationLink(destination: HistoryView()) {
@@ -95,7 +158,20 @@ struct AccountView: View {
                                 color: .brandBlue
                             )
                         }
-                        
+
+                        Divider().padding(.leading, 60)
+
+                        // Subscription
+                        NavigationLink(destination: SubscriptionView().environmentObject(subscriptionManager)) {
+                            MenuRow(
+                                icon: subscriptionManager.isPro ? "star.circle.fill" : "star.circle",
+                                title: subscriptionManager.isPro ? "+informed Pro" : "Upgrade to Pro",
+                                color: subscriptionManager.isPro
+                                    ? Color(red: 1.0, green: 0.78, blue: 0.25)
+                                    : .brandBlue
+                            )
+                        }
+
                         Divider().padding(.leading, 60)
                         
                         // How to Use
@@ -226,6 +302,7 @@ struct AccountView: View {
             .confirmationDialog("Sign Out", isPresented: $showLogoutConfirmation, titleVisibility: .visible) {
                 Button("Sign Out", role: .destructive) {
                     HapticManager.success()
+                    subscriptionManager.logout()
                     userManager.logout()
                 }
                 Button("Cancel", role: .cancel) {}

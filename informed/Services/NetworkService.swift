@@ -19,6 +19,7 @@ enum NetworkError: LocalizedError {
     case cannotConnectToHost
     case decodingError(String)
     case requestCancelled
+    case limitReached(type: String, limit: Int, tier: String)
     case unknown(Error)
     
     var errorDescription: String? {
@@ -41,6 +42,9 @@ enum NetworkError: LocalizedError {
             return "Failed to decode response: \(message)"
         case .requestCancelled:
             return nil
+        case .limitReached(let type, let limit, _):
+            let period = type == "weekly" ? "this week" : "today"
+            return "You've reached your \(limit) fact-check limit \(period). Upgrade to +informed Pro for more."
         case .unknown(let error):
             return "An error occurred: \(error.localizedDescription)"
         }
@@ -88,6 +92,18 @@ class NetworkService {
 
             guard let httpResponse = response as? HTTPURLResponse else {
                 throw NetworkError.unknown(URLError(.badServerResponse))
+            }
+
+            // Check for limit-reached (429) before anything else
+            if httpResponse.statusCode == 429 {
+                if let limitBody = try? JSONDecoder().decode(LimitReachedResponse.self, from: data) {
+                    throw NetworkError.limitReached(
+                        type:  limitBody.type  ?? "daily",
+                        limit: limitBody.limit ?? 5,
+                        tier:  limitBody.tier  ?? "free"
+                    )
+                }
+                throw NetworkError.limitReached(type: "daily", limit: 5, tier: "free")
             }
 
             // Check for API-level error response first (error field present)

@@ -85,6 +85,14 @@ struct FactCheckErrorResponse: Codable {
     }
 }
 
+struct LimitReachedResponse: Codable {
+    let error: String?
+    let type: String?
+    let limit: Int?
+    let used: Int?
+    let tier: String?
+}
+
 enum FactCheckError: LocalizedError {
     case apiError(String, String?)
     var errorDescription: String? {
