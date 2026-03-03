@@ -7,6 +7,7 @@ class UserManager: ObservableObject {
     static let shared = UserManager()
     
     @Published var isAuthenticated: Bool = false
+    @Published var isNewUser: Bool = false
     @Published var currentUserId: String?
     @Published var currentUsername: String?
     @Published var currentSessionId: String?
@@ -60,6 +61,12 @@ class UserManager: ObservableObject {
         self.currentSessionId = sessionId
         self.isAuthenticated = true
 
+        // Show onboarding only the very first time this user signs up
+        let seenKey = "hasSeenWelcome_\(userId)"
+        if !UserDefaults.standard.bool(forKey: seenKey) {
+            self.isNewUser = true
+        }
+
         print("✅ User saved: \(username) (ID: \(userId), Session: \(sessionId))")
 
         // Always reload reels immediately when the active user changes so that
@@ -72,6 +79,14 @@ class UserManager: ObservableObject {
         }
     }
     
+    /// Call once the welcome/onboarding screen is dismissed so it never shows again.
+    func markWelcomeSeen() {
+        if let userId = currentUserId {
+            UserDefaults.standard.set(true, forKey: "hasSeenWelcome_\(userId)")
+        }
+        isNewUser = false
+    }
+
     func deleteAccount() async throws {
         guard let userId = currentUserId, let sessionId = currentSessionId else {
             throw NetworkError.unauthorized

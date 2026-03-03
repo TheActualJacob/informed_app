@@ -39,6 +39,12 @@ struct informedApp: App {
                     .environmentObject(homeViewModel)
                     .environmentObject(feedViewModel)
                     .environmentObject(subscriptionManager)
+                    .fullScreenCover(isPresented: $userManager.isNewUser) {
+                        WelcomeView {
+                            userManager.markWelcomeSeen()
+                        }
+                        .environmentObject(subscriptionManager)
+                    }
                     .onOpenURL { url in
                         handleIncomingURL(url)
                     }
