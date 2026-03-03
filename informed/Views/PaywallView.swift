@@ -216,7 +216,9 @@ private struct PurchaseButton: View {
     let action: () -> Void
 
     private var isAnnual: Bool {
-        package.storeProduct.productIdentifier.contains("annual")
+        package.packageType == .annual
+            || package.storeProduct.productIdentifier.contains("annual")
+            || package.storeProduct.subscriptionPeriod?.unit == .year
     }
 
     private var priceLabel: String {
