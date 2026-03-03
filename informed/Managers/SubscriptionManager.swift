@@ -47,8 +47,8 @@ final class SubscriptionManager: ObservableObject {
     static let annualProductID  = "informed_pro_annual"
     static let entitlementID    = "pro"
 
-    // RevenueCat public API key (replace with your actual key from the RC dashboard)
-    static let revenueCatAPIKey = "YOUR_REVENUECAT_PUBLIC_KEY"
+    // RevenueCat public API key
+    static let revenueCatAPIKey = "test_PwntiSghuGhWdNjbQkjbtHCGbTn"
 
     // MARK: - Published state
 
