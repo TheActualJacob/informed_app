@@ -693,13 +693,6 @@ struct HowItWorksSheet: View {
             }
             .navigationTitle("How It Works")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Skip") { isPresented = false }
-                        .font(.subheadline.weight(.medium))
-                        .foregroundColor(.secondary)
-                }
-            }
         }
     }
 }
