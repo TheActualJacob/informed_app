@@ -884,11 +884,37 @@ class SharedReelManager: ObservableObject {
                                 let request = FactCheckRequest(link: url, userId: userId, sessionId: sessionId, submissionId: submissionId)
                                 _ = try await sendFactCheck(request)
                                 print("🔄 [ProgressPolling] Main app fallback: sent fact-check for \(submissionId.prefix(8)) (Share Extension request may have been killed)")
-                            } catch {
-                                print("⚠️ [ProgressPolling] Main app fallback failed: \(error.localizedDescription)")
+                            } catch let fallbackError {
+                                let errMsg = fallbackError.localizedDescription
+                                print("⚠️ [ProgressPolling] Main app fallback failed: \(errMsg)")
+                                // If the submission was rejected (daily limit, duplicate, etc.) it
+                                // will NEVER appear in the DB — stop polling and fail immediately.
+                                let isTerminal = errMsg.contains("limit_reached") || errMsg.contains("duplicate")
+                                if isTerminal {
+                                    let userMessage: String
+                                    if errMsg.contains("limit_reached") {
+                                        userMessage = "Daily limit reached"
+                                    } else {
+                                        userMessage = "Already fact-checked"
+                                    }
+                                    await MainActor.run {
+                                        self.updateReelStatus(id: submissionId, status: .failed, errorMessage: userMessage)
+                                        if self.activeProcessingURL == submissionURL { self.activeProcessingURL = nil }
+                                    }
+                                    if #available(iOS 16.1, *) {
+                                        ReelProcessingActivityManager.removeFromAppGroupPendingSubmissions(submissionId: submissionId)
+                                        await ReelProcessingActivityManager.shared.failActivity(
+                                            submissionId: submissionId,
+                                            errorMessage: userMessage
+                                        )
+                                    }
+                                    isCompleted = true
+                                    break
+                                }
                             }
                         }
                     }
+                    if isCompleted { break }
                     try? await Task.sleep(nanoseconds: 5_000_000_000) // 5s back-off on error
                 }
             }
