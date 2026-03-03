@@ -698,19 +698,24 @@ class SharedReelManager: ObservableObject {
                         // Drive the Dynamic Island to its completed state immediately.
                         await ReelProcessingActivityManager.shared.completeActivity(
                             submissionId: submissionId,
-                            title: "Fact-Check Complete",
+                            title: statusResponse.title ?? "Fact-Check Complete",
                             verdict: "Tap to view results"
                         )
                         // Sync App Group in case the Share Extension also wrote completed data.
                         syncCompletedFactChecksFromAppGroup()
-                        // Pull the full result from the backend so My Reels and the feed
-                        // show the actual fact-check data without waiting for the user to
-                        // manually refresh.
-                        await syncHistoryFromBackend()
+                        // Background sync so My Reels tab shows the new reel — but don't
+                        // gate navigation on it; embedded data in the status response is
+                        // sufficient to navigate immediately.
+                        Task { await self.syncHistoryFromBackend() }
 
-                        // Clear the banner and navigate in one atomic update so there is
-                        // no visible gap between the spinner disappearing and the detail
-                        // view appearing.
+                        // ── Navigate using embedded data (no local-cache dependency) ─────
+                        //
+                        // The status response now ships title + claims + thumbnail so we can
+                        // navigate to the detail view directly, even for a fresh user whose
+                        // reels[] array is empty and syncHistoryFromBackend returns nothing.
+                        //
+                        // Fallback: if embedded data is missing (old backend), look up in
+                        // local reels[] using URL path-matching (ignores ?igsh= params).
                         await MainActor.run {
                             // Clear banner (both share-extension and in-app paths).
                             let stillPending = (UserDefaults(suiteName: "group.rob")?
@@ -719,16 +724,33 @@ class SharedReelManager: ObservableObject {
                             self.homeViewModel?.processingLink = nil
                             self.homeViewModel?.processingThumbnailURL = nil
 
-                            // Auto-navigate for in-app submissions (homeViewModel is set).
                             guard self.homeViewModel != nil else { return }
 
-                            // Look up the completed reel using three strategies, in order:
-                            // 1. Exact submission ID match (works for brand-new fact-checks whose
-                            //    backend uniqueID happens to equal submissionId).
-                            // 2. URL path match — ignores query params (?igsh=, ?igshid=, etc.)
-                            //    so duplicate-URL submissions find the original fact_check row
-                            //    even when the stored URL differs only in tracking parameters.
-                            // 3. URL path vs submissionURL (the URL of the in-flight placeholder).
+                            let navURL = submissionURL ?? ""
+
+                            // ── Tier 1: embedded claims from status response ─────────────
+                            let embeddedClaims = statusResponse.claims ?? []
+                            if !embeddedClaims.isEmpty {
+                                print("♻️ [Polling] Navigating from embedded status-response data")
+                                let stored = StoredFactCheckData(
+                                    title: statusResponse.title ?? "",
+                                    summary: embeddedClaims[0].summary,
+                                    thumbnailURL: statusResponse.thumbnailUrl,
+                                    claims: embeddedClaims,
+                                    datePosted: nil,
+                                    platform: statusResponse.platform,
+                                    aiGenerated: statusResponse.aiGenerated,
+                                    aiProbability: statusResponse.aiProbability
+                                )
+                                NotificationCenter.default.post(
+                                    name: NSNotification.Name("ShowFactCheckDetail"),
+                                    object: nil,
+                                    userInfo: ["factCheckItem": stored.toFactCheckItem(originalLink: navURL)]
+                                )
+                                return
+                            }
+
+                            // ── Tier 2: local reels[] lookup ─────────────────────────────
                             func urlPathsMatch(_ a: String, _ b: String) -> Bool {
                                 guard a != b else { return true }
                                 guard let ua = URL(string: a), let ub = URL(string: b) else { return false }
@@ -739,16 +761,18 @@ class SharedReelManager: ObservableObject {
                             let completed = self.reels.first(where: {
                                 $0.id == submissionId && $0.status == .completed && $0.factCheckData != nil
                             }) ?? self.reels.first(where: {
-                                guard let url = submissionURL else { return false }
-                                return urlPathsMatch($0.url, url) && $0.status == .completed && $0.factCheckData != nil
+                                guard !navURL.isEmpty else { return false }
+                                return urlPathsMatch($0.url, navURL) && $0.status == .completed && $0.factCheckData != nil
                             })
-                            guard let reel = completed, let data = reel.factCheckData else { return }
+                            guard let reel = completed, let data = reel.factCheckData else {
+                                print("⚠️ [Polling] No completed reel found for navigation — sync will update My Reels in background")
+                                return
+                            }
                             NotificationCenter.default.post(
-                                name: NSNotification.Name("NavigateToMyReels"),
+                                name: NSNotification.Name("ShowFactCheckDetail"),
                                 object: nil,
-                                userInfo: ["submissionId": reel.id]
+                                userInfo: ["factCheckItem": data.toFactCheckItem(originalLink: reel.url)]
                             )
-                            self.pendingDeepLinkItem = data.toFactCheckItem(originalLink: reel.url)
                         }
 
                         // Leave the Live Activity running in its completed state.

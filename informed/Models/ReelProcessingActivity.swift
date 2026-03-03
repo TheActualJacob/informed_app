@@ -22,6 +22,14 @@ struct SubmissionStatusResponse: Codable {
     let createdAt: String?
     let updatedAt: String?
     let errorMessage: String?
+    // Embedded fact-check data — present when status == "completed".
+    // Allows iOS to navigate directly without needing a separate sync call.
+    let title: String?
+    let thumbnailUrl: String?
+    let platform: String?
+    let aiGenerated: String?
+    let aiProbability: Double?
+    let claims: [ClaimEntry]?
 
     enum CodingKeys: String, CodingKey {
         case submissionId              = "submission_id"
@@ -32,6 +40,12 @@ struct SubmissionStatusResponse: Codable {
         case createdAt                 = "created_at"
         case updatedAt                 = "updated_at"
         case errorMessage              = "error_message"
+        case title
+        case thumbnailUrl              = "thumbnail_url"
+        case platform
+        case aiGenerated
+        case aiProbability
+        case claims
     }
     
     /// Converts backend status string to ProcessingStatus enum
