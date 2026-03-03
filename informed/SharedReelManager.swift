@@ -695,14 +695,19 @@ class SharedReelManager: ObservableObject {
                     // Derive the ProcessingStatus from the backend response
                     let processingStatus = statusResponse.toProcessingStatus()
                     
-                    // Update Live Activity with real backend data including status and time estimate
-                    await ReelProcessingActivityManager.shared.updateProgress(
-                        submissionId: submissionId,
-                        status: processingStatus,
-                        progress: statusResponse.normalizedProgress,
-                        message: statusResponse.currentStage,
-                        estimatedSecondsRemaining: statusResponse.estimatedSecondsRemaining
-                    )
+                    // Update Live Activity with real backend data including status and time estimate.
+                    // Skip this update when the status is "completed" — completeActivity() below
+                    // will set the final state with its own AlertConfiguration.  Calling
+                    // updateProgress here too would trigger a second buzz before completeActivity fires.
+                    if statusResponse.status.lowercased() != "completed" {
+                        await ReelProcessingActivityManager.shared.updateProgress(
+                            submissionId: submissionId,
+                            status: processingStatus,
+                            progress: statusResponse.normalizedProgress,
+                            message: statusResponse.currentStage,
+                            estimatedSecondsRemaining: statusResponse.estimatedSecondsRemaining
+                        )
+                    }
                     
                     // Check if completed or failed
                     if statusResponse.status.lowercased() == "completed" {
@@ -1319,7 +1324,18 @@ class SharedReelManager: ObservableObject {
                     !remoteIds.contains($0.id) && !completedRemoteURLs.contains($0.url)
                 }
 
-                reels = uniqueLocalReels + syncedReels
+                // Also keep local completed reels that aren't in the backend results yet.
+                // This happens when syncHistoryFromBackend runs before the backend has
+                // written the new reel to user_history (race condition after Share Extension
+                // or fast polling completion). Without this merge step, the reel count
+                // drops from N+1 → N on every sync until the backend catches up.
+                let localCompletedNotYetSynced = reels.filter { reel in
+                    reel.status == .completed &&
+                    !remoteIds.contains(reel.id) &&
+                    reel.submittedAt > cutoff
+                }
+
+                reels = uniqueLocalReels + localCompletedNotYetSynced + syncedReels
                 saveReels()
 
                 lastSyncDate = Date()
