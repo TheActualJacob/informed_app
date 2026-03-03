@@ -144,7 +144,7 @@ class NetworkService {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
-        let registration = UserRegistration(username: username, email: email, password: password)
+        let registration = UserRegistration(username: username, email: email, password: password, deviceId: DeviceManager.deviceId)
         request.httpBody = try JSONEncoder().encode(registration)
         
         do {
@@ -170,7 +170,7 @@ class NetworkService {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
-        let login = UserLogin(email: email, password: password)
+        let login = UserLogin(email: email, password: password, deviceId: DeviceManager.deviceId)
         request.httpBody = try JSONEncoder().encode(login)
         
         do {
