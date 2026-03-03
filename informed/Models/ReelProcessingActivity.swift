@@ -628,13 +628,21 @@ class ReelProcessingActivityManager: ObservableObject {
             estimatedSecondsRemaining: 0
         )
 
-        // Guard: if the activity is already in completed state (e.g. the Darwin
-        // notification handler already called completeActivity moments ago), skip
-        // the AlertConfiguration so we don't fire a second buzz.
+        // Guard: if the activity is already in completed state (e.g. the backend APNs
+        // push arrived before our polling loop), skip the AlertConfiguration so we
+        // don't fire a second buzz.
         if activity.content.state.status == .completed {
             print("ℹ️ [ActivityManager] completeActivity: already completed for \(submissionId.prefix(8)) — skipping alert")
             // Still update content in case title/verdict differs, but no alert.
             await activity.update(ActivityContent(state: completedState, staleDate: nil))
+            // Store a backup in pendingCompletedInfo so drainPendingCompletedActivities
+            // can recreate the 'Tap to view results' island on foreground if iOS
+            // auto-dismisses the push-to-start activity while the app is in background.
+            if pendingCompletedInfo[submissionId] == nil {
+                let url = reelURLForSubmissionId(submissionId)
+                pendingCompletedInfo[submissionId] = (title: title, verdict: verdict, url: url)
+                print("💾 [ActivityManager] completeActivity: stored backup pending for \(submissionId.prefix(8)) in case activity is auto-dismissed in background")
+            }
             return
         }
 
@@ -679,6 +687,20 @@ class ReelProcessingActivityManager: ObservableObject {
         submissionId: String, url: String, title: String, verdict: String
     ) async {
         guard !isAppInBackground() else { return }
+
+        // If the APNs completion push kept the push-to-start activity alive until the
+        // user foregrounded the app, re-use that existing activity instead of creating
+        // a duplicate. Just ensure it's tracked in currentActivities.
+        if let existingAlive = Activity<ReelProcessingActivityAttributes>.activities.first(where: {
+            $0.attributes.submissionId == submissionId &&
+            $0.activityState == .active &&
+            $0.content.state.status == .completed
+        }) {
+            currentActivities[submissionId] = existingAlive
+            print("♻️ [ActivityManager] startActivityInCompletedState: existing live completed activity found for \(submissionId.prefix(8)) — re-using it (no duplicate created)")
+            return
+        }
+
         let authInfo = ActivityAuthorizationInfo()
         guard authInfo.areActivitiesEnabled else { return }
         let attributes = ReelProcessingActivityAttributes(

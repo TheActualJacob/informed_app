@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		167FC19D2F5733B5004DDD2C /* RevenueCat in Frameworks */ = {isa = PBXBuildFile; productRef = 167FC19C2F5733B5004DDD2C /* RevenueCat */; };
 		16CD92882F46151F0021A6D8 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 16CD92872F46151F0021A6D8 /* WidgetKit.framework */; };
 		16CD928A2F46151F0021A6D8 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 16CD92892F46151F0021A6D8 /* SwiftUI.framework */; };
 		16CD929B2F4615200021A6D8 /* InformedWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 16CD92852F46151F0021A6D8 /* InformedWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -132,6 +133,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				167FC19D2F5733B5004DDD2C /* RevenueCat in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -208,6 +210,7 @@
 			);
 			name = informed;
 			packageProductDependencies = (
+				167FC19C2F5733B5004DDD2C /* RevenueCat */,
 			);
 			productName = informed;
 			productReference = 16AAEBB02ED2446C000C4DE6 /* informed.app */;
@@ -287,6 +290,9 @@
 			);
 			mainGroup = 16AAEBA72ED2446C000C4DE6;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				167FC19B2F5733B5004DDD2C /* XCRemoteSwiftPackageReference "purchases-ios" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 16AAEBB12ED2446C000C4DE6 /* Products */;
 			projectDirPath = "";
@@ -736,6 +742,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		167FC19B2F5733B5004DDD2C /* XCRemoteSwiftPackageReference "purchases-ios" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/RevenueCat/purchases-ios";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 5.60.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		167FC19C2F5733B5004DDD2C /* RevenueCat */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 167FC19B2F5733B5004DDD2C /* XCRemoteSwiftPackageReference "purchases-ios" */;
+			productName = RevenueCat;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 16AAEBA82ED2446C000C4DE6 /* Project object */;
 }
