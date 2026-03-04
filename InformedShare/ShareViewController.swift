@@ -63,13 +63,8 @@ class ShareViewController: UIViewController {
             if let url = url {
                 print("🔗 Share Extension: Extracted URL: \(url)")
                 
-                // Start fact-check in background and close IMMEDIATELY
-                self.startFactCheckInBackground(url: url)
-                
-                // Close after brief success animation (delaying slightly to ensure Live Activity starts)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                    self.closeExtension()
-                }
+                // Pre-check usage limits before submitting
+                self.checkUsageThenSubmit(url: url)
                 
             } else {
                 print("❌ Share Extension: No URL found")
@@ -87,6 +82,103 @@ class ShareViewController: UIViewController {
         extensionContext?.completeRequest(returningItems: nil, completionHandler: nil)
     }
     
+    // MARK: - Usage Pre-Check
+
+    /// Checks /api/usage-status before firing the fact-check request.
+    /// If the user has hit their daily or weekly limit, shows a "limit reached"
+    /// screen in the share sheet instead of silently submitting and failing.
+    private func checkUsageThenSubmit(url: String) {
+        let appGroupName = "group.rob"
+        guard let sharedDefaults = UserDefaults(suiteName: appGroupName) else {
+            // Can't read credentials — fall through to fire-and-forget (backend will reject if needed).
+            submitAndClose(url: url)
+            return
+        }
+
+        let userId = sharedDefaults.string(forKey: "stored_user_id") ?? "anonymous"
+        let sessionId = sharedDefaults.string(forKey: "stored_session_id") ?? ""
+        let backendURL = sharedDefaults.string(forKey: "backend_url") ?? "https://informed-production.up.railway.app"
+
+        guard var components = URLComponents(string: "\(backendURL)/api/usage-status") else {
+            submitAndClose(url: url)
+            return
+        }
+        components.queryItems = [
+            URLQueryItem(name: "userId", value: userId),
+            URLQueryItem(name: "sessionId", value: sessionId)
+        ]
+        guard let statusURL = components.url else {
+            submitAndClose(url: url)
+            return
+        }
+
+        var request = URLRequest(url: statusURL)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 5 // Quick timeout — don't block the share sheet
+
+        print("📊 [ShareExt] Checking usage before submit…")
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            guard let self = self else { return }
+
+            // On any error (network, timeout, bad JSON) — optimistically submit.
+            guard let data = data,
+                  let http = response as? HTTPURLResponse, http.statusCode == 200,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                print("⚠️ [ShareExt] Usage check failed — proceeding optimistically")
+                DispatchQueue.main.async { self.submitAndClose(url: url) }
+                return
+            }
+
+            let dailyUsed  = json["daily_used"]  as? Int ?? 0
+            let dailyLimit = json["daily_limit"] as? Int ?? Int.max
+            let weeklyUsed = json["weekly_used"] as? Int ?? 0
+            let weeklyLimit = json["weekly_limit"] as? Int  // nil for pro
+            let tier = json["tier"] as? String ?? "free"
+
+            print("📊 [ShareExt] Usage: daily \(dailyUsed)/\(dailyLimit), weekly \(weeklyUsed)/\(weeklyLimit ?? -1), tier=\(tier)")
+
+            let dailyExceeded = dailyUsed >= dailyLimit
+            let weeklyExceeded: Bool = {
+                guard let wl = weeklyLimit else { return false }
+                return weeklyUsed >= wl
+            }()
+
+            if dailyExceeded || weeklyExceeded {
+                let limitType = dailyExceeded ? "daily" : "weekly"
+                print("🚫 [ShareExt] Limit reached (\(limitType)) — showing notification in share sheet")
+                // Signal main app to show paywall on next foreground
+                sharedDefaults.set(limitType, forKey: "pending_limit_reached_type")
+                sharedDefaults.synchronize()
+                DispatchQueue.main.async {
+                    self.showLimitReached(limitType: limitType, tier: tier)
+                }
+            } else {
+                DispatchQueue.main.async { self.submitAndClose(url: url) }
+            }
+        }.resume()
+    }
+
+    /// Normal path: fire the fact-check and close the extension.
+    private func submitAndClose(url: String) {
+        startFactCheckInBackground(url: url)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            self.closeExtension()
+        }
+    }
+
+    /// Shows a limit-reached screen in the share sheet for a few seconds, then closes.
+    private func showLimitReached(limitType: String, tier: String) {
+        if let hosting = hostingController {
+            let limitView = ShareView(
+                onShare: {},
+                onCancel: { [weak self] in self?.closeExtension() },
+                limitReachedType: limitType,
+                currentTier: tier
+            )
+            hosting.rootView = limitView
+        }
+    }
+
     // MARK: - Extract Shared URL
     
     private func extractSharedURL(completion: @escaping (String?) -> Void) {
@@ -658,6 +750,8 @@ struct ShareView: View {
     let onShare: () -> Void
     let onCancel: () -> Void
     var isProcessing: Bool = false
+    var limitReachedType: String? = nil   // "daily" or "weekly" when at limit
+    var currentTier: String = "free"
     
     @State private var scale: CGFloat = 0.95  // Start closer to full size
     @State private var opacity: Double = 0
@@ -673,7 +767,71 @@ struct ShareView: View {
                 
                 // Main card
                 VStack(spacing: 24) {
-                    if isProcessing {
+                    if let limitType = limitReachedType {
+                        // Limit reached state
+                        VStack(spacing: 20) {
+                            ZStack {
+                                Circle()
+                                    .fill(
+                                        LinearGradient(
+                                            colors: [
+                                                Color.orange,
+                                                Color.red.opacity(0.85)
+                                            ],
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        )
+                                    )
+                                    .frame(width: 64, height: 64)
+                                
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .font(.system(size: 28))
+                                    .foregroundColor(.white)
+                            }
+                            
+                            VStack(spacing: 8) {
+                                Text(limitType == "daily" ? "Daily Limit Reached" : "Weekly Limit Reached")
+                                    .font(.system(size: 22, weight: .bold))
+                                    .foregroundColor(.white)
+                                
+                                Text(currentTier == "pro"
+                                     ? "You've used all your fact-checks for \(limitType == "daily" ? "today" : "this week"). Check back \(limitType == "daily" ? "tomorrow" : "next week")!"
+                                     : "You've used all your free fact-checks for \(limitType == "daily" ? "today" : "this week"). Upgrade to Pro for more!")
+                                    .font(.system(size: 15))
+                                    .foregroundColor(.white.opacity(0.8))
+                                    .multilineTextAlignment(.center)
+                                    .padding(.horizontal, 8)
+                            }
+                            
+                            VStack(spacing: 12) {
+                                if currentTier != "pro" {
+                                    Button(action: onCancel) {
+                                        HStack {
+                                            Image(systemName: "star.fill")
+                                            Text("Upgrade to Pro")
+                                                .fontWeight(.semibold)
+                                        }
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 16)
+                                        .background(Color.white)
+                                        .foregroundColor(.orange)
+                                        .cornerRadius(14)
+                                    }
+                                }
+                                
+                                Button(action: onCancel) {
+                                    Text("Dismiss")
+                                        .fontWeight(.medium)
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 14)
+                                        .foregroundColor(.white.opacity(0.8))
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 24)
+                        .padding(.vertical, 32)
+                        
+                    } else if isProcessing {
                         // Processing state
                         VStack(spacing: 16) {
                             ProgressView()
@@ -755,10 +913,10 @@ struct ShareView: View {
                     RoundedRectangle(cornerRadius: 28, style: .continuous)
                         .fill(
                             LinearGradient(
-                                colors: [
-                                    Color(red: 0.15, green: 0.35, blue: 0.95).opacity(0.95),
-                                    Color(red: 0, green: 0.75, blue: 0.85).opacity(0.95)
-                                ],
+                                colors: limitReachedType != nil
+                                    ? [Color.orange.opacity(0.95), Color.red.opacity(0.85)]
+                                    : [Color(red: 0.15, green: 0.35, blue: 0.95).opacity(0.95),
+                                       Color(red: 0, green: 0.75, blue: 0.85).opacity(0.95)],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             )
