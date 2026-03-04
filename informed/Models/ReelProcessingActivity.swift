@@ -250,6 +250,10 @@ class ReelProcessingActivityManager: ObservableObject {
     /// app was in the background and no Live Activity existed. Drained by
     /// `drainPendingFailedActivities()` on foreground so the user sees an error island.
     private var pendingFailedInfo: [String: String] = [:]
+    /// Tracks which submission IDs have already triggered a completion haptic buzz.
+    /// Prevents duplicate buzzes when multiple sources (polling, APNs, foreground drain)
+    /// fire completion events near-simultaneously. The first call wins the buzz.
+    private var buzzedSubmissionIds: Set<String> = []
     /// Injected by the main app target on startup. Called with each (token, submissionId) pair
     /// whenever a Live Activity's APNs push token is issued or rotated.
     /// Extensions leave this nil — they handle token forwarding via App Group storage instead.
@@ -626,6 +630,18 @@ class ReelProcessingActivityManager: ObservableObject {
     // MARK: - Complete Activity
     
     func completeActivity(submissionId: String, title: String, verdict: String) async {
+        // ── Dedup guard: only one source can fire the completion buzz per submission ──
+        // Multiple triggers can arrive nearly simultaneously:
+        //   • iOS progress polling seeing 'completed'
+        //   • drainPendingCompletedActivities on foreground
+        //   • reconcileActiveActivitiesWithBackend poll
+        //   • APNs completion push from the backend
+        // The first call wins; subsequent ones update content silently without a buzz.
+        let alreadyBuzzed = buzzedSubmissionIds.contains(submissionId)
+        if !alreadyBuzzed {
+            buzzedSubmissionIds.insert(submissionId)
+        }
+
         // Prefer the tracked instance; fall back to a system-level lookup so we
         // don't silently bail when a race caused the activity to be missed.
         var activity: Activity<ReelProcessingActivityAttributes>?
@@ -688,11 +704,14 @@ class ReelProcessingActivityManager: ObservableObject {
             estimatedSecondsRemaining: 0
         )
 
-        // Guard: if the activity is already in completed state (e.g. the backend APNs
-        // push arrived before our polling loop), skip the AlertConfiguration so we
-        // don't fire a second buzz.
-        if activity.content.state.status == .completed {
-            print("ℹ️ [ActivityManager] completeActivity: already completed for \(submissionId.prefix(8)) — skipping alert")
+        // Guard: if the activity is already in completed state OR we already buzzed for
+        // this submission, skip the AlertConfiguration to avoid a second/third buzz.
+        if activity.content.state.status == .completed || alreadyBuzzed {
+            if activity.content.state.status == .completed {
+                print("ℹ️ [ActivityManager] completeActivity: already completed for \(submissionId.prefix(8)) — skipping alert")
+            } else {
+                print("ℹ️ [ActivityManager] completeActivity: already buzzed for \(submissionId.prefix(8)) — updating content silently")
+            }
             // Still update content in case title/verdict differs, but no alert.
             await activity.update(ActivityContent(state: completedState, staleDate: nil))
             // Store a backup in pendingCompletedInfo so drainPendingCompletedActivities
@@ -706,6 +725,32 @@ class ReelProcessingActivityManager: ObservableObject {
             return
         }
 
+        // ── Background vs foreground alert strategy ──
+        // When the app is in the background the backend simultaneously sends an APNs
+        // push with its own alert to the per-activity token (send_live_activity_complete).
+        // Adding alertConfiguration here too causes TWO completion banners/buzzes.
+        // Solution: in background, update content silently and let the backend APNs
+        // carry the sole alert. Store a pendingCompletedInfo backup so that if the APNs
+        // never arrives (no token, network issue), drainPendingCompletedActivities on
+        // foreground will still create a visible completed island.
+        // In foreground, the APNs banner would be suppressed by iOS, so we must fire
+        // alertConfiguration ourselves to expand the Dynamic Island.
+        if isAppInBackground() {
+            print("🔕 [ActivityManager] completeActivity: app in background — updating content silently (backend APNs handles the alert) for \(submissionId.prefix(8))")
+            await activity.update(ActivityContent(state: completedState, staleDate: nil))
+            HapticManager.successImpact()
+            // Keep a backup so drainPendingCompletedActivities can recover if the APNs push
+            // never arrives (e.g. no activity token registered yet, or APNs delivery failure).
+            if pendingCompletedInfo[submissionId] == nil {
+                let url = reelURLForSubmissionId(submissionId)
+                pendingCompletedInfo[submissionId] = (title: title, verdict: verdict, url: url)
+                print("💾 [ActivityManager] completeActivity: stored APNs-fallback pending for \(submissionId.prefix(8))")
+            }
+            return
+        }
+
+        // App is in foreground — APNs banners are suppressed by iOS, so we must use
+        // alertConfiguration to expand the Dynamic Island and play the sound.
         // AlertConfiguration triggers the Dynamic Island to auto-expand
         let alertConfig = AlertConfiguration(
             title: "Fact-check complete!",
@@ -830,8 +875,19 @@ class ReelProcessingActivityManager: ObservableObject {
                 pushType: .token
             )
             currentActivities[submissionId] = activity
-            observePushToken(for: activity, submissionId: submissionId)
-            HapticManager.successImpact()
+            // Do NOT call observePushToken here. This activity is created directly
+            // in the completed state — there are no future backend updates to deliver.
+            // Registering the token would cause the backend's /register-activity-token
+            // handler to fire send_live_activity_complete a second time (it detects the
+            // submission is already completed and immediately re-pushes the alert),
+            // producing a duplicate notification whenever the user next backgrounds the app.
+            // Only buzz once per submission — polling may have already buzzed via completeActivity.
+            if buzzedSubmissionIds.contains(submissionId) {
+                print("ℹ️ [ActivityManager] startActivityInCompletedState: already buzzed for \(submissionId.prefix(8)) — skipping haptic")
+            } else {
+                buzzedSubmissionIds.insert(submissionId)
+                HapticManager.successImpact()
+            }
             print("✅ [ActivityManager] Started completed Live Activity for \(submissionId.prefix(8)) (drained from pending)")
         } catch {
             print("⚠️ [ActivityManager] Failed to start completed activity for \(submissionId.prefix(8)): \(error.localizedDescription)")
