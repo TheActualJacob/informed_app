@@ -737,37 +737,14 @@ class ReelProcessingActivityManager: ObservableObject {
             }
             // Still update content in case title/verdict differs, but no alert.
             await activity.update(ActivityContent(state: completedState, staleDate: nil))
-            // The activity was successfully updated in-place — do NOT store backup
-            // pendingCompletedInfo. Doing so causes drainPendingCompletedActivities to
-            // create a duplicate completed Dynamic Island on every foreground transition,
-            // which users see as a stale "pro message" popping up after the fact.
             return
         }
 
-        // ── Background vs foreground alert strategy ──
-        // When the app is in the background the backend simultaneously sends an APNs
-        // push with its own alert to the per-activity token (send_live_activity_complete).
-        // Adding alertConfiguration here too causes TWO completion banners/buzzes.
-        // Solution: in background, update content silently and let the backend APNs
-        // carry the sole alert. Store a pendingCompletedInfo backup so that if the APNs
-        // never arrives (no token, network issue), drainPendingCompletedActivities on
-        // foreground will still create a visible completed island.
-        // In foreground, the APNs banner would be suppressed by iOS, so we must fire
-        // alertConfiguration ourselves to expand the Dynamic Island.
-        if isAppInBackground() {
-            print("🔕 [ActivityManager] completeActivity: app in background — updating content silently (backend APNs handles the alert) for \(submissionId.prefix(8))")
-            await activity.update(ActivityContent(state: completedState, staleDate: nil))
-            HapticManager.successImpact()
-            // The activity was updated in-place. Do NOT store pendingCompletedInfo backup
-            // here — the completed state is already reflected on the live system activity.
-            // Storing a backup caused drainPendingCompletedActivities to create duplicate
-            // completed Dynamic Islands every time the user returned to the app.
-            return
-        }
-
-        // App is in foreground — APNs banners are suppressed by iOS, so we must use
-        // alertConfiguration to expand the Dynamic Island and play the sound.
-        // AlertConfiguration triggers the Dynamic Island to auto-expand
+        // ── Always use AlertConfiguration for completion ──
+        // The backend no longer sends an alert in the regular push notification fallback
+        // (it's purely a silent background wake). Therefore, the Live Activity update
+        // itself must provide the alert to notify the user of completion, regardless of
+        // whether the app is in the foreground or background.
         let alertConfig = AlertConfiguration(
             title: "Fact-check complete!",
             body: LocalizedStringResource(stringLiteral: "\(title) — \(verdict)"),
