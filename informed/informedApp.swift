@@ -113,12 +113,7 @@ struct informedApp: App {
                                 }
                                 // Only check for new pending submissions after cleanup is done
                                 checkForPendingSharedURL()
-                                // Only start the 1-second periodic timer if there's actually
-                                // something still processing. Otherwise the timer just spams
-                                // network calls and causes lag.
-                                if reelManager.activeProcessingURL != nil {
-                                    startPeriodicChecking()
-                                }
+                                startPeriodicChecking()
                             }
                         } else if newPhase == .background {
                             print("📱 App went to background - continuing checks for Share Extension")
