@@ -577,6 +577,23 @@ class ShareViewController: UIViewController {
 
         guard let activity else { return }
 
+        // Fast path: read the synchronous pushToken property immediately after creation.
+        // On some iOS versions the token is already populated on the Activity object the
+        // moment request() returns. If available, store and send it right away — this
+        // avoids losing the token if the extension process is killed before the async
+        // pushTokenUpdates sequence has a chance to emit.
+        if let immediateToken = activity.pushToken {
+            let immediateTokenString = immediateToken.map { String(format: "%02x", $0) }.joined()
+            print("🔑 [ShareExtension] Immediate push token for \(submissionId.prefix(8)): \(immediateTokenString)")
+            if let sharedDefaults = UserDefaults(suiteName: "group.rob") {
+                sharedDefaults.set(immediateTokenString, forKey: "activity_push_token_\(submissionId)")
+                print("💾 [ShareExtension] Saved immediate push token to App Group")
+            }
+            Task {
+                await sendActivityPushTokenToBackend(immediateTokenString, submissionId: submissionId)
+            }
+        }
+
         // Observe push token updates and persist them to App Group so the main app
         // can register the token with the backend when it next becomes active.
         Task {

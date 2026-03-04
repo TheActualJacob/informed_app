@@ -433,19 +433,69 @@ class ReelProcessingActivityManager: ObservableObject {
     
     // MARK: - Push Token Observation
 
+    /// Immediately reads `activity.pushToken` (synchronous property) and forwards it if non-nil.
+    /// This is the fast path for activities that already have a token — e.g. a Share-Extension
+    /// activity discovered by the main app seconds after it was created. The async
+    /// `pushTokenUpdates` sequence may not emit until the app is foregrounded; reading the
+    /// property directly sends the token to the backend without any delay.
+    private func forwardCurrentPushTokenIfAvailable(
+        for activity: Activity<ReelProcessingActivityAttributes>,
+        submissionId: String
+    ) {
+        guard let pushToken = activity.pushToken else { return }
+        let tokenString = pushToken.map { String(format: "%02x", $0) }.joined()
+        print("🔑 [ActivityManager] Synchronous push token for \(submissionId.prefix(8)): \(tokenString)")
+        // Also persist to App Group as a reliable cache for future flushes.
+        if let sharedDefaults = UserDefaults(suiteName: "group.rob") {
+            sharedDefaults.set(tokenString, forKey: "activity_push_token_\(submissionId)")
+        }
+        Task {
+            await onActivityPushToken?(tokenString, submissionId)
+        }
+    }
+
     /// Observes push token updates for an activity and forwards each token via `onActivityPushToken`.
     /// Call this whenever a new activity is started OR when an existing activity is discovered
     /// (e.g. one started by the Share Extension before the main app woke up).
     func observePushToken(for activity: Activity<ReelProcessingActivityAttributes>, submissionId: String) {
+        // Fast path: forward any already-available token synchronously before the async
+        // sequence has a chance to emit (especially useful when the app is backgrounded).
+        forwardCurrentPushTokenIfAvailable(for: activity, submissionId: submissionId)
         Task {
             for await pushToken in activity.pushTokenUpdates {
                 let tokenString = pushToken.map { String(format: "%02x", $0) }.joined()
                 print("🔑 [ActivityManager] Activity push token for \(submissionId.prefix(8)): \(tokenString)")
+                // Persist to App Group so flushAppGroupPushToken can relay it on next foreground.
+                if let sharedDefaults = UserDefaults(suiteName: "group.rob") {
+                    sharedDefaults.set(tokenString, forKey: "activity_push_token_\(submissionId)")
+                }
                 await onActivityPushToken?(tokenString, submissionId)
             }
         }
     }
     
+    /// Checks if the Live Activity for the given submission now has an APNs push token
+    /// and, if so, forwards it to the backend immediately.
+    ///
+    /// Returns `true` if a token was found and forwarded, `false` if the token isn't
+    /// available yet (APNs typically issues it within 5–10 s of activity creation).
+    /// Called once per poll iteration from the progress-polling loop so we catch
+    /// the token as soon as it appears without relying on the async pushTokenUpdates
+    /// sequence — which may be suspended while the app is in the background.
+    @available(iOS 16.1, *)
+    func tryRegisterActivityPushToken(submissionId: String) async -> Bool {
+        guard let activity = resolvedActivity(for: submissionId) else { return false }
+        guard let pushToken = activity.pushToken else { return false }
+        let tokenString = pushToken.map { String(format: "%02x", $0) }.joined()
+        print("🔑 [ActivityManager] tryRegisterActivityPushToken: token available for \(submissionId.prefix(8)) — forwarding")
+        // Persist to App Group as a reliable cache.
+        if let sharedDefaults = UserDefaults(suiteName: "group.rob") {
+            sharedDefaults.set(tokenString, forKey: "activity_push_token_\(submissionId)")
+        }
+        await onActivityPushToken?(tokenString, submissionId)
+        return true
+    }
+
     // MARK: - App Group Token Flush
 
     /// Reads the activity push token that the Share Extension stored in App Group and
@@ -503,13 +553,14 @@ class ReelProcessingActivityManager: ObservableObject {
         }) {
             print("⚠️ [ActivityManager] resolved untracked system activity for \(submissionId.prefix(8)) — caching it")
             currentActivities[submissionId] = system
-            // Start observing the push token so it gets registered with the backend.
-            // Without this, activities started via push-to-start (from the Share Extension
-            // or the backend while the app was in the background) never have their token
-            // forwarded, so the backend silently skips all APNs progress/completion pushes.
+            // Fast path: read the synchronous pushToken property — the activity has been
+            // running since the Share Extension started it, so the token is already available
+            // on the Activity object even while the app is in the background. This sends the
+            // token to the backend immediately without waiting for the async sequence to emit.
+            // observePushToken still sets up rotation watching for future token changes.
             observePushToken(for: system, submissionId: submissionId)
             // Also flush any token the Share Extension may have already stored in the App
-            // Group — this covers the case where the extension wrote the token before the
+            // Group — covers the case where the extension wrote the token before the
             // main app woke up and the observePushToken loop had a chance to emit.
             flushAppGroupPushToken(submissionId: submissionId)
             return system
@@ -602,6 +653,11 @@ class ReelProcessingActivityManager: ObservableObject {
                 print("⚠️ [ActivityManager] completeActivity: found untracked system activity for \(submissionId) — using it")
                 currentActivities[submissionId] = a
                 activity = a
+                // Forward any already-available push token and start rotation watching.
+                // This ensures the backend can deliver the completion push via APNs even
+                // when completeActivity is the first code path to discover this activity.
+                observePushToken(for: a, submissionId: submissionId)
+                flushAppGroupPushToken(submissionId: submissionId)
             }
         }
         

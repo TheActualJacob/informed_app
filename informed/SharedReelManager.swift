@@ -638,6 +638,129 @@ class SharedReelManager: ObservableObject {
         }
     }
     
+    // MARK: - Foreground Recovery
+    
+    /// Called when the app returns to the foreground. Checks every active in-progress
+    /// Live Activity against the backend and completes / fails any that finished while
+    /// the app was suspended. Also flushes any pending activity push tokens so the
+    /// backend can push future updates.
+    ///
+    /// This is the safety net that covers:
+    ///  - Background polling being suspended by iOS before seeing completion
+    ///  - Activity push tokens that were never delivered because the app was frozen
+    ///  - Push-to-start activities with no per-activity push token
+    @available(iOS 16.1, *)
+    func reconcileActiveActivitiesWithBackend() async {
+        let activities = Activity<ReelProcessingActivityAttributes>.activities.filter {
+            $0.activityState == .active
+        }
+        
+        guard !activities.isEmpty else { return }
+        
+        let inProgressActivities = activities.filter {
+            let status = $0.content.state.status
+            return status != .completed && status != .failed
+        }
+        
+        guard !inProgressActivities.isEmpty else {
+            print("🔄 [Reconcile] No in-progress activities to reconcile")
+            return
+        }
+        
+        print("🔄 [Reconcile] Checking \(inProgressActivities.count) in-progress Live Activities against backend")
+        
+        for activity in inProgressActivities {
+            let submissionId = activity.attributes.submissionId
+            
+            // 1. Try to flush the activity push token to the backend.
+            //    On foreground, the token may now be available (iOS generates it
+            //    asynchronously). The register-activity-token endpoint will
+            //    immediately push the current backend state back, closing any gap.
+            let tokenFlushed = await ReelProcessingActivityManager.shared
+                .tryRegisterActivityPushToken(submissionId: submissionId)
+            if tokenFlushed {
+                print("🔑 [Reconcile] Flushed activity push token for \(submissionId.prefix(8))")
+            }
+            
+            // 2. Also try the App Group path (Share Extension may have saved a token
+            //    that the main app never forwarded).
+            ReelProcessingActivityManager.shared.flushAppGroupPushToken(submissionId: submissionId)
+            
+            // 3. If the activity has no push token, try upgrading it now (foreground).
+            //    This replaces the pushType:nil activity with a pushType:.token one.
+            if activity.pushToken == nil {
+                print("🔄 [Reconcile] Activity \(submissionId.prefix(8)) has no push token — upgrading")
+                await ReelProcessingActivityManager.shared.startActivity(
+                    submissionId: submissionId,
+                    reelURL: activity.attributes.reelURL
+                )
+            }
+            
+            // 4. Poll the backend directly for the current status. If the task
+            //    completed while we were suspended, drive the island to completion.
+            do {
+                let statusResponse = try await fetchSubmissionStatus(submissionId: submissionId)
+                let backendStatus = statusResponse.status.lowercased()
+                
+                if backendStatus == "completed" {
+                    print("✅ [Reconcile] Submission \(submissionId.prefix(8)) already completed on backend — completing Live Activity")
+                    ReelProcessingActivityManager.removeFromAppGroupPendingSubmissions(submissionId: submissionId)
+                    await ReelProcessingActivityManager.shared.completeActivity(
+                        submissionId: submissionId,
+                        title: statusResponse.title ?? "Fact-Check Complete",
+                        verdict: "Tap to view results"
+                    )
+                    
+                    // Eagerly update the SharedReel with full fact-check data
+                    let eagerClaims = (statusResponse.claims ?? []).map { $0.toClaimEntry() }
+                    if !eagerClaims.isEmpty {
+                        let eagerData = StoredFactCheckData(
+                            title: statusResponse.title ?? "",
+                            summary: eagerClaims[0].summary,
+                            thumbnailURL: statusResponse.thumbnailUrl,
+                            claims: eagerClaims,
+                            datePosted: nil,
+                            platform: statusResponse.platform,
+                            aiGenerated: statusResponse.aiGenerated,
+                            aiProbability: statusResponse.aiProbability
+                        )
+                        await MainActor.run {
+                            self.updateReelStatus(
+                                id: submissionId, status: .completed,
+                                resultId: statusResponse.title,
+                                factCheckData: eagerData
+                            )
+                        }
+                    }
+                    Task { await self.syncHistoryFromBackend() }
+                    
+                } else if backendStatus == "failed" {
+                    print("❌ [Reconcile] Submission \(submissionId.prefix(8)) failed on backend — failing Live Activity")
+                    ReelProcessingActivityManager.removeFromAppGroupPendingSubmissions(submissionId: submissionId)
+                    let rawMessage = statusResponse.currentStage.isEmpty
+                        ? (statusResponse.errorMessage ?? "")
+                        : statusResponse.currentStage
+                    let displayMessage = ReelProcessingActivityManager.friendlyErrorMessage(rawMessage)
+                    await MainActor.run {
+                        updateReelStatus(id: submissionId, status: .failed, errorMessage: displayMessage)
+                    }
+                    await ReelProcessingActivityManager.shared.failActivity(
+                        submissionId: submissionId,
+                        errorMessage: rawMessage
+                    )
+                } else {
+                    print("🔄 [Reconcile] Submission \(submissionId.prefix(8)) still \(backendStatus) — ensuring polling is active")
+                    // Restart polling if it's not already running
+                    startProgressPolling(submissionId: submissionId, skipInitialWait: true)
+                }
+            } catch {
+                print("⚠️ [Reconcile] Could not fetch status for \(submissionId.prefix(8)): \(error.localizedDescription)")
+                // Restart polling as fallback
+                startProgressPolling(submissionId: submissionId, skipInitialWait: true)
+            }
+        }
+    }
+
     // MARK: - Real-Time Progress Polling
     
     /// Polls backend for submission progress and updates Live Activity
@@ -684,9 +807,31 @@ class SharedReelManager: ObservableObject {
             var pollCount = 0
             let maxPolls = 60 // 60 polls * 3s = 3 minutes max
 
+            // Track whether we've successfully forwarded an APNs activity push token
+            // to the backend for this submission. The token is issued asynchronously by
+            // APNs and may not be available on the first poll — we check on every
+            // iteration until it appears so the backend can send APNs progress updates.
+            var activityTokenRegistered = false
+
             while !isCompleted && pollCount < maxPolls {
                 pollCount += 1
-                
+
+                // On each poll, check whether the Live Activity now has a push token
+                // that we haven't forwarded yet. APNs typically issues the token within
+                // a few seconds of activity creation; polling here catches it as soon
+                // as it's available regardless of whether the async pushTokenUpdates
+                // sequence has had a chance to emit (it may be suspended in background).
+                if !activityTokenRegistered {
+                    if #available(iOS 16.1, *) {
+                        let tokenFound = await ReelProcessingActivityManager.shared
+                            .tryRegisterActivityPushToken(submissionId: submissionId)
+                        if tokenFound {
+                            activityTokenRegistered = true
+                            print("🔑 [ProgressPolling] Activity push token registered on poll \(pollCount) for \(submissionId.prefix(8))")
+                        }
+                    }
+                }
+
                 do {
                     // Fetch current status from backend
                     let statusResponse = try await fetchSubmissionStatus(submissionId: submissionId)

@@ -95,6 +95,12 @@ struct informedApp: App {
                                     // Show error Dynamic Island badges for any fact-checks that
                                     // failed (limit_reached, timeout, etc.) in background.
                                     await ReelProcessingActivityManager.shared.drainPendingFailedActivities()
+                                    // CRITICAL: Check any in-progress Live Activities against the
+                                    // backend. If a fact-check completed while the app was
+                                    // suspended (background polling frozen by iOS), this catches
+                                    // it up — driving the Dynamic Island to its completed state.
+                                    // Also flushes any pending activity push tokens.
+                                    await reelManager.reconcileActiveActivitiesWithBackend()
                                 }
                                 // Only check for new pending submissions after cleanup is done
                                 checkForPendingSharedURL()
