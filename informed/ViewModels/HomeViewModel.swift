@@ -330,15 +330,10 @@ class HomeViewModel: ObservableObject {
         HapticManager.selection()  // Single subtle "submission received" — synced with processing banner
         print("🔍 Starting fact check for: \(link)")
 
-        // Start Live Activity first, capture its submissionId
+        // Generate submission ID. Live Activity is deferred until we know the reel
+        // genuinely needs processing — duplicates skip the island entirely.
         var submissionId: String = UUID().uuidString
-        if #available(iOS 16.1, *) {
-            currentSubmissionId = submissionId
-            print("🔬 [GHOST_DIAG] Calling startActivity for sid=\(submissionId.prefix(8))…")
-            await ReelProcessingActivityManager.shared.startActivity(
-                submissionId: submissionId, reelURL: link, thumbnailURL: nil
-            )
-        }
+        var liveActivityStarted = false
 
         // Capture the placeholder submission date before the request so all paths use the same value.
         let placeholderSubmittedAt = Date()
@@ -359,12 +354,7 @@ class HomeViewModel: ObservableObject {
                 // Resolve the final submission ID before inserting into reels[] so the
                 // placeholder is inserted exactly once with the confirmed backend ID.
                 if let backendSid = factCheckData.submissionId, !backendSid.isEmpty, backendSid != submissionId {
-                    if #available(iOS 16.1, *) {
-                        ReelProcessingActivityManager.shared.reRegisterActivity(
-                            oldSubmissionId: submissionId, newSubmissionId: backendSid
-                        )
-                        currentSubmissionId = backendSid
-                    }
+                    // Activity hasn't started yet, so just update the ID — no re-registration needed.
                     submissionId = backendSid
                 }
 
@@ -408,32 +398,14 @@ class HomeViewModel: ObservableObject {
                             aiProbability: factCheckData.aiProbability
                         )
                         self.processingLink = nil; self.processingThumbnailURL = nil
-                        if #available(iOS 16.1, *) {
-                            ReelProcessingActivityManager.removeFromAppGroupPendingSubmissions(submissionId: submissionId)
-                            // End the island FIRST (while still at 10%), then navigate.
-                            // Posting ShowFactCheckDetail before endActivity completes causes
-                            // FactDetailView.onAppear to see a submitting-state island (not
-                            // completed/failed) and skip it — leaving it stuck at 10%.
-                            Task { @MainActor in
-                                await ReelProcessingActivityManager.shared.endActivity(
-                                    submissionId: submissionId, dismissalPolicy: .immediate
-                                )
-                                NotificationCenter.default.post(
-                                    name: NSNotification.Name("ShowFactCheckDetail"),
-                                    object: nil,
-                                    userInfo: ["factCheckItem": navItem]
-                                )
-                                await SharedReelManager.shared.syncHistoryFromBackend()
-                            }
-                            currentSubmissionId = nil
-                        } else {
-                            NotificationCenter.default.post(
-                                name: NSNotification.Name("ShowFactCheckDetail"),
-                                object: nil,
-                                userInfo: ["factCheckItem": navItem]
-                            )
-                            Task { await SharedReelManager.shared.syncHistoryFromBackend() }
-                        }
+                        // No Live Activity was started for this duplicate — navigate directly.
+                        currentSubmissionId = nil
+                        NotificationCenter.default.post(
+                            name: NSNotification.Name("ShowFactCheckDetail"),
+                            object: nil,
+                            userInfo: ["factCheckItem": navItem]
+                        )
+                        Task { await SharedReelManager.shared.syncHistoryFromBackend() }
                         return
                     }
 
@@ -445,32 +417,28 @@ class HomeViewModel: ObservableObject {
                         print("♻️ [Duplicate] Navigating from local cache")
                         self.processingLink = nil; self.processingThumbnailURL = nil
                         let navItem = data.toFactCheckItem(originalLink: link)
-                        if #available(iOS 16.1, *) {
-                            ReelProcessingActivityManager.removeFromAppGroupPendingSubmissions(submissionId: submissionId)
-                            Task { @MainActor in
-                                await ReelProcessingActivityManager.shared.endActivity(
-                                    submissionId: submissionId, dismissalPolicy: .immediate
-                                )
-                                NotificationCenter.default.post(
-                                    name: NSNotification.Name("ShowFactCheckDetail"),
-                                    object: nil,
-                                    userInfo: ["factCheckItem": navItem]
-                                )
-                                await SharedReelManager.shared.syncHistoryFromBackend()
-                            }
-                            currentSubmissionId = nil
-                        } else {
-                            NotificationCenter.default.post(
-                                name: NSNotification.Name("ShowFactCheckDetail"),
-                                object: nil,
-                                userInfo: ["factCheckItem": navItem]
-                            )
-                            Task { await SharedReelManager.shared.syncHistoryFromBackend() }
-                        }
+                        // No Live Activity was started for this duplicate — navigate directly.
+                        currentSubmissionId = nil
+                        NotificationCenter.default.post(
+                            name: NSNotification.Name("ShowFactCheckDetail"),
+                            object: nil,
+                            userInfo: ["factCheckItem": navItem]
+                        )
+                        Task { await SharedReelManager.shared.syncHistoryFromBackend() }
                         return
                     }
                     // ── Tier 3: fall through to poll ─────────────────────────────────────
                     // (skipInitialWait=true so the first poll fires immediately)
+                }
+
+                // Start Live Activity now — this reel genuinely needs processing/polling.
+                if #available(iOS 16.1, *) {
+                    currentSubmissionId = submissionId
+                    print("🔬 [GHOST_DIAG] Calling startActivity for sid=\(submissionId.prefix(8))…")
+                    await ReelProcessingActivityManager.shared.startActivity(
+                        submissionId: submissionId, reelURL: link, thumbnailURL: nil
+                    )
+                    liveActivityStarted = true
                 }
 
                 // Insert the placeholder into reels[] now that we have the confirmed ID.
@@ -531,6 +499,17 @@ class HomeViewModel: ObservableObject {
             SharedReelManager.shared.saveReels()
 
             if #available(iOS 16.1, *) {
+                // Start Live Activity for legacy sync flow — completeActivity handles the
+                // "no existing activity" case by creating one in completed state, so this
+                // is technically optional, but starting explicitly avoids the flash.
+                if !liveActivityStarted {
+                    currentSubmissionId = submissionId
+                    print("🔬 [GHOST_DIAG] Calling startActivity for sid=\(submissionId.prefix(8))…")
+                    await ReelProcessingActivityManager.shared.startActivity(
+                        submissionId: submissionId, reelURL: link, thumbnailURL: nil
+                    )
+                    liveActivityStarted = true
+                }
                 ReelProcessingActivityManager.removeFromAppGroupPendingSubmissions(submissionId: submissionId)
                 let sid = submissionId
                 currentSubmissionId = nil
@@ -558,7 +537,9 @@ class HomeViewModel: ObservableObject {
             SharedReelManager.shared.saveReels()
             if #available(iOS 16.1, *) {
                 ReelProcessingActivityManager.removeFromAppGroupPendingSubmissions(submissionId: submissionId)
-                Task { @MainActor in await ReelProcessingActivityManager.shared.failActivity(submissionId: submissionId, errorMessage: msg) }
+                if liveActivityStarted {
+                    Task { @MainActor in await ReelProcessingActivityManager.shared.failActivity(submissionId: submissionId, errorMessage: msg) }
+                }
                 currentSubmissionId = nil
             }
             self.processingLink = nil; self.processingThumbnailURL = nil
@@ -569,7 +550,9 @@ class HomeViewModel: ObservableObject {
                 SharedReelManager.shared.saveReels()
                 if #available(iOS 16.1, *) {
                     ReelProcessingActivityManager.removeFromAppGroupPendingSubmissions(submissionId: submissionId)
-                    Task { @MainActor in await ReelProcessingActivityManager.shared.endActivity(submissionId: submissionId, dismissalPolicy: .default) }
+                    if liveActivityStarted {
+                        Task { @MainActor in await ReelProcessingActivityManager.shared.endActivity(submissionId: submissionId, dismissalPolicy: .default) }
+                    }
                     currentSubmissionId = nil
                 }
                 self.processingLink = nil; self.processingThumbnailURL = nil
@@ -581,7 +564,9 @@ class HomeViewModel: ObservableObject {
                 SharedReelManager.shared.saveReels()
                 if #available(iOS 16.1, *) {
                     ReelProcessingActivityManager.removeFromAppGroupPendingSubmissions(submissionId: submissionId)
-                    Task { @MainActor in await ReelProcessingActivityManager.shared.endActivity(submissionId: submissionId, dismissalPolicy: .immediate) }
+                    if liveActivityStarted {
+                        Task { @MainActor in await ReelProcessingActivityManager.shared.endActivity(submissionId: submissionId, dismissalPolicy: .immediate) }
+                    }
                     currentSubmissionId = nil
                 }
                 self.processingLink = nil; self.processingThumbnailURL = nil
@@ -594,7 +579,9 @@ class HomeViewModel: ObservableObject {
             SharedReelManager.shared.saveReels()
             if #available(iOS 16.1, *) {
                 ReelProcessingActivityManager.removeFromAppGroupPendingSubmissions(submissionId: submissionId)
-                Task { @MainActor in await ReelProcessingActivityManager.shared.failActivity(submissionId: submissionId, errorMessage: msg) }
+                if liveActivityStarted {
+                    Task { @MainActor in await ReelProcessingActivityManager.shared.failActivity(submissionId: submissionId, errorMessage: msg) }
+                }
                 currentSubmissionId = nil
             }
             self.processingLink = nil; self.processingThumbnailURL = nil
@@ -604,7 +591,9 @@ class HomeViewModel: ObservableObject {
             SharedReelManager.shared.saveReels()
             if #available(iOS 16.1, *) {
                 ReelProcessingActivityManager.removeFromAppGroupPendingSubmissions(submissionId: submissionId)
-                Task { @MainActor in await ReelProcessingActivityManager.shared.endActivity(submissionId: submissionId, dismissalPolicy: .default) }
+                if liveActivityStarted {
+                    Task { @MainActor in await ReelProcessingActivityManager.shared.endActivity(submissionId: submissionId, dismissalPolicy: .default) }
+                }
                 currentSubmissionId = nil
             }
             self.processingLink = nil; self.processingThumbnailURL = nil
@@ -615,7 +604,9 @@ class HomeViewModel: ObservableObject {
             SharedReelManager.shared.saveReels()
             if #available(iOS 16.1, *) {
                 ReelProcessingActivityManager.removeFromAppGroupPendingSubmissions(submissionId: submissionId)
-                Task { @MainActor in await ReelProcessingActivityManager.shared.failActivity(submissionId: submissionId, errorMessage: msg) }
+                if liveActivityStarted {
+                    Task { @MainActor in await ReelProcessingActivityManager.shared.failActivity(submissionId: submissionId, errorMessage: msg) }
+                }
                 currentSubmissionId = nil
             }
             self.processingLink = nil; self.processingThumbnailURL = nil

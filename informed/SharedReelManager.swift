@@ -618,6 +618,22 @@ class SharedReelManager: ObservableObject {
             await MainActor.run { lastUploadSuccess = true; isUploading = false }
             return true
             
+        } catch let fcErr as FactCheckError where fcErr.localizedDescription == "limit_reached" {
+            // Backend rejected the submission — daily or weekly cap hit.
+            // Show the upgrade paywall instead of a generic error toast.
+            let limitType = fcErr.errorType ?? "daily"
+            print("⚠️ [SharedReelManager] uploadReelToBackend: limit_reached (\(limitType)) — showing paywall")
+            await MainActor.run {
+                isUploading = false
+                uploadError = nil  // suppress error toast — paywall is the CTA
+                if let viewModel = homeViewModel {
+                    viewModel.processingLink = nil
+                    viewModel.processingThumbnailURL = nil
+                }
+                SubscriptionManager.shared.handleLimitReached(type: limitType)
+            }
+            return false
+
         } catch {
             print("❌ Error fact-checking shared reel: \(error)")
             

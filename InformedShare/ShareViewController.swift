@@ -323,17 +323,22 @@ class ShareViewController: UIViewController {
                     // stuck at 10% until the main app's polling fallback discovers it.
                     if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                        let errorKey = json["error"] as? String, errorKey == "limit_reached" {
-                        print("⚠️ [ShareExtension] limit_reached — failing island for \(submissionId.prefix(8))")
+                        let limitType = json["type"] as? String ?? "daily"
+                        print("⚠️ [ShareExtension] limit_reached (\(limitType)) — failing island for \(submissionId.prefix(8))")
                         if #available(iOS 16.1, *) {
                             self.failLiveActivity(submissionId: submissionId, message: "Daily limit reached")
                         }
                         // Remove from pending so the main app doesn't start polling a 404 forever.
-                        if let defaults = UserDefaults(suiteName: "group.rob"),
-                           var subs = defaults.array(forKey: "pending_submissions") as? [[String: Any]] {
-                            subs.removeAll { ($0["id"] as? String) == submissionId }
-                            defaults.set(subs, forKey: "pending_submissions")
+                        if let defaults = UserDefaults(suiteName: "group.rob") {
+                            if var subs = defaults.array(forKey: "pending_submissions") as? [[String: Any]] {
+                                subs.removeAll { ($0["id"] as? String) == submissionId }
+                                defaults.set(subs, forKey: "pending_submissions")
+                            }
+                            // Signal the main app to show the upgrade paywall on next foreground.
+                            defaults.set(limitType, forKey: "pending_limit_reached_type")
                             defaults.synchronize()
                             print("🗑️ [ShareExtension] Removed \(submissionId.prefix(8)) from pending_submissions (limit_reached)")
+                            print("💾 [ShareExtension] Wrote pending_limit_reached_type=\(limitType) — main app will show paywall on foreground")
                         }
                     }
                 }

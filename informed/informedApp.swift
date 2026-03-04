@@ -102,6 +102,15 @@ struct informedApp: App {
                                     // Also flushes any pending activity push tokens.
                                     await reelManager.reconcileActiveActivitiesWithBackend()
                                 }
+                                // If the Share Extension hit the daily/weekly limit, show the
+                                // upgrade paywall now that the user has foregrounded the app.
+                                if let defaults = UserDefaults(suiteName: "group.rob"),
+                                   let limitType = defaults.string(forKey: "pending_limit_reached_type") {
+                                    defaults.removeObject(forKey: "pending_limit_reached_type")
+                                    defaults.synchronize()
+                                    print("💳 [App] Draining pending_limit_reached_type=\(limitType) — showing paywall")
+                                    await MainActor.run { subscriptionManager.handleLimitReached(type: limitType) }
+                                }
                                 // Only check for new pending submissions after cleanup is done
                                 checkForPendingSharedURL()
                                 startPeriodicChecking()
