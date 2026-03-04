@@ -316,6 +316,22 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
                 if #available(iOS 16.1, *) {
                     await SharedReelManager.shared.checkAndStartPendingLiveActivities()
                 }
+            } else if let action = userInfo["action"] as? String, action == "fact_check_completed",
+                      let submissionId = userInfo["submission_id"] as? String,
+                      let title = userInfo["title"] as? String,
+                      let verdict = userInfo["verdict"] as? String {
+                // ── Regular push fallback for Live Activity completion ──
+                // The backend sends this when no per-activity push token was available.
+                // Update the existing Live Activity to the completed state so the
+                // Dynamic Island shows the result even when the app was suspended.
+                print("✅ [APNs] Background completion push for \(submissionId.prefix(8)) — updating Live Activity")
+                if #available(iOS 16.1, *) {
+                    await ReelProcessingActivityManager.shared.completeActivity(
+                        submissionId: submissionId,
+                        title: title,
+                        verdict: verdict
+                    )
+                }
             } else {
                 NotificationManager.shared.handleNotification(userInfo: userInfo)
             }

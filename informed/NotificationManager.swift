@@ -254,6 +254,24 @@ class NotificationManager: NSObject, ObservableObject {
             return
         }
         
+        // Handle fact_check_completed from backend regular push fallback
+        if let action = userInfo["action"] as? String, action == "fact_check_completed",
+           let submissionId = userInfo["submission_id"] as? String,
+           let title = userInfo["title"] as? String,
+           let verdict = userInfo["verdict"] as? String {
+            print("✅ [APNs] Completion push for \(submissionId.prefix(8)) — updating Live Activity")
+            Task { @MainActor in
+                if #available(iOS 16.1, *) {
+                    await ReelProcessingActivityManager.shared.completeActivity(
+                        submissionId: submissionId,
+                        title: title,
+                        verdict: verdict
+                    )
+                }
+            }
+            return
+        }
+        
         if let factCheckId = userInfo["fact_check_id"] as? String {
             print("🔍 Fact check completed for ID: \(factCheckId)")
             NotificationCenter.default.post(
