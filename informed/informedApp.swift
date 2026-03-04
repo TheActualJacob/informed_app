@@ -113,7 +113,12 @@ struct informedApp: App {
                                 }
                                 // Only check for new pending submissions after cleanup is done
                                 checkForPendingSharedURL()
-                                startPeriodicChecking()
+                                // Only start the 1-second periodic timer if there's actually
+                                // something still processing. Otherwise the timer just spams
+                                // network calls and causes lag.
+                                if reelManager.activeProcessingURL != nil {
+                                    startPeriodicChecking()
+                                }
                             }
                         } else if newPhase == .background {
                             print("📱 App went to background - continuing checks for Share Extension")
@@ -130,6 +135,9 @@ struct informedApp: App {
                         if let userId = userManager.currentUserId {
                             subscriptionManager.identify(userId: userId)
                         }
+                        // Eagerly sync isPro to App Group so Live Activities created
+                        // by the Share Extension pick up the correct pro status.
+                        await subscriptionManager.syncCustomerInfo()
 
                         // Request notification permissions on first launch
                         if notificationManager.authorizationStatus == .notDetermined {

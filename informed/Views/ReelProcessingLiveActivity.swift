@@ -37,7 +37,7 @@ struct ReelProcessingLiveActivity: Widget {
             } minimal: {
                 MinimalView(context: context)
             }
-            .keylineTint(context.state.status.color)
+            .keylineTint(context.attributes.isPro ? Color.brandGold : context.state.status.color)
             .widgetURL(URL(string: "factcheckapp://detail?id=\(context.attributes.submissionId)"))
         }
     }
@@ -60,8 +60,10 @@ struct LockScreenLiveActivityView: View {
                 ZStack {
                     RoundedRectangle(cornerRadius: 13, style: .continuous)
                         .fill(LinearGradient(
-                            colors: [context.state.status.color,
-                                     context.state.status.secondaryColor],
+                            colors: context.attributes.isPro
+                                ? [Color.brandGold, Color(red: 0.72, green: 0.53, blue: 0.10)]
+                                : [context.state.status.color,
+                                   context.state.status.secondaryColor],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         ))
@@ -74,9 +76,16 @@ struct LockScreenLiveActivityView: View {
 
                 // Text stack
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("informed · fact-check")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.secondary)
+                    HStack(spacing: 4) {
+                        Text(context.attributes.isPro ? "+informed · fact-check" : "informed · fact-check")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(context.attributes.isPro ? Color.brandGold : .secondary)
+                        if context.attributes.isPro {
+                            Image(systemName: "star.fill")
+                                .font(.system(size: 8))
+                                .foregroundColor(.brandGold)
+                        }
+                    }
 
                     if isCompleted, let title = context.state.title {
                         Text(title)
@@ -99,7 +108,7 @@ struct LockScreenLiveActivityView: View {
                             .foregroundColor(.white)
                             .padding(.horizontal, 11)
                             .padding(.vertical, 6)
-                            .background(context.state.status.color)
+                            .background(context.attributes.isPro ? Color.brandGold : context.state.status.color)
                             .clipShape(Capsule())
                     }
                 } else if isFailed {
@@ -108,7 +117,7 @@ struct LockScreenLiveActivityView: View {
                         .foregroundColor(.brandRed)
                 } else {
                     LACircularRing(progress: context.state.progress,
-                                   color: context.state.status.color)
+                                   color: context.attributes.isPro ? .brandGold : context.state.status.color)
                         .frame(width: 40, height: 40)
                 }
             }
@@ -122,8 +131,10 @@ struct LockScreenLiveActivityView: View {
                         Capsule().fill(Color.gray.opacity(0.15))
                         Capsule()
                             .fill(LinearGradient(
-                                colors: [context.state.status.color,
-                                         context.state.status.secondaryColor],
+                                colors: context.attributes.isPro
+                                    ? [Color.brandGold, Color(red: 0.72, green: 0.53, blue: 0.10)]
+                                    : [context.state.status.color,
+                                       context.state.status.secondaryColor],
                                 startPoint: .leading, endPoint: .trailing
                             ))
                             .frame(width: geo.size.width * context.state.progress)
@@ -137,7 +148,7 @@ struct LockScreenLiveActivityView: View {
             }
         }
         .activityBackgroundTint(Color.cardBackground)
-        .activitySystemActionForegroundColor(context.state.status.color)
+        .activitySystemActionForegroundColor(context.attributes.isPro ? Color.brandGold : context.state.status.color)
         .widgetURL(URL(string: "factcheckapp://detail?id=\(context.attributes.submissionId)"))
     }
 }
@@ -148,11 +159,18 @@ struct LockScreenLiveActivityView: View {
 struct CompactLeadingView: View {
     let context: ActivityViewContext<ReelProcessingActivityAttributes>
     var body: some View {
-        Image(systemName: context.state.status.icon)
-            .font(.system(size: 12, weight: .semibold))
-            .foregroundColor(context.state.status.color)
-            .padding(.leading, 2)
-            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: context.state.status)
+        HStack(spacing: 2) {
+            Image(systemName: context.state.status.icon)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(context.attributes.isPro ? .brandGold : context.state.status.color)
+                .padding(.leading, 2)
+            if context.attributes.isPro {
+                Image(systemName: "star.fill")
+                    .font(.system(size: 6))
+                    .foregroundColor(.brandGold)
+            }
+        }
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: context.state.status)
     }
 }
 
@@ -162,9 +180,9 @@ struct CompactTrailingView: View {
     var body: some View {
         Group {
             if context.state.status == .completed {
-                Image(systemName: "checkmark.seal.fill")
+                Image(systemName: context.attributes.isPro ? "star.fill" : "checkmark.seal.fill")
                     .font(.system(size: 13, weight: .bold))
-                    .foregroundColor(.brandGreen)
+                    .foregroundColor(context.attributes.isPro ? .brandGold : .brandGreen)
                     .padding(.trailing, 2)
             } else if context.state.status == .failed {
                 Image(systemName: "xmark.circle.fill")
@@ -176,7 +194,7 @@ struct CompactTrailingView: View {
                     Circle().stroke(Color.white.opacity(0.22), lineWidth: 1.5)
                     Circle()
                         .trim(from: 0, to: context.state.progress)
-                        .stroke(context.state.status.color, lineWidth: 1.5)
+                        .stroke(context.attributes.isPro ? Color.brandGold : context.state.status.color, lineWidth: 1.5)
                         .rotationEffect(.degrees(-90))
                         .animation(.spring(response: 0.5, dampingFraction: 0.8),
                                    value: context.state.progress)
@@ -199,7 +217,7 @@ struct MinimalView: View {
         if context.state.status == .completed {
             Image(systemName: "checkmark.seal.fill")
                 .font(.system(size: 10, weight: .bold))
-                .foregroundColor(.brandGreen)
+                .foregroundColor(context.attributes.isPro ? .brandGold : .brandGreen)
         } else if context.state.status == .failed {
             Image(systemName: "xmark.circle.fill")
                 .font(.system(size: 10, weight: .bold))
@@ -209,7 +227,7 @@ struct MinimalView: View {
                 Circle().stroke(Color.white.opacity(0.22), lineWidth: 1.2)
                 Circle()
                     .trim(from: 0, to: context.state.progress)
-                    .stroke(context.state.status.color, lineWidth: 1.2)
+                    .stroke(context.attributes.isPro ? Color.brandGold : context.state.status.color, lineWidth: 1.2)
                     .rotationEffect(.degrees(-90))
                     .animation(.spring(response: 0.5, dampingFraction: 0.8),
                                value: context.state.progress)
@@ -230,15 +248,17 @@ struct ExpandedLeadingView: View {
         ZStack {
             // Outer glow ring
             Circle()
-                .fill(context.state.status.color.opacity(isPulsing ? 0.18 : 0.08))
+                .fill((context.attributes.isPro ? Color.brandGold : context.state.status.color).opacity(isPulsing ? 0.18 : 0.08))
                 .frame(width: 46, height: 46)
                 .animation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true),
                            value: isPulsing)
             // Gradient inner circle
             Circle()
                 .fill(LinearGradient(
-                    colors: [context.state.status.color,
-                             context.state.status.secondaryColor],
+                    colors: context.attributes.isPro
+                        ? [Color.brandGold, Color(red: 0.72, green: 0.53, blue: 0.10)]
+                        : [context.state.status.color,
+                           context.state.status.secondaryColor],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 ))
@@ -267,11 +287,13 @@ struct ExpandedTrailingView: View {
             ZStack {
                 Circle()
                     .fill(LinearGradient(
-                        colors: [Color.brandGreen, Color.brandGreen.opacity(0.7)],
+                        colors: context.attributes.isPro
+                            ? [Color.brandGold, Color(red: 0.72, green: 0.53, blue: 0.10)]
+                            : [Color.brandGreen, Color.brandGreen.opacity(0.7)],
                         startPoint: .topLeading, endPoint: .bottomTrailing
                     ))
                     .frame(width: 38, height: 38)
-                Image(systemName: "checkmark")
+                Image(systemName: context.attributes.isPro ? "star.fill" : "checkmark")
                     .font(.system(size: 17, weight: .bold))
                     .foregroundColor(.white)
             }
@@ -289,7 +311,7 @@ struct ExpandedTrailingView: View {
             }
         } else {
             LACircularRing(progress: context.state.progress,
-                           color: context.state.status.color)
+                           color: context.attributes.isPro ? .brandGold : context.state.status.color)
                 .frame(width: 38, height: 38)
         }
     }
@@ -300,14 +322,21 @@ struct ExpandedCenterView: View {
     let context: ActivityViewContext<ReelProcessingActivityAttributes>
     var body: some View {
         VStack(spacing: 2) {
-            Text("informed")
-                .font(.system(size: 9, weight: .semibold))
-                .foregroundColor(.secondary.opacity(0.6))
-                .textCase(.lowercase)
-                .tracking(0.8)
+            HStack(spacing: 3) {
+                Text(context.attributes.isPro ? "+informed" : "informed")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundColor(context.attributes.isPro ? Color.brandGold.opacity(0.8) : .secondary.opacity(0.6))
+                    .textCase(.lowercase)
+                    .tracking(0.8)
+                if context.attributes.isPro {
+                    Image(systemName: "star.fill")
+                        .font(.system(size: 6))
+                        .foregroundColor(.brandGold)
+                }
+            }
             Text(context.state.status.shortLabel)
                 .font(.system(size: 16, weight: .bold))
-                .foregroundColor(context.state.status.color)
+                .foregroundColor(context.attributes.isPro && !context.state.status.isTerminal ? .brandGold : context.state.status.color)
                 .animation(.spring(response: 0.3, dampingFraction: 0.7),
                            value: context.state.status)
         }
@@ -331,8 +360,10 @@ struct ExpandedBottomView: View {
                         Capsule().fill(Color.white.opacity(0.12))
                         Capsule()
                             .fill(LinearGradient(
-                                colors: [context.state.status.color,
-                                         context.state.status.secondaryColor],
+                                colors: context.attributes.isPro
+                                    ? [Color.brandGold, Color(red: 0.72, green: 0.53, blue: 0.10)]
+                                    : [context.state.status.color,
+                                       context.state.status.secondaryColor],
                                 startPoint: .leading, endPoint: .trailing
                             ))
                             .frame(width: geo.size.width * context.state.progress)
@@ -380,7 +411,7 @@ struct ExpandedBottomView: View {
                             .foregroundColor(.white)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 5)
-                            .background(Color.brandGreen)
+                            .background(context.attributes.isPro ? Color.brandGold : Color.brandGreen)
                             .clipShape(Capsule())
                     }
                     Label("Tap to view results", systemImage: "hand.tap.fill")

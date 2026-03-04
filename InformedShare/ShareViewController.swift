@@ -23,13 +23,15 @@ class ShareViewController: UIViewController {
         view.backgroundColor = .clear
         
         // Create SwiftUI view
+        let isProUser = UserDefaults(suiteName: "group.rob")?.bool(forKey: "is_pro_user") ?? false
         let shareView = ShareView(
             onShare: { [weak self] in
                 self?.handleShare()
             },
             onCancel: { [weak self] in
                 self?.handleCancel()
-            }
+            },
+            currentTier: isProUser ? "pro" : "free"
         )
         
         // Embed SwiftUI view
@@ -48,10 +50,12 @@ class ShareViewController: UIViewController {
         
         // Show processing state
         if let hosting = hostingController {
+            let isProUser = UserDefaults(suiteName: "group.rob")?.bool(forKey: "is_pro_user") ?? false
             let processingView = ShareView(
                 onShare: {},
                 onCancel: {},
-                isProcessing: true
+                isProcessing: true,
+                currentTier: isProUser ? "pro" : "free"
             )
             hosting.rootView = processingView
         }
@@ -630,7 +634,8 @@ class ShareViewController: UIViewController {
         let attributes = ReelProcessingActivityAttributes(
             reelURL: url,
             submissionId: submissionId,
-            startTime: Date()
+            startTime: Date(),
+            isPro: UserDefaults(suiteName: "group.rob")?.bool(forKey: "is_pro_user") ?? false
         )
         
         let initialState = ReelProcessingActivityAttributes.ContentState(
@@ -753,6 +758,8 @@ struct ShareView: View {
     var limitReachedType: String? = nil   // "daily" or "weekly" when at limit
     var currentTier: String = "free"
     
+    private var isPro: Bool { currentTier == "pro" }
+    
     @State private var scale: CGFloat = 0.95  // Start closer to full size
     @State private var opacity: Double = 0
     
@@ -836,11 +843,18 @@ struct ShareView: View {
                         VStack(spacing: 16) {
                             ProgressView()
                                 .scaleEffect(1.2)
-                                .tint(.white)
+                                .tint(isPro ? Color(red: 0.85, green: 0.68, blue: 0.20) : .white)
                             
-                            Text("Starting fact-check...")
-                                .font(.system(size: 17, weight: .medium))
-                                .foregroundColor(.white)
+                            HStack(spacing: 4) {
+                                Text("Starting fact-check...")
+                                    .font(.system(size: 17, weight: .medium))
+                                    .foregroundColor(.white)
+                                if isPro {
+                                    Image(systemName: "star.fill")
+                                        .font(.system(size: 10))
+                                        .foregroundColor(Color(red: 0.85, green: 0.68, blue: 0.20))
+                                }
+                            }
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 32)
@@ -853,28 +867,42 @@ struct ShareView: View {
                                 Circle()
                                     .fill(
                                         LinearGradient(
-                                            colors: [
-                                                Color(red: 0, green: 0.75, blue: 0.85),
-                                                Color(red: 0.15, green: 0.35, blue: 0.95)
-                                            ],
+                                            colors: isPro
+                                                ? [Color(red: 0.85, green: 0.68, blue: 0.20),
+                                                   Color(red: 0.72, green: 0.53, blue: 0.10)]
+                                                : [Color(red: 0, green: 0.75, blue: 0.85),
+                                                   Color(red: 0.15, green: 0.35, blue: 0.95)],
                                             startPoint: .topLeading,
                                             endPoint: .bottomTrailing
                                         )
                                     )
                                     .frame(width: 64, height: 64)
                                 
-                                Image(systemName: "checkmark.shield.fill")
+                                Image(systemName: isPro ? "star.circle.fill" : "checkmark.shield.fill")
                                     .font(.system(size: 28))
                                     .foregroundColor(.white)
                             }
                             
                             // Title and description
                             VStack(spacing: 8) {
-                                Text("Fact-Check This Reel")
-                                    .font(.system(size: 22, weight: .bold))
-                                    .foregroundColor(.white)
+                                HStack(spacing: 6) {
+                                    Text(isPro ? "+informed Pro" : "Fact-Check This Reel")
+                                        .font(.system(size: 22, weight: .bold))
+                                        .foregroundColor(.white)
+                                    if isPro {
+                                        Text("PRO")
+                                            .font(.system(size: 10, weight: .heavy))
+                                            .foregroundColor(Color(red: 0.85, green: 0.68, blue: 0.20))
+                                            .padding(.horizontal, 6)
+                                            .padding(.vertical, 2)
+                                            .background(Color.white.opacity(0.2))
+                                            .clipShape(Capsule())
+                                    }
+                                }
                                 
-                                Text("We'll analyze this content and notify you when it's ready")
+                                Text(isPro
+                                     ? "Priority fact-checking with your Pro account"
+                                     : "We'll analyze this content and notify you when it's ready")
                                     .font(.system(size: 15))
                                     .foregroundColor(.white.opacity(0.8))
                                     .multilineTextAlignment(.center)
@@ -885,14 +913,16 @@ struct ShareView: View {
                             VStack(spacing: 12) {
                                 Button(action: onShare) {
                                     HStack {
-                                        Image(systemName: "paperplane.fill")
+                                        Image(systemName: isPro ? "star.fill" : "paperplane.fill")
                                         Text("Start Fact-Check")
                                             .fontWeight(.semibold)
                                     }
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 16)
                                     .background(Color.white)
-                                    .foregroundColor(Color(red: 0.15, green: 0.35, blue: 0.95))
+                                    .foregroundColor(isPro
+                                        ? Color(red: 0.72, green: 0.53, blue: 0.10)
+                                        : Color(red: 0.15, green: 0.35, blue: 0.95))
                                     .cornerRadius(14)
                                 }
                                 
@@ -910,18 +940,40 @@ struct ShareView: View {
                     }
                 }
                 .background(
-                    RoundedRectangle(cornerRadius: 28, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: limitReachedType != nil
-                                    ? [Color.orange.opacity(0.95), Color.red.opacity(0.85)]
-                                    : [Color(red: 0.15, green: 0.35, blue: 0.95).opacity(0.95),
-                                       Color(red: 0, green: 0.75, blue: 0.85).opacity(0.95)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 28, style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: limitReachedType != nil
+                                        ? [Color.orange.opacity(0.95), Color.red.opacity(0.85)]
+                                        : isPro
+                                            ? [Color(red: 0.12, green: 0.12, blue: 0.14).opacity(0.97),
+                                               Color(red: 0.08, green: 0.08, blue: 0.10).opacity(0.97)]
+                                            : [Color(red: 0.15, green: 0.35, blue: 0.95).opacity(0.95),
+                                               Color(red: 0, green: 0.75, blue: 0.85).opacity(0.95)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
                             )
-                        )
-                        .shadow(color: .black.opacity(0.3), radius: 30, x: 0, y: 15)
+                        // Gold border for pro users
+                        if isPro && limitReachedType == nil {
+                            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                                .strokeBorder(
+                                    LinearGradient(
+                                        colors: [Color(red: 0.85, green: 0.68, blue: 0.20),
+                                                 Color(red: 0.72, green: 0.53, blue: 0.10),
+                                                 Color(red: 0.85, green: 0.68, blue: 0.20)],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    ),
+                                    lineWidth: 2
+                                )
+                        }
+                    }
+                    .shadow(color: isPro && limitReachedType == nil
+                            ? Color(red: 0.85, green: 0.68, blue: 0.20).opacity(0.25)
+                            : .black.opacity(0.3),
+                            radius: 30, x: 0, y: 15)
                 )
                 .padding(.horizontal, 20)
                 .scaleEffect(scale)

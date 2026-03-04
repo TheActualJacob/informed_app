@@ -233,6 +233,28 @@ struct ReelProcessingActivityAttributes: ActivityAttributes {
     let reelURL: String
     let submissionId: String
     let startTime: Date
+    var isPro: Bool = false  // Gold styling for pro users
+
+    // Custom Codable conformance so existing Live Activities that were serialized
+    // without the `isPro` key can still be decoded (defaults to false).
+    enum CodingKeys: String, CodingKey {
+        case reelURL, submissionId, startTime, isPro
+    }
+
+    init(reelURL: String, submissionId: String, startTime: Date, isPro: Bool = false) {
+        self.reelURL = reelURL
+        self.submissionId = submissionId
+        self.startTime = startTime
+        self.isPro = isPro
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        reelURL = try container.decode(String.self, forKey: .reelURL)
+        submissionId = try container.decode(String.self, forKey: .submissionId)
+        startTime = try container.decode(Date.self, forKey: .startTime)
+        isPro = try container.decodeIfPresent(Bool.self, forKey: .isPro) ?? false
+    }
 }
 
 // MARK: - Activity Manager
@@ -398,9 +420,10 @@ class ReelProcessingActivityManager: ObservableObject {
         let attributes = ReelProcessingActivityAttributes(
             reelURL: reelURL,
             submissionId: submissionId,
-            startTime: Date()
+            startTime: Date(),
+            isPro: UserDefaults(suiteName: "group.rob")?.bool(forKey: "is_pro_user") ?? false
         )
-        
+        print("🎨 [ActivityManager] Creating activity with isPro=\(attributes.isPro) (is_pro_user in AppGroup=\(String(describing: UserDefaults(suiteName: "group.rob")?.object(forKey: "is_pro_user"))))")
         // Use the inherited state when upgrading a pushType:nil activity so the
         // replacement activity shows the current progress, not the initial state.
         let initialState = inheritedState ?? ReelProcessingActivityAttributes.ContentState(
@@ -714,14 +737,10 @@ class ReelProcessingActivityManager: ObservableObject {
             }
             // Still update content in case title/verdict differs, but no alert.
             await activity.update(ActivityContent(state: completedState, staleDate: nil))
-            // Store a backup in pendingCompletedInfo so drainPendingCompletedActivities
-            // can recreate the 'Tap to view results' island on foreground if iOS
-            // auto-dismisses the push-to-start activity while the app is in background.
-            if pendingCompletedInfo[submissionId] == nil {
-                let url = reelURLForSubmissionId(submissionId)
-                pendingCompletedInfo[submissionId] = (title: title, verdict: verdict, url: url)
-                print("💾 [ActivityManager] completeActivity: stored backup pending for \(submissionId.prefix(8)) in case activity is auto-dismissed in background")
-            }
+            // The activity was successfully updated in-place — do NOT store backup
+            // pendingCompletedInfo. Doing so causes drainPendingCompletedActivities to
+            // create a duplicate completed Dynamic Island on every foreground transition,
+            // which users see as a stale "pro message" popping up after the fact.
             return
         }
 
@@ -739,13 +758,10 @@ class ReelProcessingActivityManager: ObservableObject {
             print("🔕 [ActivityManager] completeActivity: app in background — updating content silently (backend APNs handles the alert) for \(submissionId.prefix(8))")
             await activity.update(ActivityContent(state: completedState, staleDate: nil))
             HapticManager.successImpact()
-            // Keep a backup so drainPendingCompletedActivities can recover if the APNs push
-            // never arrives (e.g. no activity token registered yet, or APNs delivery failure).
-            if pendingCompletedInfo[submissionId] == nil {
-                let url = reelURLForSubmissionId(submissionId)
-                pendingCompletedInfo[submissionId] = (title: title, verdict: verdict, url: url)
-                print("💾 [ActivityManager] completeActivity: stored APNs-fallback pending for \(submissionId.prefix(8))")
-            }
+            // The activity was updated in-place. Do NOT store pendingCompletedInfo backup
+            // here — the completed state is already reflected on the live system activity.
+            // Storing a backup caused drainPendingCompletedActivities to create duplicate
+            // completed Dynamic Islands every time the user returned to the app.
             return
         }
 
@@ -790,7 +806,8 @@ class ReelProcessingActivityManager: ObservableObject {
         guard authInfo.areActivitiesEnabled else { return }
         let friendlyMessage = Self.friendlyErrorMessage(errorMessage)
         let attributes = ReelProcessingActivityAttributes(
-            reelURL: url, submissionId: submissionId, startTime: Date()
+            reelURL: url, submissionId: submissionId, startTime: Date(),
+            isPro: UserDefaults(suiteName: "group.rob")?.bool(forKey: "is_pro_user") ?? false
         )
         let failedState = ReelProcessingActivityAttributes.ContentState(
             status: .failed,
@@ -860,7 +877,8 @@ class ReelProcessingActivityManager: ObservableObject {
         let authInfo = ActivityAuthorizationInfo()
         guard authInfo.areActivitiesEnabled else { return }
         let attributes = ReelProcessingActivityAttributes(
-            reelURL: url, submissionId: submissionId, startTime: Date()
+            reelURL: url, submissionId: submissionId, startTime: Date(),
+            isPro: UserDefaults(suiteName: "group.rob")?.bool(forKey: "is_pro_user") ?? false
         )
         let completedState = ReelProcessingActivityAttributes.ContentState(
             status: .completed, progress: 1.0,

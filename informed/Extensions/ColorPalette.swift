@@ -28,6 +28,9 @@ extension Color {
     /// Red for false/negative/error states
     static let brandRed = Color(red: 0.95, green: 0.3, blue: 0.3)
     
+    /// Gold for pro/premium states
+    static let brandGold = Color(red: 0.85, green: 0.68, blue: 0.20)
+    
     // MARK: - Adaptive Background Colors
     
     /// Main background color - adapts to light/dark mode

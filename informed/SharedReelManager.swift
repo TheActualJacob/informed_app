@@ -789,6 +789,21 @@ class SharedReelManager: ObservableObject {
             print("⏭️ [ProgressPolling] Already polling \(submissionId.prefix(8)), skipping duplicate")
             return
         }
+
+        // Skip polling for submissions that are already completed or failed locally.
+        if let localReel = reels.first(where: { $0.id == submissionId }),
+           localReel.status == .completed || localReel.status == .failed {
+            print("⏭️ [ProgressPolling] Submission \(submissionId.prefix(8)) already \(localReel.status.rawValue) locally — skipping polling")
+            return
+        }
+
+        // Also skip if the Live Activity itself is already in completed state.
+        if let activity = Activity<ReelProcessingActivityAttributes>.activities.first(where: { $0.attributes.submissionId == submissionId }),
+           activity.content.state.status == .completed || activity.content.state.status == .failed {
+            print("⏭️ [ProgressPolling] Live Activity for \(submissionId.prefix(8)) already \(activity.content.state.status.rawValue) — skipping polling")
+            return
+        }
+
         activePollingIds.insert(submissionId)
         
         print("🔄 [ProgressPolling] Starting progress polling for: \(submissionId) (skipInitialWait=\(skipInitialWait))")

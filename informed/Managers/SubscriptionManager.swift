@@ -53,7 +53,13 @@ final class SubscriptionManager: ObservableObject {
 
     // MARK: - Published state
 
-    @Published var isPro: Bool = false
+    @Published var isPro: Bool = false {
+        didSet {
+            // Keep App Group in sync so the Share Extension and Dynamic Island
+            // widget can read the pro status without a network call.
+            UserDefaults(suiteName: "group.rob")?.set(isPro, forKey: "is_pro_user")
+        }
+    }
     @Published var usage: UsageStatus = UsageStatus(
         tier: "free", dailyUsed: 0, dailyLimit: 5,
         weeklyUsed: 0, weeklyLimit: 10, subscriptionExpiresAt: nil
