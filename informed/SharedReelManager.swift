@@ -844,6 +844,13 @@ class SharedReelManager: ObservableObject {
             // iteration until it appears so the backend can send APNs progress updates.
             var activityTokenRegistered = false
 
+            // Flush any token the Share Extension stored in the App Group before the
+            // polling loop begins. The extension process is often killed before its
+            // network call completes, so the App Group is the most reliable cache.
+            if #available(iOS 16.1, *) {
+                ReelProcessingActivityManager.shared.flushAppGroupPushToken(submissionId: submissionId)
+            }
+
             while !isCompleted && pollCount < maxPolls {
                 pollCount += 1
 
@@ -854,8 +861,20 @@ class SharedReelManager: ObservableObject {
                 // sequence has had a chance to emit (it may be suspended in background).
                 if !activityTokenRegistered {
                     if #available(iOS 16.1, *) {
-                        let tokenFound = await ReelProcessingActivityManager.shared
+                        // Try the system Activity object first (most reliable).
+                        var tokenFound = await ReelProcessingActivityManager.shared
                             .tryRegisterActivityPushToken(submissionId: submissionId)
+                        // Fallback: try the App Group cache in case the Share Extension
+                        // stored the token but the system Activity object doesn't have it yet.
+                        if !tokenFound {
+                            ReelProcessingActivityManager.shared.flushAppGroupPushToken(submissionId: submissionId)
+                            // Re-check — flushAppGroupPushToken fires the network call;
+                            // mark as registered so we stop retrying.
+                            if let sharedDefaults = UserDefaults(suiteName: "group.rob"),
+                               sharedDefaults.string(forKey: "activity_push_token_\(submissionId)") != nil {
+                                tokenFound = true
+                            }
+                        }
                         if tokenFound {
                             activityTokenRegistered = true
                             print("🔑 [ProgressPolling] Activity push token registered on poll \(pollCount) for \(submissionId.prefix(8))")

@@ -332,12 +332,22 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
                         verdict: verdict
                     )
                 }
+                // Also flush any pending App Group push tokens — the main app is awake
+                // now, so this is our chance to register tokens that the Share Extension
+                // stored but couldn't send (extension process was killed).
+                if #available(iOS 16.1, *) {
+                    ReelProcessingActivityManager.shared.flushAppGroupPushToken(submissionId: submissionId)
+                }
             } else {
                 NotificationManager.shared.handleNotification(userInfo: userInfo)
             }
+            
+            // IMPORTANT: Call completionHandler INSIDE the Task so iOS keeps the
+            // app alive until the async work (completeActivity, etc.) finishes.
+            // Previously this was called outside the Task, causing iOS to kill the
+            // app before completeActivity had a chance to update the Live Activity.
+            completionHandler(.newData)
         }
-        
-        completionHandler(.newData)
     }
     
     // MARK: - Live Activity Handling
