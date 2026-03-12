@@ -56,8 +56,8 @@ struct ClaimEntry: Codable, Equatable {
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        claim   = try c.decode(String.self, forKey: .claim)
-        verdict = try c.decode(String.self, forKey: .verdict)
+        claim   = (try? c.decodeIfPresent(String.self, forKey: .claim))   ?? ""
+        verdict = (try? c.decodeIfPresent(String.self, forKey: .verdict)) ?? ""
         // Accept both camelCase and snake_case for the accuracy rating
         claimAccuracyRating =
             (try? c.decodeIfPresent(String.self, forKey: .claimAccuracyRating)) ??
@@ -245,8 +245,8 @@ struct PublicReel: Identifiable, Codable {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id          = try c.decode(String.self, forKey: .id)
-        title       = try c.decode(String.self, forKey: .title)
-        description = try c.decode(String.self, forKey: .description)
+        title       = (try? c.decodeIfPresent(String.self, forKey: .title))       ?? ""
+        description = (try? c.decodeIfPresent(String.self, forKey: .description)) ?? ""
         thumbnailUrl = try c.decodeIfPresent(String.self, forKey: .thumbnailUrl)
         videoLink   = try c.decode(String.self, forKey: .videoLink)
         checkedAt   = try c.decode(String.self, forKey: .checkedAt)
