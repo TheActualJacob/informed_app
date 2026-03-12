@@ -9,6 +9,7 @@ import Foundation
 import UserNotifications
 import Combine
 import UIKit
+import ActivityKit
 
 @MainActor
 class NotificationManager: NSObject, ObservableObject {
@@ -288,5 +289,72 @@ class NotificationManager: NSObject, ObservableObject {
         if let url = URL(string: UIApplication.openSettingsURLString) {
             UIApplication.shared.open(url)
         }
+    }
+    
+    // MARK: - Local Notification Fallbacks
+    
+    /// Schedule a local notification when a fact-check starts (for devices without Live Activities).
+    func scheduleFactCheckStartedNotification(submissionId: String) {
+        let content = UNMutableNotificationContent()
+        content.title = "Fact-check started"
+        content.body = "We're analysing your content. You'll be notified when it's ready."
+        content.sound = .default
+        content.categoryIdentifier = "REEL_PROCESSING"
+        content.userInfo = ["submission_id": submissionId]
+        
+        let request = UNNotificationRequest(
+            identifier: "factcheck-started-\(submissionId)",
+            content: content,
+            trigger: nil // deliver immediately
+        )
+        
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                print("❌ Failed to schedule start notification: \(error)")
+            } else {
+                print("✅ Scheduled local start notification for \(submissionId.prefix(8))")
+            }
+        }
+    }
+    
+    /// Schedule a local notification when a fact-check completes (for devices without Live Activities).
+    func scheduleFactCheckCompletedNotification(submissionId: String, title: String, verdict: String) {
+        // Remove the "started" notification if still pending
+        UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: ["factcheck-started-\(submissionId)"])
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: ["factcheck-started-\(submissionId)"])
+        
+        let content = UNMutableNotificationContent()
+        content.title = "Fact-check complete!"
+        content.body = "\(title) — \(verdict)"
+        content.sound = .default
+        content.categoryIdentifier = "FACT_CHECK_COMPLETED"
+        content.userInfo = [
+            "submission_id": submissionId,
+            "action": "fact_check_completed",
+            "title": title,
+            "verdict": verdict
+        ]
+        
+        let request = UNNotificationRequest(
+            identifier: "factcheck-completed-\(submissionId)",
+            content: content,
+            trigger: nil // deliver immediately
+        )
+        
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                print("❌ Failed to schedule completion notification: \(error)")
+            } else {
+                print("✅ Scheduled local completion notification for \(submissionId.prefix(8))")
+            }
+        }
+    }
+    
+    /// Returns true if Live Activities are available on this device.
+    var areLiveActivitiesAvailable: Bool {
+        if #available(iOS 16.1, *) {
+            return ActivityAuthorizationInfo().areActivitiesEnabled
+        }
+        return false
     }
 }

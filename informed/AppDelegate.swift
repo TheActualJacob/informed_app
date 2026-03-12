@@ -62,8 +62,14 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             intentIdentifiers: [],
             options: []
         )
+        let completedCategory = UNNotificationCategory(
+            identifier: "FACT_CHECK_COMPLETED",
+            actions: [],
+            intentIdentifiers: [],
+            options: []
+        )
         
-        UNUserNotificationCenter.current().setNotificationCategories([processingCategory])
+        UNUserNotificationCenter.current().setNotificationCategories([processingCategory, completedCategory])
         print("✅ Registered notification categories")
     }
     
@@ -332,6 +338,8 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
                         verdict: verdict
                     )
                 }
+                // On devices without Live Activities (iPad, older iPhones, disabled),
+                // completeActivity already schedules a local notification fallback.
                 // Also flush any pending App Group push tokens — the main app is awake
                 // now, so this is our chance to register tokens that the Share Extension
                 // stored but couldn't send (extension process was killed).

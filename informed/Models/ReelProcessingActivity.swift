@@ -9,6 +9,7 @@ import Foundation
 import ActivityKit
 import SwiftUI
 import Combine
+import UserNotifications
 
 // MARK: - Backend Progress Response
 
@@ -405,6 +406,14 @@ class ReelProcessingActivityManager: ObservableObject {
         
         guard areEnabled else {
             print("⚠️ [ActivityManager] Live Activities are NOT enabled")
+            // Fallback: schedule a local notification so iPad and older devices still get notified
+            Self.scheduleLocalNotification(
+                id: "factcheck-started-\(submissionId)",
+                title: "Fact-check started",
+                body: "We're analysing your content. You'll be notified when it's ready.",
+                categoryId: "REEL_PROCESSING",
+                userInfo: ["submission_id": submissionId]
+            )
             return
         }
         
@@ -713,6 +722,14 @@ class ReelProcessingActivityManager: ObservableObject {
                 // Still in background — store for when user opens the app.
                 pendingCompletedInfo[submissionId] = (title: title, verdict: verdict, url: url)
                 print("📥 [ActivityManager] completeActivity: queued pending completion for \(submissionId.prefix(8)) (app in background)")
+            }
+            // Fallback: if Live Activities are not available at all, fire a local notification
+            if #available(iOS 16.1, *) {
+                if !ActivityAuthorizationInfo().areActivitiesEnabled {
+                    Self.scheduleCompletionLocalNotification(submissionId: submissionId, title: title, verdict: verdict)
+                }
+            } else {
+                Self.scheduleCompletionLocalNotification(submissionId: submissionId, title: title, verdict: verdict)
             }
             return
         }
@@ -1099,5 +1116,46 @@ class ReelProcessingActivityManager: ObservableObject {
         
         currentActivities.removeAll()
         print("✅ [ActivityManager] All activities ended")
+    }
+    
+    // MARK: - Local Notification Fallbacks
+    
+    /// Schedule a local notification (works in all targets including extensions).
+    static func scheduleLocalNotification(id: String, title: String, body: String, categoryId: String, userInfo: [String: String]) {
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = .default
+        content.categoryIdentifier = categoryId
+        content.userInfo = userInfo
+        
+        let request = UNNotificationRequest(identifier: id, content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                print("❌ [ActivityManager] Failed to schedule local notification: \(error)")
+            } else {
+                print("✅ [ActivityManager] Scheduled local notification: \(title)")
+            }
+        }
+    }
+    
+    /// Schedule a completion local notification, removing any prior "started" notification.
+    static func scheduleCompletionLocalNotification(submissionId: String, title: String, verdict: String) {
+        let center = UNUserNotificationCenter.current()
+        center.removeDeliveredNotifications(withIdentifiers: ["factcheck-started-\(submissionId)"])
+        center.removePendingNotificationRequests(withIdentifiers: ["factcheck-started-\(submissionId)"])
+        
+        scheduleLocalNotification(
+            id: "factcheck-completed-\(submissionId)",
+            title: "Fact-check complete!",
+            body: "\(title) — \(verdict)",
+            categoryId: "FACT_CHECK_COMPLETED",
+            userInfo: [
+                "submission_id": submissionId,
+                "action": "fact_check_completed",
+                "title": title,
+                "verdict": verdict
+            ]
+        )
     }
 }
