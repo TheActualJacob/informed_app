@@ -11,6 +11,13 @@ import RevenueCat
 
 @main
 struct informedApp: App {
+    init() {
+        // Configure RevenueCat unconditionally on every launch so the SDK
+        // initialises and registers this device even before the user logs in.
+        Purchases.logLevel = .debug
+        Purchases.configure(withAPIKey: SubscriptionManager.revenueCatAPIKey)
+    }
+
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var userManager = UserManager.shared
     @StateObject private var notificationManager = NotificationManager.shared
@@ -47,6 +54,17 @@ struct informedApp: App {
                     }
                     .onOpenURL { url in
                         handleIncomingURL(url)
+                    }
+                    .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
+                        // Universal Link handler: informed-app.com/share/{id}
+                        // Fires when iOS opens the app from a shared link
+                        // instead of loading it in Safari (requires associated-domains entitlement)
+                        guard let url = activity.webpageURL,
+                              url.host == "informed-app.com",
+                              url.pathComponents.count >= 3,
+                              url.pathComponents[1] == "share" else { return }
+                        let submissionId = url.pathComponents[2]
+                        openFactCheck(submissionId: submissionId)
                     }
                     .onAppear {
                         // Check for pending shared URLs from Share Extension
@@ -125,14 +143,16 @@ struct informedApp: App {
                         }
                     }
                     .task {
-                        // Configure RevenueCat and sync subscription state
-                        subscriptionManager.configure()
+                        // Identify the logged-in user in RevenueCat and sync
+                        // subscription state. identify() awaits the RC logIn so
+                        // syncCustomerInfo() runs on the correct subscriber.
                         if let userId = userManager.currentUserId {
-                            subscriptionManager.identify(userId: userId)
+                            await subscriptionManager.identify(userId: userId)
+                        } else {
+                            // Eagerly sync even for anonymous sessions so isPro
+                            // is correct before the user gets to any paywalls.
+                            await subscriptionManager.syncCustomerInfo()
                         }
-                        // Eagerly sync isPro to App Group so Live Activities created
-                        // by the Share Extension pick up the correct pro status.
-                        await subscriptionManager.syncCustomerInfo()
 
                         // Request notification permissions on first launch
                         if notificationManager.authorizationStatus == .notDetermined {
