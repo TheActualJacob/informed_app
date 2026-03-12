@@ -266,6 +266,9 @@ class ReelProcessingActivityManager: ObservableObject {
     static let shared = ReelProcessingActivityManager()
     
     var currentActivities: [String: Activity<ReelProcessingActivityAttributes>] = [:]
+    /// Maximum age (seconds) for a non-terminal Live Activity before it is force-failed.
+    /// Acts as a hard safety net so no Dynamic Island activity lives forever.
+    private let maxActivityAge: TimeInterval = 300 // 5 minutes
     /// Holds completion info for activities that couldn't be shown because the app was in the
     /// background when polling finished. Drained by `drainPendingCompletedActivities()` on foreground.
     private var pendingCompletedInfo: [String: (title: String, verdict: String, url: String)] = [:]
@@ -313,7 +316,7 @@ class ReelProcessingActivityManager: ObservableObject {
         }
         
         let now = Date()
-        let staleThreshold: TimeInterval = 600 // 10 minutes
+        let staleThreshold: TimeInterval = 300 // 5 minutes (matches maxActivityAge)
         var endedCount = 0
         
         // Only end activities older than 10 minutes (likely orphaned/stale)
@@ -447,9 +450,12 @@ class ReelProcessingActivityManager: ObservableObject {
         
         do {
             print("🎬 [ActivityManager] Requesting Live Activity from system…")
+            // Set staleDate so iOS marks the activity as outdated if the app is killed
+            // before it can be ended programmatically.
+            let staleDate = Date().addingTimeInterval(maxActivityAge)
             let activity = try Activity<ReelProcessingActivityAttributes>.request(
                 attributes: attributes,
-                content: ActivityContent(state: initialState, staleDate: nil),
+                content: ActivityContent(state: initialState, staleDate: staleDate),
                 pushType: .token
             )
             
@@ -638,6 +644,15 @@ class ReelProcessingActivityManager: ObservableObject {
             return
         }
         
+        // Hard timeout: if the activity has been alive longer than maxActivityAge,
+        // force-fail it instead of updating. Prevents stuck Dynamic Island.
+        let age = Date().timeIntervalSince(activity.attributes.startTime)
+        if age > maxActivityAge {
+            print("⏱️ [ActivityManager] Activity for \(submissionId.prefix(8)) exceeded max age (\(Int(age))s > \(Int(maxActivityAge))s) — force-failing")
+            await failActivity(submissionId: submissionId, errorMessage: "Processing timeout")
+            return
+        }
+        
         // Use the explicitly-passed status, or keep the old one as a fallback
         let resolvedStatus = status ?? activity.content.state.status
         
@@ -656,7 +671,12 @@ class ReelProcessingActivityManager: ObservableObject {
     }
     
     private func updateActivityState(activity: Activity<ReelProcessingActivityAttributes>, newState: ReelProcessingActivityAttributes.ContentState) async {
-        await activity.update(ActivityContent(state: newState, staleDate: nil))
+        // Roll the staleDate forward on each update so iOS knows the activity is still active,
+        // but always cap it so the activity cannot live beyond maxActivityAge from its start.
+        let absoluteDeadline = activity.attributes.startTime.addingTimeInterval(maxActivityAge)
+        let rollingStale = Date().addingTimeInterval(60) // 1 minute from now
+        let staleDate = min(rollingStale, absoluteDeadline)
+        await activity.update(ActivityContent(state: newState, staleDate: staleDate))
     }
     
     // MARK: - Complete Activity
@@ -753,7 +773,7 @@ class ReelProcessingActivityManager: ObservableObject {
                 print("ℹ️ [ActivityManager] completeActivity: already buzzed for \(submissionId.prefix(8)) — updating content silently")
             }
             // Still update content in case title/verdict differs, but no alert.
-            await activity.update(ActivityContent(state: completedState, staleDate: nil))
+            await activity.update(ActivityContent(state: completedState, staleDate: Date().addingTimeInterval(300)))
             return
         }
 
@@ -769,7 +789,7 @@ class ReelProcessingActivityManager: ObservableObject {
         )
 
         await activity.update(
-            ActivityContent(state: completedState, staleDate: nil),
+            ActivityContent(state: completedState, staleDate: Date().addingTimeInterval(300)),
             alertConfiguration: alertConfig
         )
         HapticManager.successImpact()
@@ -813,7 +833,7 @@ class ReelProcessingActivityManager: ObservableObject {
         do {
             let activity = try Activity<ReelProcessingActivityAttributes>.request(
                 attributes: attributes,
-                content: ActivityContent(state: failedState, staleDate: nil),
+                content: ActivityContent(state: failedState, staleDate: Date().addingTimeInterval(30)),
                 pushType: .token
             )
             currentActivities[submissionId] = activity
@@ -883,7 +903,7 @@ class ReelProcessingActivityManager: ObservableObject {
         do {
             let activity = try Activity<ReelProcessingActivityAttributes>.request(
                 attributes: attributes,
-                content: ActivityContent(state: completedState, staleDate: nil),
+                content: ActivityContent(state: completedState, staleDate: Date().addingTimeInterval(300)),
                 pushType: .token
             )
             currentActivities[submissionId] = activity
@@ -999,7 +1019,7 @@ class ReelProcessingActivityManager: ObservableObject {
             sound: .default
         )
         
-        await activity.update(ActivityContent(state: failedState, staleDate: nil), alertConfiguration: alertConfig)
+        await activity.update(ActivityContent(state: failedState, staleDate: Date().addingTimeInterval(30)), alertConfiguration: alertConfig)
         HapticManager.errorImpact()
         
         // Show the error for 8 seconds, then dismiss

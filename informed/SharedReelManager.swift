@@ -1092,13 +1092,15 @@ class SharedReelManager: ObservableObject {
                             } catch let fallbackError {
                                 let errMsg = fallbackError.localizedDescription
                                 print("⚠️ [ProgressPolling] Main app fallback failed: \(errMsg)")
-                                // If the submission was rejected (daily limit, duplicate, etc.) it
+                                // If the submission was rejected (daily limit, duplicate, unsupported URL, etc.) it
                                 // will NEVER appear in the DB — stop polling and fail immediately.
-                                let isTerminal = errMsg.contains("limit_reached") || errMsg.contains("duplicate")
+                                let isTerminal = errMsg.contains("limit_reached") || errMsg.contains("duplicate") || errMsg.contains("invalid_url") || errMsg.contains("unsupported") || errMsg.contains("Unsupported")
                                 if isTerminal {
                                     let userMessage: String
                                     if errMsg.contains("limit_reached") {
                                         userMessage = "Daily limit reached"
+                                    } else if errMsg.contains("invalid_url") || errMsg.contains("unsupported") || errMsg.contains("Unsupported") {
+                                        userMessage = "Unsupported URL format"
                                     } else {
                                         userMessage = "Already fact-checked"
                                     }

@@ -414,27 +414,44 @@ class ShareViewController: UIViewController {
                     if let errorText = String(data: data, encoding: .utf8) {
                         print("   Error details: \(errorText)")
                     }
-                    // Detect limit_reached immediately from the extension's own POST response.
+                    // Detect terminal errors immediately from the extension's own POST response.
                     // Update the island to show the error right away instead of leaving it
                     // stuck at 10% until the main app's polling fallback discovers it.
-                    if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                       let errorKey = json["error"] as? String, errorKey == "limit_reached" {
-                        let limitType = json["type"] as? String ?? "daily"
-                        print("⚠️ [ShareExtension] limit_reached (\(limitType)) — failing island for \(submissionId.prefix(8))")
-                        if #available(iOS 16.1, *) {
-                            self.failLiveActivity(submissionId: submissionId, message: "Daily limit reached")
-                        }
-                        // Remove from pending so the main app doesn't start polling a 404 forever.
-                        if let defaults = UserDefaults(suiteName: "group.rob") {
-                            if var subs = defaults.array(forKey: "pending_submissions") as? [[String: Any]] {
-                                subs.removeAll { ($0["id"] as? String) == submissionId }
-                                defaults.set(subs, forKey: "pending_submissions")
+                    if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                        let errorKey = json["error"] as? String ?? ""
+                        let errorType = json["error_type"] as? String ?? ""
+                        
+                        if errorKey == "limit_reached" {
+                            let limitType = json["type"] as? String ?? "daily"
+                            print("⚠️ [ShareExtension] limit_reached (\(limitType)) — failing island for \(submissionId.prefix(8))")
+                            if #available(iOS 16.1, *) {
+                                self.failLiveActivity(submissionId: submissionId, message: "Daily limit reached")
                             }
-                            // Signal the main app to show the upgrade paywall on next foreground.
-                            defaults.set(limitType, forKey: "pending_limit_reached_type")
-                            defaults.synchronize()
-                            print("🗑️ [ShareExtension] Removed \(submissionId.prefix(8)) from pending_submissions (limit_reached)")
-                            print("💾 [ShareExtension] Wrote pending_limit_reached_type=\(limitType) — main app will show paywall on foreground")
+                            // Remove from pending so the main app doesn't start polling a 404 forever.
+                            if let defaults = UserDefaults(suiteName: "group.rob") {
+                                if var subs = defaults.array(forKey: "pending_submissions") as? [[String: Any]] {
+                                    subs.removeAll { ($0["id"] as? String) == submissionId }
+                                    defaults.set(subs, forKey: "pending_submissions")
+                                }
+                                // Signal the main app to show the upgrade paywall on next foreground.
+                                defaults.set(limitType, forKey: "pending_limit_reached_type")
+                                defaults.synchronize()
+                                print("🗑️ [ShareExtension] Removed \(submissionId.prefix(8)) from pending_submissions (limit_reached)")
+                                print("💾 [ShareExtension] Wrote pending_limit_reached_type=\(limitType) — main app will show paywall on foreground")
+                            }
+                        } else if errorType == "invalid_url" || errorType == "unsupported_platform" {
+                            print("⚠️ [ShareExtension] \(errorType) — failing island for \(submissionId.prefix(8))")
+                            if #available(iOS 16.1, *) {
+                                self.failLiveActivity(submissionId: submissionId, message: "Unsupported URL format")
+                            }
+                            if let defaults = UserDefaults(suiteName: "group.rob") {
+                                if var subs = defaults.array(forKey: "pending_submissions") as? [[String: Any]] {
+                                    subs.removeAll { ($0["id"] as? String) == submissionId }
+                                    defaults.set(subs, forKey: "pending_submissions")
+                                }
+                                defaults.synchronize()
+                                print("🗑️ [ShareExtension] Removed \(submissionId.prefix(8)) from pending_submissions (\(errorType))")
+                            }
                         }
                     }
                 }
