@@ -371,6 +371,7 @@ struct informedApp: App {
                     openFactCheck(submissionId: submissionId)
                 }
             }
+            
             return
         }
 
