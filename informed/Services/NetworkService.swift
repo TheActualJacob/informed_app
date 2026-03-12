@@ -583,18 +583,18 @@ class NetworkService {
                 return try await operation()
             } catch let error as NetworkError {
                 // Only retry on transient errors
+                let isTransient: Bool
                 switch error {
-                case .serverError(let code) where code >= 500,
-                     .timeout,
-                     .cannotConnectToHost:
-                    lastError = error
-                    if attempt < maxAttempts {
-                        let delay = initialDelay * pow(2, Double(attempt - 1))
-                        try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-                        continue
-                    }
-                default:
-                    throw error // non-retryable
+                case .serverError(let code) where code >= 500: isTransient = true
+                case .timeout, .cannotConnectToHost:           isTransient = true
+                default:                                        isTransient = false
+                }
+                guard isTransient else { throw error }
+                lastError = error
+                if attempt < maxAttempts {
+                    let delay = initialDelay * pow(2, Double(attempt - 1))
+                    try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                    continue
                 }
             } catch {
                 lastError = error
