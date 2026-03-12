@@ -128,6 +128,9 @@ class HomeViewModel: ObservableObject {
     
     // MARK: - Personalized Feed
     
+    /// Whether the displayed feed came from cache and may be stale.
+    @Published var isFeedFromStaleCache: Bool = false
+
     func loadPersonalizedFeed() async {
         // isFeedFetching stays true for the full duration of the request so concurrent
         // calls can't slip through when cached data causes isFeedLoading to clear early.
@@ -141,14 +144,17 @@ class HomeViewModel: ObservableObject {
         defer { isFeedLoading = false }
 
         do {
-            let response = try await NetworkService.shared.fetchPersonalizedFeed(
-                userId: userId,
-                sessionId: sessionId,
-                limit: 20
-            )
+            let response = try await NetworkService.shared.withRetry {
+                try await NetworkService.shared.fetchPersonalizedFeed(
+                    userId: self.userId,
+                    sessionId: self.sessionId,
+                    limit: 20
+                )
+            }
             withAnimation(.easeInOut(duration: 0.25)) {
                 personalizedFeed = response.reels
                 feedSource       = response.source
+                isFeedFromStaleCache = false
             }
             let cache = AppDataCache.shared
             cache.personalizedFeed  = response.reels
@@ -156,11 +162,19 @@ class HomeViewModel: ObservableObject {
             cache.lastFeedRefresh   = Date()
         } catch {
             print("⚠️ Could not load personalized feed: \(error)")
-            if personalizedFeed.isEmpty { personalizedFeed = [] }
+            if personalizedFeed.isEmpty {
+                personalizedFeed = []
+            } else {
+                // User is seeing stale cache — surface this so the UI can show an indicator
+                isFeedFromStaleCache = true
+            }
         }
     }
     
+    /// Pull-to-refresh: always hits the network regardless of staleness threshold.
     func refresh() {
+        // Reset the staleness gate so loadPersonalizedFeed() won't short-circuit
+        AppDataCache.shared.lastFeedRefresh = nil
         Task {
             await withTaskGroup(of: Void.self) { group in
                 group.addTask { await self.loadCategories() }

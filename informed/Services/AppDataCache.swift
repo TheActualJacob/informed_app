@@ -37,7 +37,7 @@ final class AppDataCache: ObservableObject {
     // MARK: - Staleness threshold
 
     /// Skip a background refresh if the cached data is younger than this.
-    static let refreshThresholdSeconds: TimeInterval = 5 * 60  // 5 minutes
+    static let refreshThresholdSeconds: TimeInterval = 90  // 90 seconds
 
     // MARK: - Personalized Feed
 

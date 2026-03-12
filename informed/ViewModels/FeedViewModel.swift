@@ -96,11 +96,11 @@ class FeedViewModel: ObservableObject {
            if case .unauthorized = error {
                errorMessage = "Session expired. Please log out and log back in."
            } else {
-               errorMessage = "Backend endpoints not ready. See BACKEND_URGENT_FIX.md"
+               errorMessage = "Could not refresh feed. Pull down to try again."
            }
            print("❌ Error loading feed: \(error)")
        } catch {
-           errorMessage = "Backend endpoints not ready. See BACKEND_URGENT_FIX.md"
+           errorMessage = "Could not refresh feed. Pull down to try again."
            print("❌ Error loading feed: \(error)")
        }
        
@@ -146,6 +146,10 @@ class FeedViewModel: ObservableObject {
        currentPage = 1
        hasMore = true
        nextCursor = nil
+       // Always bypass staleness gate on user-initiated pull-to-refresh
+       AppDataCache.shared.lastDiscoverRefresh = nil
+       // Re-read blocked users so unblocks take effect without app restart
+       loadBlockedUsers()
        await loadFeed()
    }
    
@@ -184,9 +188,11 @@ class FeedViewModel: ObservableObject {
            throw NetworkError.unauthorized
        }
        let cursor = page > 1 ? nextCursor : nil
-       return try await NetworkService.shared.fetchPublicFeed(
-           userId: userId, sessionId: sessionId, page: page, limit: limit, cursor: cursor
-       )
+       return try await NetworkService.shared.withRetry {
+           try await NetworkService.shared.fetchPublicFeed(
+               userId: userId, sessionId: sessionId, page: page, limit: limit, cursor: cursor
+           )
+       }
    }
    
    private func trackInteraction(factCheckId: String, interactionType: String) async throws {
