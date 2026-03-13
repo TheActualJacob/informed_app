@@ -399,7 +399,7 @@ class HomeViewModel: ObservableObject {
                         let thumbnailURL: URL? = factCheckData.thumbnailUrl.flatMap { URL(string: $0) }
                         let primaryClaim = embeddedClaims[0]
                         let navItem = FactCheckItem(
-                            reelID: nil,
+                            reelID: factCheckData.uniqueID,
                             sourceName: platformName, sourceIcon: platformIcon,
                             timeAgo: "Just now", title: factCheckData.title ?? "",
                             summary: primaryClaim.summary,
@@ -480,7 +480,7 @@ class HomeViewModel: ObservableObject {
             let thumbnailURL: URL? = factCheckData.thumbnailUrl.flatMap { URL(string: $0) }
 
             let newItem = FactCheckItem(
-                reelID: nil,
+                reelID: factCheckData.uniqueID,
                 sourceName: platformName, sourceIcon: platformIcon,
                 timeAgo: "Just now", title: factCheckData.title ?? "",
                 summary: primaryClaim.summary,

@@ -934,7 +934,8 @@ class SharedReelManager: ObservableObject {
                                 datePosted: nil,
                                 platform: statusResponse.platform,
                                 aiGenerated: statusResponse.aiGenerated,
-                                aiProbability: statusResponse.aiProbability
+                                aiProbability: statusResponse.aiProbability,
+                                reelID: statusResponse.uniqueID
                             )
                             await MainActor.run {
                                 self.updateReelStatus(
@@ -994,7 +995,8 @@ class SharedReelManager: ObservableObject {
                                     datePosted: nil,
                                     platform: statusResponse.platform,
                                     aiGenerated: statusResponse.aiGenerated,
-                                    aiProbability: statusResponse.aiProbability
+                                    aiProbability: statusResponse.aiProbability,
+                                    reelID: statusResponse.uniqueID
                                 )
                                 NotificationCenter.default.post(
                                     name: NSNotification.Name("ShowFactCheckDetail"),

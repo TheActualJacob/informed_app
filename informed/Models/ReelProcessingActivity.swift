@@ -31,6 +31,8 @@ struct SubmissionStatusResponse: Codable {
     let aiGenerated: String?
     let aiProbability: Double?
     let claims: [StatusClaimEntry]?
+    /// The backend uniqueID for the completed fact-check — used to build the shareable link.
+    let uniqueID: String?
 
     enum CodingKeys: String, CodingKey {
         case submissionId              = "submission_id"
@@ -47,6 +49,7 @@ struct SubmissionStatusResponse: Codable {
         case aiGenerated
         case aiProbability
         case claims
+        case uniqueID
     }
 
     /// Converts backend status string to ProcessingStatus enum

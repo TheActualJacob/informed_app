@@ -184,6 +184,8 @@ struct FactCheckData: Codable {
     let status: String?
     let progressPercentage: Int?
     let message: String?
+    /// The backend uniqueID for the completed fact-check — used to build the shareable link.
+    let uniqueID: String?
 
     enum CodingKeys: String, CodingKey {
         case title, description, date, videoLink, platform, claims
@@ -196,6 +198,7 @@ struct FactCheckData: Codable {
         case status
         case progressPercentage   = "progress_percentage"
         case message
+        case uniqueID
     }
 
     var resolvedClaims: [ClaimEntry] {
