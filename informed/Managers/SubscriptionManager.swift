@@ -46,7 +46,7 @@ final class SubscriptionManager: ObservableObject {
     // RevenueCat product identifiers – must match App Store Connect
     static let monthlyProductID = "informed_pro_monthly"
     static let annualProductID  = "informed_pro_annual"
-    static let entitlementID    = "pro"
+    static let entitlementID    = "Informed Pro"
 
     // RevenueCat public API key
     static let revenueCatAPIKey = "appl_MzFXoJPTkITfCZLOmoXrJAPMeNp"
@@ -77,17 +77,19 @@ final class SubscriptionManager: ObservableObject {
 
     // MARK: - Configure
 
-    /// Call once on app launch, after UserManager is authenticated.
-    func configure() {
-        Purchases.logLevel = .error
-        Purchases.configure(withAPIKey: Self.revenueCatAPIKey)
-    }
+    /// No-op: RevenueCat is now configured unconditionally in informedApp.init().
+    /// Kept for backwards compatibility in case anything still calls it.
+    func configure() {}
 
-    /// Set RevenueCat's app user ID to the backend's userid so they're in sync.
-    func identify(userId: String) {
-        Purchases.shared.logIn(userId) { [weak self] _, _, _ in
-            Task { await self?.syncCustomerInfo() }
+    /// Log the user into RevenueCat and sync their subscription state.
+    /// Async so callers can await and be sure isPro is accurate afterwards.
+    func identify(userId: String) async {
+        do {
+            _ = try await Purchases.shared.logIn(userId)
+        } catch {
+            print("[SubscriptionManager] logIn error: \(error)")
         }
+        await syncCustomerInfo()
     }
 
     func logout() {
