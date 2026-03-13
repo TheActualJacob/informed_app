@@ -16,6 +16,7 @@ struct SharedReelsView: View {
     // Deep-link: set by ContentView when user taps a completed Live Activity
     @State private var deepLinkItem: FactCheckItem? = nil
     @State private var showDeepLink = false
+    @State private var showDeepLinkLoading = false
 
     var body: some View {
         NavigationStack {
@@ -64,8 +65,24 @@ struct SharedReelsView: View {
                     FactDetailView(item: item)
                 }
             }
+            .navigationDestination(isPresented: $showDeepLinkLoading) {
+                DeepLinkLoadingDetailView()
+                    .environmentObject(reelManager)
+            }
+            .onChange(of: reelManager.deepLinkLoading) { _, loading in
+                if loading && !showDeepLinkLoading && !showDeepLink {
+                    // Open loading detail view immediately
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        showDeepLinkLoading = true
+                    }
+                }
+            }
             .onChange(of: reelManager.pendingDeepLinkItem) { _, item in
                 guard let item else { return }
+                // If the loading detail view is already showing, it will pick this up
+                // via its own onChange observer. Only push a separate FactDetailView
+                // if we navigated here without the loading view (e.g. from a notification).
+                guard !showDeepLinkLoading else { return }
                 deepLinkItem = item
                 reelManager.pendingDeepLinkItem = nil
                 // Small delay so the NavigationLink has time to mount
@@ -75,7 +92,11 @@ struct SharedReelsView: View {
             }
             .onAppear {
                 // Handle deep-link that arrived before this view was mounted
-                if let item = reelManager.pendingDeepLinkItem {
+                if reelManager.deepLinkLoading && !showDeepLinkLoading {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        showDeepLinkLoading = true
+                    }
+                } else if let item = reelManager.pendingDeepLinkItem {
                     deepLinkItem = item
                     reelManager.pendingDeepLinkItem = nil
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {

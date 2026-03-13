@@ -430,7 +430,10 @@ struct informedApp: App {
             userInfo: ["submissionId": submissionId]
         )
 
-        // 3. Sync from backend then open the detail view.
+        // 3. Signal the loading detail view to open immediately
+        reelManager.deepLinkLoading = true
+
+        // 4. Sync from backend then deliver the resolved item to the loading view.
         //    We retry up to 3 times with brief back-off so that:
         //      a) any concurrent sync already underway can finish first, and
         //      b) if the backend hasn't written the record yet we give it a moment.
@@ -440,6 +443,7 @@ struct informedApp: App {
                 reelManager.pendingDeepLinkItem = item
             } else {
                 print("⚠️ [openFactCheck] Reel \(submissionId.prefix(8)) not found after retries — staying on My Reels list")
+                reelManager.deepLinkLoading = false
             }
         }
 

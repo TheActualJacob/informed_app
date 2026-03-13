@@ -217,6 +217,11 @@ class SharedReelManager: ObservableObject {
     @Published var pendingDeepLinkId: String? = nil
     @Published var pendingDeepLinkItem: FactCheckItem? = nil
 
+    /// Set to `true` immediately when the user taps a completed Dynamic Island
+    /// so the detail view can navigate instantly (with a loading skeleton).
+    /// Cleared once the item resolves or resolution fails.
+    @Published var deepLinkLoading: Bool = false
+
     /// URL of the share-extension submission currently being processed.
     /// Drives the ProcessingBanner in HomeView when a fact check was started outside the app.
     @Published var activeProcessingURL: String? = nil
