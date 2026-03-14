@@ -89,5 +89,8 @@ struct Config {
         static let usageStatus         = Config.endpoint("/api/usage-status")
         static let subscriptionSync    = Config.endpoint("/api/subscription/sync")
         static let subscriptionWebhook = Config.endpoint("/api/subscription/webhook")
+
+        // Curated stories
+        static let stories      = Config.endpoint("/api/v1/stories")
     }
 }

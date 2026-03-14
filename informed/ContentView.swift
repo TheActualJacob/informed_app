@@ -29,8 +29,8 @@ struct ContentView: View {
 
             FeedView()
                 .tabItem {
-                    Image(systemName: "photo.on.rectangle.angled")
-                    Text("Discover")
+                    Image(systemName: "newspaper.fill")
+                    Text("News")
                 }
                 .tag(1)
 

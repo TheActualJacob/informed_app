@@ -2,325 +2,580 @@
 //  FeedView.swift
 //  informed
 //
-//  Displays public feed of reels from all users with infinite scroll
+//  News feed — published editorial story walkthroughs
 //
 
 import SwiftUI
 
+// MARK: - Feed View
+
 struct FeedView: View {
     @EnvironmentObject private var viewModel: FeedViewModel
     @EnvironmentObject var userManager: UserManager
-    
+
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ZStack {
-                Color.backgroundLight.ignoresSafeArea()
-                
-                if viewModel.isLoading && viewModel.publicReels.isEmpty {
-                    // Initial loading state
+                Color(UIColor.systemBackground)
+                    .ignoresSafeArea()
+
+                if viewModel.isLoading && viewModel.stories.isEmpty {
                     loadingView
-                } else if let errorMessage = viewModel.errorMessage, viewModel.publicReels.isEmpty {
-                    // Error state
+                } else if let errorMessage = viewModel.errorMessage,
+                          viewModel.stories.isEmpty {
                     errorView(message: errorMessage)
-                } else if viewModel.publicReels.isEmpty {
-                    // Empty state
+                } else if viewModel.stories.isEmpty {
                     emptyStateView
                 } else {
-                    // Feed content with infinite scroll
-                    ScrollView {
-                        LazyVStack(spacing: 16) {
-                            ForEach(viewModel.publicReels) { reel in
-                                PublicReelCard(reel: reel, viewModel: viewModel)
-                                    .onAppear {
-                                        // Load more when reaching the last few items
-                                        if reel.id == viewModel.publicReels.last?.id {
-                                            Task {
-                                                await viewModel.loadMoreReels()
-                                            }
-                                        }
-                                    }
-                            }
-                            
-                            // Loading more indicator
-                            if viewModel.isLoadingMore {
-                                ProgressView()
-                                    .padding()
-                            }
-                            
-                            // End of feed message
-                            if !viewModel.hasMore && !viewModel.publicReels.isEmpty {
-                                Text("You're all caught up!")
-                                    .font(.caption)
-                                    .foregroundColor(.gray)
-                                    .padding()
-                            }
-                        }
-                        .padding()
-                    }
-                    .refreshable {
-                        await viewModel.refresh()
-                    }
+                    mainFeed
                 }
             }
-            .navigationTitle("Discover")
-            .navigationBarTitleDisplayMode(.large)
+            .toolbar(.hidden, for: .navigationBar)
             .onChange(of: userManager.isAuthenticated) { _, isAuthenticated in
-                if isAuthenticated && viewModel.publicReels.isEmpty {
+                if isAuthenticated && viewModel.stories.isEmpty {
                     Task { await viewModel.loadFeed() }
                 }
             }
             .onChange(of: userManager.currentSessionId) { _, sessionId in
-                // Session ID arrived after initial load (e.g. Keychain read was delayed)
                 if sessionId != nil && viewModel.errorMessage != nil {
                     Task { await viewModel.loadFeed() }
                 }
             }
         }
     }
-    
-    // MARK: - Loading View
-    
-    private var loadingView: some View {
-        VStack(spacing: 20) {
-            ProgressView()
-                .scaleEffect(1.5)
-            
-            Text("Loading feed...")
-                .font(.body)
-                .foregroundColor(.gray)
+
+    // MARK: - Main Feed
+
+    private var mainFeed: some View {
+        ScrollView(.vertical, showsIndicators: false) {
+            LazyVStack(spacing: 0) {
+                // Published stories — full-screen swipe cards
+                ForEach(Array(viewModel.stories.enumerated()), id: \.element.id) { _, story in
+                    StoryCardView(story: story)
+                        .containerRelativeFrame(.vertical)
+                }
+            }
+            .scrollTargetLayout()
+        }
+        .scrollTargetBehavior(.paging)
+        .refreshable {
+            await viewModel.refresh()
         }
     }
-    
+
+    // MARK: - Loading
+
+    private var loadingView: some View {
+        VStack(spacing: 24) {
+            ProgressView()
+                .scaleEffect(1.5)
+                .tint(.brandTeal)
+            Text("Loading news...")
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(.secondary)
+        }
+    }
+
     // MARK: - Empty State
 
     private var emptyStateView: some View {
-        VStack(spacing: 20) {
-            Image(systemName: "tray")
-                .font(.system(size: 60))
-                .foregroundColor(.gray.opacity(0.5))
+        VStack(spacing: 24) {
+            Image(systemName: "newspaper")
+                .font(.system(size: 56))
+                .foregroundStyle(.secondary.opacity(0.4))
 
-            Text("Nothing Here Yet")
-                .font(.title2)
-                .fontWeight(.bold)
-                .foregroundColor(.primary)
+            Text("No Stories Yet")
+                .font(.system(size: 22, weight: .bold))
 
-            Text("The Discover feed fills up as people fact-check reels. Check back soon!")
-                .font(.body)
-                .foregroundColor(.gray)
+            Text("Curated walkthroughs appear here as editors publish them.")
+                .font(.system(size: 15))
+                .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
+                .padding(.horizontal, 40)
 
             Button {
-                Task {
-                    await viewModel.loadFeed()
-                }
+                Task { await viewModel.loadFeed() }
             } label: {
                 Text("Refresh")
-                    .font(.headline)
-                    .foregroundColor(.white)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.white)
                     .padding(.horizontal, 32)
                     .padding(.vertical, 12)
                     .background(
-                        LinearGradient(
-                            colors: [.brandTeal, .brandBlue],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
+                        LinearGradient(colors: [.brandTeal, .brandBlue],
+                                       startPoint: .leading, endPoint: .trailing)
                     )
-                    .cornerRadius(12)
+                    .clipShape(Capsule())
             }
         }
-        .padding()
     }
-    
+
     // MARK: - Error View
-    
+
     private func errorView(message: String) -> some View {
         VStack(spacing: 20) {
-            Image(systemName: message.contains("Session expired") ? "person.crop.circle.badge.exclamationmark" : "exclamationmark.triangle.fill")
-                .font(.system(size: 60))
-                .foregroundColor(.brandRed.opacity(0.7))
-            
-            Text(message.contains("Session expired") ? "Session Expired" : "Oops!")
-                .font(.title2)
-                .fontWeight(.bold)
-                .foregroundColor(.primary)
-            
+            Image(systemName: message.contains("Session expired")
+                  ? "person.crop.circle.badge.exclamationmark"
+                  : "exclamationmark.triangle.fill")
+                .font(.system(size: 56))
+                .foregroundStyle(Color.brandRed.opacity(0.7))
+
+            Text(message.contains("Session expired") ? "Session Expired" : "Something Went Wrong")
+                .font(.system(size: 22, weight: .bold))
+
             Text(message)
-                .font(.body)
-                .foregroundColor(.gray)
+                .font(.system(size: 15))
+                .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-                .padding(.horizontal)
-            
+                .padding(.horizontal, 40)
+
             VStack(spacing: 12) {
-                // Show logout button if session expired
-                if message.contains("Session expired") || message.contains("log out and log back in") {
+                if message.contains("Session expired") || message.contains("log out") {
                     Button {
                         userManager.logout()
                     } label: {
-                        HStack {
+                        HStack(spacing: 8) {
                             Image(systemName: "arrow.right.square")
                             Text("Log Out & Log In Again")
                         }
-                        .font(.headline)
-                        .foregroundColor(.white)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(.white)
                         .padding(.horizontal, 24)
                         .padding(.vertical, 12)
                         .background(Color.brandRed)
-                        .cornerRadius(12)
+                        .clipShape(Capsule())
                     }
                 }
-                
-                // Regular try again button
+
                 Button {
-                    Task {
-                        await viewModel.loadFeed()
-                    }
+                    Task { await viewModel.loadFeed() }
                 } label: {
                     Text("Try Again")
-                        .font(.headline)
-                        .foregroundColor(.white)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(.white)
                         .padding(.horizontal, 32)
                         .padding(.vertical, 12)
                         .background(
-                            LinearGradient(
-                                colors: [.brandTeal, .brandBlue],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
+                            LinearGradient(colors: [.brandTeal, .brandBlue],
+                                           startPoint: .leading, endPoint: .trailing)
                         )
-                        .cornerRadius(12)
+                        .clipShape(Capsule())
                 }
             }
         }
-        .padding()
     }
 }
 
-// MARK: - Public Reel Card
+// MARK: - Story Card (Full-Screen Cover)
 
-struct PublicReelCard: View {
-    let reel: PublicReel
-    let viewModel: FeedViewModel
-    
-    @Environment(\.colorScheme) var colorScheme
-    
+struct StoryCardView: View {
+    let story: Story
+
+    private var accentColor: Color {
+        switch story.category?.lowercased() {
+        case "politics", "politics & government": return .brandBlue
+        case "health", "health & medicine": return .brandGreen
+        case "technology": return .brandTeal
+        case "conflict", "military": return .brandRed
+        default: return .brandBlue
+        }
+    }
+
     var body: some View {
-        NavigationLink(destination: PublicReelDetailView(reel: reel, viewModel: viewModel)) {
-            VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-                // Header - match FactResultCard format with platform-specific icon
-                HStack {
-                    Image(systemName: reel.platformIcon)
-                        .foregroundColor(.brandBlue)
-                        .padding(Theme.Spacing.sm)
-                        .background(Color.brandBlue.opacity(0.1))
-                        .clipShape(Circle())
-                    
-                    VStack(alignment: .leading) {
-                        Text("Verified by AI + Humans")
-                            .font(.caption2)
-                            .fontWeight(.bold)
-                            .foregroundColor(.secondary)
-                        Text(reel.timeAgo)
-                            .font(.caption2)
-                            .foregroundColor(.secondary.opacity(0.8))
+        GeometryReader { geo in
+            NavigationLink(destination: StoryWalkthroughView(story: story)) {
+                ZStack(alignment: .bottom) {
+                    // Cover image or gradient background
+                    if let urlStr = story.coverImageUrl, let url = URL(string: urlStr) {
+                        AsyncImage(url: url) { phase in
+                            switch phase {
+                            case .success(let image):
+                                image
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                                    .frame(width: geo.size.width, height: geo.size.height)
+                                    .clipped()
+                            default:
+                                gradientBackground(geo: geo)
+                            }
+                        }
+                    } else {
+                        gradientBackground(geo: geo)
                     }
-                    
-                    Spacer()
-                    
-                    Image(systemName: "chevron.right")
-                        .font(.caption)
-                        .foregroundColor(.secondary.opacity(0.5))
-                }
-                
-                // Link Preview - match Home format exactly
-                LinkPreviewView(item: reel.toFactCheckItem())
-                
-                // Claim text
-                Text(reel.claims.first?.claim ?? reel.summary)
-                    .font(.system(size: 15))
-                    .foregroundColor(.primary.opacity(0.8))
-                    .lineLimit(3)
-                    .multilineTextAlignment(.leading)
-                
-                // Credibility section - match FactResultCard format
-                HStack {
-                    Text("Credibility:")
-                        .font(.caption)
-                        .fontWeight(.bold)
-                        .foregroundColor(.secondary)
-                    
-                    Spacer()
-                    
-                    HStack(spacing: 4) {
-                        Image(systemName: reel.averageCredibilityLevel.icon)
-                        Text(reel.averageCredibilityLevel.rawValue)
-                    }
-                    .font(.caption)
-                    .fontWeight(.bold)
-                    .foregroundColor(reel.averageCredibilityLevel.color)
-                }
-                
-                // Mini progress bar - match FactResultCard format
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(Color.secondary.opacity(0.2))
-                        Capsule()
-                            .fill(reel.averageCredibilityLevel.color)
-                            .frame(width: geo.size.width * reel.averageCredibilityScore)
-                    }
-                }
-                .frame(height: 6)
-                
-                // AI Generation Badge (only show when flagged and AI detection applies)
-                if reel.aiGenerated == "true" && !isTextOnlyPlatform(reel.detectedPlatform) {
-                    HStack(spacing: 5) {
-                        Image(systemName: "wand.and.stars")
-                            .font(.system(size: 11, weight: .semibold))
-                        Text("Possibly AI-generated")
-                            .font(.system(size: 12, weight: .semibold))
-                        if let prob = reel.aiProbability {
-                            Text("(\(Int(prob * 100))%)")
-                                .font(.system(size: 11))
+
+                    // Bottom text overlay with gradient scrim
+                    LinearGradient(
+                        colors: [.clear, .black.opacity(0.3), .black.opacity(0.85)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .frame(height: geo.size.height * 0.55)
+
+                    // Content
+                    VStack(alignment: .leading, spacing: 12) {
+                        Spacer()
+
+                        // Category pill
+                        if let cat = story.category {
+                            Text(cat.uppercased())
+                                .font(.system(size: 11, weight: .heavy, design: .rounded))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 4)
+                                .background(accentColor)
+                                .clipShape(Capsule())
+                        }
+
+                        // Headline
+                        Text(story.headline)
+                            .font(.system(size: 28, weight: .bold, design: .serif))
+                            .foregroundStyle(.white)
+                            .lineLimit(4)
+                            .shadow(color: .black.opacity(0.3), radius: 4, y: 2)
+
+                        // Summary
+                        if let summary = story.summary, !summary.isEmpty {
+                            Text(summary)
+                                .font(.system(size: 15))
+                                .foregroundStyle(.white.opacity(0.85))
+                                .lineLimit(3)
+                                .lineSpacing(2)
+                        }
+
+                        // Author + block count
+                        HStack {
+                            if let author = story.author {
+                                Text("By \(author)")
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundStyle(.white.opacity(0.7))
+                            }
+                            Spacer()
+                            HStack(spacing: 4) {
+                                Text("Read walkthrough")
+                                    .font(.system(size: 13, weight: .semibold))
+                                Image(systemName: "arrow.right")
+                                    .font(.system(size: 11, weight: .bold))
+                            }
+                            .foregroundStyle(.white.opacity(0.9))
                         }
                     }
-                    .foregroundColor(Color.orange)
-                    .padding(.vertical, 5)
-                    .padding(.horizontal, 10)
-                    .background(Color.orange.opacity(0.12))
-                    .clipShape(Capsule())
+                    .padding(24)
                 }
             }
-            .padding(Theme.Spacing.xl)
-            .background(Color.cardBackground)
-            .cornerRadius(Theme.CornerRadius.xl)
-            .shadow(
-                color: Theme.Shadow.card(for: colorScheme),
-                radius: Theme.Shadow.lg,
-                x: 0,
-                y: 8
-            )
+            .buttonStyle(PlainButtonStyle())
         }
-        .buttonStyle(PlainButtonStyle())
-        .simultaneousGesture(TapGesture().onEnded {
-            Task {
-                await viewModel.trackView(for: reel)
-            }
-        })
+    }
+
+    private func gradientBackground(geo: GeometryProxy) -> some View {
+        LinearGradient(
+            colors: [accentColor.opacity(0.15), accentColor.opacity(0.4)],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+        .frame(width: geo.size.width, height: geo.size.height)
     }
 }
+
+// MARK: - Story Walkthrough (Full Detail)
+
+struct StoryWalkthroughView: View {
+    let story: Story
+    @Environment(\.dismiss) var dismiss
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                // Hero header
+                storyHeader
+
+                // Blocks
+                VStack(alignment: .leading, spacing: 24) {
+                    ForEach(story.blocks) { block in
+                        storyBlockView(block)
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 24)
+                .padding(.bottom, 48)
+            }
+        }
+        .background(Color(UIColor.systemBackground))
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.hidden, for: .navigationBar)
+    }
+
+    // MARK: Header
+
+    private var storyHeader: some View {
+        ZStack(alignment: .bottomLeading) {
+            if let urlStr = story.coverImageUrl, let url = URL(string: urlStr) {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(height: 320)
+                            .clipped()
+                    default:
+                        Rectangle()
+                            .fill(Color.brandBlue.opacity(0.15))
+                            .frame(height: 320)
+                    }
+                }
+            } else {
+                Rectangle()
+                    .fill(
+                        LinearGradient(colors: [.brandTeal.opacity(0.2), .brandBlue.opacity(0.3)],
+                                       startPoint: .topLeading, endPoint: .bottomTrailing)
+                    )
+                    .frame(height: 320)
+            }
+
+            // Gradient scrim
+            LinearGradient(
+                colors: [.clear, .black.opacity(0.7)],
+                startPoint: .center,
+                endPoint: .bottom
+            )
+            .frame(height: 320)
+
+            // Title overlay
+            VStack(alignment: .leading, spacing: 8) {
+                if let cat = story.category {
+                    Text(cat.uppercased())
+                        .font(.system(size: 11, weight: .heavy, design: .rounded))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(Color.brandBlue)
+                        .clipShape(Capsule())
+                }
+
+                Text(story.headline)
+                    .font(.system(size: 28, weight: .bold, design: .serif))
+                    .foregroundStyle(.white)
+
+                HStack(spacing: 12) {
+                    if let author = story.author {
+                        Label(author, systemImage: "person.fill")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.8))
+                    }
+                    Text(story.formattedDate)
+                        .font(.system(size: 13))
+                        .foregroundStyle(.white.opacity(0.6))
+                }
+            }
+            .padding(20)
+        }
+    }
+
+    // MARK: Block Renderer
+
+    @ViewBuilder
+    private func storyBlockView(_ block: StoryBlock) -> some View {
+        switch block.type {
+        case .heading:
+            Text(block.text ?? "")
+                .font(.system(size: 22, weight: .bold, design: .serif))
+                .foregroundStyle(.primary)
+                .padding(.top, 8)
+
+        case .text:
+            Text(block.attributedText)
+                .font(.system(size: 16))
+                .foregroundStyle(.primary.opacity(0.85))
+                .lineSpacing(5)
+
+        case .image:
+            VStack(alignment: .leading, spacing: 6) {
+                if let urlStr = block.imageUrl, let url = URL(string: urlStr) {
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 220)
+                                .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.md))
+                        default:
+                            RoundedRectangle(cornerRadius: Theme.CornerRadius.md)
+                                .fill(Color.secondary.opacity(0.08))
+                                .frame(height: 220)
+                                .overlay(ProgressView())
+                        }
+                    }
+                }
+                if let caption = block.caption, !caption.isEmpty {
+                    Text(caption)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .italic()
+                }
+            }
+
+        case .factCheck:
+            if let reel = block.factCheck {
+                NavigationLink(destination: PublicReelDetailView(reel: reel)) {
+                    EmbeddedFactCheckCard(reel: reel)
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
+
+        case .editorNote:
+            HStack(alignment: .top, spacing: 12) {
+                Rectangle()
+                    .fill(Color.brandBlue)
+                    .frame(width: 3)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("EDITOR'S NOTE")
+                        .font(.system(size: 11, weight: .heavy, design: .rounded))
+                        .foregroundStyle(Color.brandBlue)
+                    Text(block.attributedText)
+                        .font(.system(size: 15))
+                        .foregroundStyle(.primary.opacity(0.85))
+                        .lineSpacing(3)
+                        .italic()
+                }
+            }
+            .padding(16)
+            .background(Color.brandBlue.opacity(0.06))
+            .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.md))
+        }
+    }
+}
+
+// MARK: - Embedded Fact-Check Card
+
+struct EmbeddedFactCheckCard: View {
+    let reel: PublicReel
+
+    private var verdictColor: Color { reel.averageCredibilityLevel.color }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Header
+            HStack(spacing: 8) {
+                Image(systemName: "checkmark.shield.fill")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(verdictColor)
+                Text("FACT-CHECK")
+                    .font(.system(size: 11, weight: .heavy, design: .rounded))
+                    .foregroundStyle(verdictColor)
+                Spacer()
+                Image(systemName: reel.platformIcon)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                Text(reel.platformDisplayName)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
+
+            // Thumbnail + claim
+            HStack(alignment: .top, spacing: 12) {
+                if let thumb = reel.thumbnailUrl, let url = URL(string: thumb) {
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: 72, height: 72)
+                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                        default:
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(Color.secondary.opacity(0.1))
+                                .frame(width: 72, height: 72)
+                        }
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(reel.claims.first?.claim ?? reel.title)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(3)
+
+                    Text(reel.claims.first?.summary ?? reel.description)
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+            }
+
+            // Verdict bar
+            HStack(spacing: 8) {
+                Image(systemName: reel.averageCredibilityLevel.icon)
+                    .font(.system(size: 14, weight: .bold))
+                Text(reel.averageCredibilityLevel.rawValue.uppercased())
+                    .font(.system(size: 13, weight: .heavy, design: .rounded))
+                Spacer()
+                Text("\(Int(reel.averageCredibilityScore * 100))%")
+                    .font(.system(size: 20, weight: .black, design: .rounded))
+            }
+            .foregroundStyle(verdictColor)
+
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(verdictColor.opacity(0.12))
+                    Capsule()
+                        .fill(verdictColor)
+                        .frame(width: geo.size.width * reel.averageCredibilityScore)
+                }
+            }
+            .frame(height: 5)
+
+            // Tap hint
+            HStack {
+                Spacer()
+                HStack(spacing: 4) {
+                    Text("Full analysis")
+                        .font(.system(size: 12, weight: .semibold))
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 10, weight: .bold))
+                }
+                .foregroundStyle(verdictColor)
+            }
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: Theme.CornerRadius.lg)
+                .fill(Color(UIColor.secondarySystemGroupedBackground))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.CornerRadius.lg)
+                .stroke(verdictColor.opacity(0.2), lineWidth: 1)
+        )
+    }
+}
+
+// MARK: - Story Date Formatting
+
+extension Story {
+    var formattedDate: String {
+        let f = ISO8601DateFormatter()
+        if let d = f.date(from: publishedAt) {
+            let df = DateFormatter()
+            df.dateStyle = .medium
+            return df.string(from: d)
+        }
+        return publishedAt
+    }
+}
+
 // MARK: - Public Reel Detail View
 
 struct PublicReelDetailView: View {
     let reel: PublicReel
-    // viewModel kept for backward compat with FeedView callers but no longer required
-    var viewModel: FeedViewModel? = nil
 
     @EnvironmentObject var userManager: UserManager
     @Environment(\.presentationMode) var presentationMode
     @State private var showReportSheet = false
     @State private var reportSubmitted = false
     @State private var reportError: String?
-    @State private var blockSuccessMessage: String?
     
     var body: some View {
         ScrollView {
@@ -453,7 +708,6 @@ struct PublicReelDetailView: View {
                     }
                     Button(action: {
                         HapticManager.lightImpact()
-                        if let viewModel = viewModel { Task { await viewModel.trackShare(for: reel) } }
                         let shareURL = URL(string: Config.Endpoints.shareBase + reel.id)
                             ?? URL(string: reel.videoLink)
                         let items: [Any] = shareURL != nil ? [shareURL!] : [reel.title]
@@ -476,9 +730,6 @@ struct PublicReelDetailView: View {
         }
         .toolbarBackground(.hidden, for: .navigationBar)
         .confirmationDialog("Content Actions", isPresented: $showReportSheet, titleVisibility: .visible) {
-            Button("Block @\(reel.uploadedBy.username)", role: .destructive) {
-                blockUserAction()
-            }
             Button("Report: Inappropriate or harmful") {
                 submitReport(reason: "inappropriate")
             }
@@ -507,24 +758,6 @@ struct PublicReelDetailView: View {
             } else if let error = reportError {
                 Text(error)
             }
-        }
-        .alert("User Blocked", isPresented: Binding(
-            get: { blockSuccessMessage != nil },
-            set: { if !$0 { blockSuccessMessage = nil } }
-        )) {
-            Button("OK", role: .cancel) { blockSuccessMessage = nil }
-        } message: {
-            if let msg = blockSuccessMessage { Text(msg) }
-        }
-    }
-
-    private func blockUserAction() {
-        Task {
-            await viewModel?.blockUser(
-                blockedUserId: reel.uploadedBy.id,
-                blockedUsername: reel.uploadedBy.username
-            )
-            blockSuccessMessage = "@\(reel.uploadedBy.username) has been blocked. Their content will no longer appear in your feed."
         }
     }
 

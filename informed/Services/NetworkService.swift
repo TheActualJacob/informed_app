@@ -430,6 +430,37 @@ class NetworkService {
         }
     }
 
+    // MARK: - Curated Stories
+
+    func fetchStories(limit: Int = 10) async throws -> [Story] {
+        guard var urlComponents = URLComponents(string: Config.Endpoints.stories) else {
+            throw NetworkError.invalidURL
+        }
+        urlComponents.queryItems = [URLQueryItem(name: "limit", value: String(limit))]
+        guard let url = urlComponents.url else { throw NetworkError.invalidURL }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 30
+
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse else { throw NetworkError.invalidResponse }
+            guard (200...299).contains(httpResponse.statusCode) else {
+                throw NetworkError.serverError(statusCode: httpResponse.statusCode)
+            }
+            let decoded = try JSONDecoder().decode(StoriesResponse.self, from: data)
+            return decoded.stories
+        } catch let urlError as URLError {
+            throw mapURLError(urlError)
+        } catch let netErr as NetworkError {
+            throw netErr
+        } catch {
+            throw NetworkError.unknown(error)
+        }
+    }
+
     // MARK: - Interaction Tracking
 
     func trackInteraction(userId: String, sessionId: String, factCheckId: String, interactionType: String) async throws {
