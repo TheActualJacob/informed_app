@@ -184,3 +184,100 @@ struct ShimmerModifier: ViewModifier {
             }
     }
 }
+
+// MARK: - Glass Category Pill
+
+struct CategoryPill: View {
+    let category: CategoryItem
+    let onTap: () -> Void
+    @Environment(\.colorScheme) var colorScheme
+    private var meta: CategoryMeta { CategoryMeta.get(for: category.name) }
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 6) {
+                Image(systemName: meta.icon)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(meta.gradient.first ?? .brandBlue)
+
+                Text(category.name)
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundColor(.primary)
+                    .lineLimit(1)
+
+                if category.count > 0 {
+                    Text("\(category.count)")
+                        .font(.system(size: 10, weight: .black, design: .rounded))
+                        .foregroundColor(.primary.opacity(0.8))
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 3)
+                        .background(Capsule().fill(Color.primary.opacity(0.08)))
+                }
+            }
+            .padding(.horizontal, 14)
+            .frame(height: 40)
+            .background(
+                ZStack {
+                    Capsule().fill(.ultraThinMaterial)
+                    Capsule().fill((meta.gradient.first ?? .clear).opacity(colorScheme == .dark ? 0.15 : 0.1))
+                }
+            )
+            .overlay(
+                Capsule()
+                    .stroke(
+                        (meta.gradient.first ?? .clear).opacity(colorScheme == .dark ? 0.3 : 0.25),
+                        lineWidth: 0.5
+                    )
+            )
+            .shadow(
+                color: (meta.gradient.first ?? .clear).opacity(colorScheme == .dark ? 0.2 : 0.15),
+                radius: 8, x: 0, y: 4
+            )
+        }
+        .buttonStyle(ScaleButtonStyle())
+    }
+}
+
+// MARK: - Premium Horizontal Category Scroll
+
+struct CategoryFlowView: View {
+    let categories: [CategoryItem]
+    let isLoading: Bool
+    let onCategoryTap: (CategoryItem) -> Void
+
+    private let shimmerWidths: [CGFloat] = [120, 90, 140, 110, 130, 100, 125, 105]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Explore Topics")
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .foregroundColor(.secondary)
+                Spacer()
+            }
+            .padding(.horizontal)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: 8) {
+                    if isLoading {
+                        ForEach(Array(shimmerWidths.enumerated()), id: \.offset) { _, width in
+                            Capsule()
+                                .fill(Color.cardBackground)
+                                .frame(width: width, height: 40)
+                                .shimmering()
+                        }
+                    } else {
+                        ForEach(categories) { category in
+                            CategoryPill(category: category) {
+                                HapticManager.lightImpact()
+                                onCategoryTap(category)
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal)
+                .padding(.bottom, 8)
+            }
+        }
+    }
+}

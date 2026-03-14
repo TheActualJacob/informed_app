@@ -35,27 +35,22 @@ struct SearchBarView: View {
         return "magnifyingglass"
     }
     
-    private var leadingColor: Color {
+    private var accentColor: Color {
         if isValidSocialURL { return .brandGreen }
         if isTextSearch     { return .brandBlue }
         return .secondary
     }
     
-    private var borderColor: Color {
-        if isValidSocialURL { return .brandGreen }
-        if isTextSearch     { return .brandBlue }
-        return .clear
-    }
-    
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 16) {
             Image(systemName: leadingIcon)
-                .foregroundColor(leadingColor)
-                .font(.system(size: 18, weight: .medium))
+                .foregroundColor(accentColor)
+                .font(.system(size: 24, weight: .medium))
                 .animation(Theme.Animation.quick, value: leadingIcon)
             
-            TextField("Search or paste a link (Instagram, TikTok, YouTube, X, Threads)…", text: $text)
+            TextField("Paste a link or search…", text: $text)
                 .foregroundColor(.primary)
+                .font(.system(size: 18, weight: .medium, design: .rounded))
                 .focused($isFocused)
                 .submitLabel(.search)
                 .onSubmit { isFocused = false }
@@ -64,21 +59,38 @@ struct SearchBarView: View {
                 Button(action: { text = ""; HapticManager.lightImpact() }) {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundColor(.secondary)
+                        .font(.system(size: 20))
                 }
             }
         }
-        .padding()
-        .background(Color.cardBackground)
-        .cornerRadius(Theme.CornerRadius.lg)
-        .shadow(
-            color: Theme.Shadow.card(for: colorScheme),
-            radius: Theme.Shadow.sm,
-            x: 0,
-            y: 2
+        .padding(.horizontal, 22)
+        .padding(.vertical, 18)
+        .background(
+            ZStack {
+                RoundedRectangle(cornerRadius: Theme.CornerRadius.xl)
+                    .fill(.ultraThinMaterial)
+                RoundedRectangle(cornerRadius: Theme.CornerRadius.xl)
+                    .fill(accentColor.opacity(text.isEmpty ? 0 : 0.08))
+            }
         )
         .overlay(
-            RoundedRectangle(cornerRadius: Theme.CornerRadius.lg)
-                .stroke(borderColor, lineWidth: 2)
+            RoundedRectangle(cornerRadius: Theme.CornerRadius.xl)
+                .stroke(
+                    text.isEmpty
+                        ? Color.white.opacity(colorScheme == .dark ? 0.15 : 0.6)
+                        : accentColor.opacity(0.5),
+                    lineWidth: text.isEmpty ? 0.5 : 1.5
+                )
+        )
+        .shadow(
+            color: accentColor.opacity(text.isEmpty ? 0 : 0.3),
+            radius: text.isEmpty ? 0 : 16,
+            x: 0, y: 0
+        )
+        .shadow(
+            color: Color.black.opacity(colorScheme == .dark ? 0.4 : 0.08),
+            radius: 16,
+            x: 0, y: 6
         )
         .animation(Theme.Animation.quick, value: isValidSocialURL)
         .animation(Theme.Animation.quick, value: isTextSearch)
