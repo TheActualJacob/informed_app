@@ -12,20 +12,50 @@ struct DailyStoryPlayerView: View {
     // Auto-advance timer
     @State private var isPaused: Bool = false
     @State private var timerProgress: CGFloat = 0
-    private let slideDuration: Double = 8.0
 
     @Environment(\.dismiss) private var dismiss
 
+    /// True when the current page is a single heading or image (no scroll needed).
+    private var currentPageIsSolo: Bool {
+        guard currentIndex < pages.count else { return true }
+        let page = pages[currentIndex]
+        return page.count == 1 && (page[0].type == .heading || page[0].type == .image)
+    }
+
+    /// Adaptive reading duration based on block types and word count.
+    private func pageDuration(for page: [StoryBlock]) -> Double {
+        if page.count == 1 {
+            switch page[0].type {
+            case .heading:   return 4.0
+            case .image:     return 6.0
+            case .factCheck: return 10.0
+            default: break
+            }
+        }
+        // Sum words across all text-bearing blocks, ~200 wpm → 0.3s/word
+        let totalWords = page
+            .compactMap { $0.text }
+            .joined(separator: " ")
+            .split(separator: " ").count
+        return max(7.0, min(24.0, Double(totalWords) * 0.3 + 4.0))
+    }
+
     /// Groups blocks into pages:
     /// - heading / image → solo page
+    /// - pageBreakBefore=true → forces a new page
     /// - consecutive text / factCheck / editorNote → stacked on one page
     private var pages: [[StoryBlock]] {
         var result: [[StoryBlock]] = []
         var group: [StoryBlock] = []
         for block in story.blocks {
-            if block.type == .heading || block.type == .image {
+            let isSoloType = block.type == .heading || block.type == .image
+            let forceBreak = block.pageBreakBefore
+            if isSoloType {
                 if !group.isEmpty { result.append(group); group = [] }
                 result.append([block])
+            } else if forceBreak && !group.isEmpty {
+                result.append(group)
+                group = [block]
             } else {
                 group.append(block)
             }
@@ -77,13 +107,36 @@ struct DailyStoryPlayerView: View {
             }
         }
         .statusBarHidden(true)
+        // Long-press anywhere pauses the timer; any touch-end resumes it.
+        // These are simultaneousGestures so they never block the ScrollView.
+        .simultaneousGesture(
+            LongPressGesture(minimumDuration: 0.25)
+                .onChanged { _ in isPaused = true }
+        )
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onEnded { _ in isPaused = false }
+        )
+        // Horizontal swipe navigates on stacked (scrollable) pages.
+        // The ScrollView still handles vertical drags independently.
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 30)
+                .onEnded { value in
+                    guard !currentPageIsSolo else { return }
+                    isPaused = false
+                    let h = value.translation.width
+                    let v = value.translation.height
+                    guard abs(h) > abs(v), abs(h) > 50 else { return }
+                    if h < 0 { advanceSlide() } else { goBack() }
+                }
+        )
         .onAppear { slideAppeared = true }
         .onReceive(
             Timer.publish(every: 0.05, on: .main, in: .common).autoconnect()
         ) { _ in
             guard !isPaused, !isFinished, !pages.isEmpty else { return }
-            let step = 0.05 / slideDuration
-            timerProgress += step
+            let duration = pageDuration(for: pages[currentIndex])
+            timerProgress += 0.05 / duration
             if timerProgress >= 1.0 {
                 advanceSlide()
             }
@@ -144,6 +197,10 @@ struct DailyStoryPlayerView: View {
     }
 
     // MARK: - Tap Controls
+    // Only active on solo (heading/image) pages. On stacked/scrollable pages
+    // hit-testing is disabled so all touches reach the underlying ScrollView.
+    // Navigation on stacked pages is handled by the horizontal swipe gesture
+    // applied to the parent ZStack.
 
     private var tapControls: some View {
         GeometryReader { geometry in
@@ -160,16 +217,9 @@ struct DailyStoryPlayerView: View {
                     .frame(width: geometry.size.width * 0.7)
                     .onTapGesture { advanceSlide() }
             }
-            // Long press pauses
-            .simultaneousGesture(
-                LongPressGesture(minimumDuration: 0.2)
-                    .onChanged { _ in isPaused = true }
-            )
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 0)
-                    .onEnded { _ in isPaused = false }
-            )
         }
+        // Transparent to touches on scrollable pages so the ScrollView works.
+        .allowsHitTesting(currentPageIsSolo)
     }
 
     // MARK: - Navigation

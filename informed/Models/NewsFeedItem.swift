@@ -45,6 +45,9 @@ struct StoryBlock: Identifiable, Codable {
     // Fact check embed
     let factCheck: PublicReel?
 
+    // Page break hint — if true, this block always starts a new page
+    let pageBreakBefore: Bool
+
     var id: String { blockId }
 
     /// Parses inline markdown links ([label](url)) so the iOS app can render
@@ -58,7 +61,7 @@ struct StoryBlock: Identifiable, Codable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case blockId, position, type, text, imageUrl, caption, factCheck
+        case blockId, position, type, text, imageUrl, caption, factCheck, pageBreakBefore
     }
 
     init(from decoder: Decoder) throws {
@@ -70,6 +73,7 @@ struct StoryBlock: Identifiable, Codable {
         imageUrl = try c.decodeIfPresent(String.self, forKey: .imageUrl)
         caption  = try c.decodeIfPresent(String.self, forKey: .caption)
         factCheck = try c.decodeIfPresent(PublicReel.self, forKey: .factCheck)
+        pageBreakBefore = (try? c.decodeIfPresent(Bool.self, forKey: .pageBreakBefore)) ?? false
     }
 }
 
