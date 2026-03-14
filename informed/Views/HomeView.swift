@@ -206,6 +206,40 @@ struct HomeView: View {
                     .overlay(Capsule().stroke(Color.brandGold.opacity(0.4), lineWidth: 0.5))
                     .shadow(color: Color.brandGold.opacity(0.15), radius: 8, x: 0, y: 2)
                     .padding(.bottom, -8)
+                } else {
+                    Button {
+                        HapticManager.lightImpact()
+                        subscriptionManager.showPaywall = true
+                    } label: {
+                        HStack(spacing: 6) {
+                            let checksLeft = max(0, subscriptionManager.usage.dailyLimit - subscriptionManager.usage.dailyUsed)
+                            Text("\(checksLeft) checks left today")
+                                .font(.system(size: 12, weight: .bold, design: .rounded))
+                                .foregroundColor(.primary.opacity(0.8))
+                            
+                            HStack(spacing: 2) {
+                                Text("UPGRADE")
+                                    .font(.system(size: 10, weight: .black, design: .rounded))
+                                    .tracking(0.5)
+                                Image(systemName: "arrow.right")
+                                    .font(.system(size: 8, weight: .bold))
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(LinearGradient(colors: [.brandTeal, .brandBlue], startPoint: .leading, endPoint: .trailing))
+                            .foregroundColor(.white)
+                            .clipShape(Capsule())
+                            .padding(.leading, 2)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(.ultraThinMaterial)
+                        .clipShape(Capsule())
+                        .overlay(Capsule().stroke(Color.primary.opacity(0.15), lineWidth: 0.5))
+                        .shadow(color: Color.black.opacity(0.04), radius: 8, x: 0, y: 2)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .padding(.bottom, -8)
                 }
 
                 Text(subscriptionManager.isPro ? "What would you like to verify?" : "Search or Paste a Link")
