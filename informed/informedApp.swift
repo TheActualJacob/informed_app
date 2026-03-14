@@ -402,17 +402,22 @@ struct informedApp: App {
 
     @MainActor
     private func openFactCheck(submissionId: String) {
-        // 1. Dismiss the Live Activity — but ONLY if it's already completed/failed.
-        //    If the fact-check is still in progress, leave the island visible so the
-        //    user can continue watching progress in the Dynamic Island after tapping in.
-        //    FactDetailView.onAppear handles dismissal once the result is actually shown.
+        // Determine the current activity/reel state up-front so we can handle
+        // completed, failed, and in-progress submissions differently.
+        var activityStatus: ProcessingStatus? = nil
         if #available(iOS 16.1, *) {
-            let existingActivity = Activity<ReelProcessingActivityAttributes>.activities.first {
-                $0.attributes.submissionId == submissionId
-            }
-            let alreadyDone = existingActivity.map {
-                $0.content.state.status == .completed || $0.content.state.status == .failed
-            } ?? false
+            activityStatus = Activity<ReelProcessingActivityAttributes>.activities
+                .first { $0.attributes.submissionId == submissionId }
+                .map { $0.content.state.status }
+        }
+        let localReel = reelManager.reels.first { $0.id == submissionId }
+        let knownFailed = activityStatus == .failed
+            || localReel?.status == .failed
+
+        // 1. Dismiss the Live Activity for completed/failed states.
+        //    Leave it running if still in-progress so the island stays visible.
+        if #available(iOS 16.1, *) {
+            let alreadyDone = activityStatus == .completed || activityStatus == .failed
             if alreadyDone {
                 Task {
                     await ReelProcessingActivityManager.shared.endActivity(
@@ -430,10 +435,19 @@ struct informedApp: App {
             userInfo: ["submissionId": submissionId]
         )
 
-        // 3. Signal the loading detail view to open immediately
+        // 3. For failed submissions there is no detail view to show — the user
+        //    tapped the island to dismiss it and see the error card in My Reels.
+        //    Skip the loading view entirely to avoid an infinite spinner.
+        if knownFailed {
+            print("ℹ️ [openFactCheck] Submission \(submissionId.prefix(8)) is failed — navigating to My Reels only")
+            HapticManager.lightImpact()
+            return
+        }
+
+        // 4. Signal the loading detail view to open immediately
         reelManager.deepLinkLoading = true
 
-        // 4. Sync from backend then deliver the resolved item to the loading view.
+        // 5. Sync from backend then deliver the resolved item to the loading view.
         //    We retry up to 3 times with brief back-off so that:
         //      a) any concurrent sync already underway can finish first, and
         //      b) if the backend hasn't written the record yet we give it a moment.
@@ -507,6 +521,17 @@ struct informedApp: App {
             if let item = findCompletedReel(submissionId: submissionId, submissionURL: submissionURL) {
                 print("✅ [openFactCheck] Found completed reel on attempt \(attempt + 1)")
                 return item
+            }
+
+            // If the reel is now known to be failed (post-sync), stop retrying.
+            let localStatus = reelManager.reels.first { $0.id == submissionId }?.status
+                ?? reelManager.reels.first(where: {
+                    guard let url = submissionURL else { return false }
+                    return reelURLPathsMatch($0.url, url)
+                })?.status
+            if localStatus == .failed {
+                print("ℹ️ [openFactCheck] Reel \(submissionId.prefix(8)) is failed — stopping retries")
+                return nil
             }
 
             print("⏳ [openFactCheck] Reel \(submissionId.prefix(8)) not ready on attempt \(attempt + 1) — will retry")
