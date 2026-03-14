@@ -461,11 +461,32 @@ struct informedApp: App {
     /// to a URL-based lookup when the ID no longer matches.
     @MainActor
     private func resolveCompletedReel(submissionId: String) async -> FactCheckItem? {
-        // Capture the URL linked to this submissionId while the placeholder may
-        // still be present. After syncHistoryFromBackend replaces reels[], the
-        // placeholder (id=submissionId) may be gone but a completed reel with
-        // the same URL will have taken its place.
-        let submissionURL = reelManager.reels.first(where: { $0.id == submissionId })?.url
+        // Resolve the URL for this submission from most-reliable to least-reliable source:
+        //
+        // 1. Live Activity attributes — the original reelURL baked in at activity creation.
+        //    This survives even after the placeholder reel is replaced by the backend's
+        //    uniqueID-keyed reel during sync and after pending_submissions is cleared.
+        //
+        // 2. Local reels[] — works when the placeholder reel is still present (fast path
+        //    before the first sync runs), but becomes nil once sync replaces it.
+        let submissionURL: String? = {
+            if #available(iOS 16.1, *) {
+                if let activity = Activity<ReelProcessingActivityAttributes>.activities
+                    .first(where: { $0.attributes.submissionId == submissionId }) {
+                    let url = activity.attributes.reelURL
+                    if !url.isEmpty { return url }
+                }
+            }
+            return reelManager.reels.first(where: { $0.id == submissionId })?.url
+        }()
+
+        // Fast-path: the polling loop already synced the completed data when it
+        // detected completion.  Check the live reels[] array first — no network
+        // round-trip needed if the data is already there.
+        if let item = findCompletedReel(submissionId: submissionId, submissionURL: submissionURL) {
+            print("✅ [openFactCheck] Found completed reel in cache (no sync needed)")
+            return item
+        }
 
         let retryDelaysNs: [UInt64] = [0, 1_500_000_000, 3_000_000_000] // 0s, 1.5s, 3s
 
@@ -483,27 +504,56 @@ struct informedApp: App {
 
             await reelManager.syncHistoryFromBackend()
 
-            // Primary: exact ID match (normal processing flow).
-            if let reel = reelManager.reels.first(where: { $0.id == submissionId }),
-               reel.status == .completed,
-               let factCheckData = reel.factCheckData {
-                print("✅ [openFactCheck] Found completed reel by ID on attempt \(attempt + 1)")
-                return factCheckData.toFactCheckItem(originalLink: reel.url)
-            }
-
-            // Fallback: URL match (duplicate-URL path where submissionId ≠ uniqueID).
-            if let url = submissionURL,
-               let reel = reelManager.reels.first(where: {
-                   $0.url == url && $0.status == .completed && $0.factCheckData != nil
-               }),
-               let factCheckData = reel.factCheckData {
-                print("✅ [openFactCheck] Found completed reel by URL on attempt \(attempt + 1)")
-                return factCheckData.toFactCheckItem(originalLink: reel.url)
+            if let item = findCompletedReel(submissionId: submissionId, submissionURL: submissionURL) {
+                print("✅ [openFactCheck] Found completed reel on attempt \(attempt + 1)")
+                return item
             }
 
             print("⏳ [openFactCheck] Reel \(submissionId.prefix(8)) not ready on attempt \(attempt + 1) — will retry")
         }
 
         return nil
+    }
+
+    /// Searches `reelManager.reels` for a completed reel matching `submissionId` or
+    /// `submissionURL`.  The ID lookup handles the normal (in-app) flow; the URL lookup
+    /// handles the common case where the backend assigns a `uniqueID` that differs from
+    /// the iOS-generated `submissionId`.  URL comparison strips query-string parameters
+    /// (e.g. `?igsh=…`) that Instagram appends and the backend may normalise away.
+    @MainActor
+    private func findCompletedReel(submissionId: String, submissionURL: String?) -> FactCheckItem? {
+        // Primary: exact backend ID or iOS submission ID match.
+        if let reel = reelManager.reels.first(where: { $0.id == submissionId }),
+           reel.status == .completed,
+           let data = reel.factCheckData {
+            return data.toFactCheckItem(originalLink: reel.url)
+        }
+
+        // Fallback: path-based URL match — ignores query params and www. prefix so
+        // `https://www.instagram.com/reel/ABC/?igsh=xyz` matches
+        // `https://instagram.com/reel/ABC/`.
+        if let url = submissionURL,
+           let reel = reelManager.reels.first(where: {
+               reelURLPathsMatch($0.url, url) && $0.status == .completed && $0.factCheckData != nil
+           }),
+           let data = reel.factCheckData {
+            return data.toFactCheckItem(originalLink: reel.url)
+        }
+
+        return nil
+    }
+
+    private func reelURLPathsMatch(_ a: String, _ b: String) -> Bool {
+        guard a != b else { return true }
+        guard let ua = URL(string: a), let ub = URL(string: b) else { return false }
+        func host(_ u: URL) -> String {
+            let h = (u.host ?? "").lowercased()
+            return h.hasPrefix("www.") ? String(h.dropFirst(4)) : h
+        }
+        let pathA = ua.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let pathB = ub.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        return ua.scheme?.lowercased() == ub.scheme?.lowercased()
+            && host(ua) == host(ub)
+            && pathA == pathB
     }
 }

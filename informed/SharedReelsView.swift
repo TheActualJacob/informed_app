@@ -57,6 +57,14 @@ struct SharedReelsView: View {
                         await reelManager.syncHistoryFromBackend()
                     }
                 }
+
+                // Deep-link transition mask: hide reel cards the instant the user taps
+                // a completed Live Activity so they never see "processing" during navigation.
+                if reelManager.deepLinkLoading {
+                    Color.backgroundLight
+                        .ignoresSafeArea()
+                        .transition(.opacity)
+                }
             }
             .navigationTitle("Shared Reels")
             .navigationBarTitleDisplayMode(.large)
@@ -71,8 +79,10 @@ struct SharedReelsView: View {
             }
             .onChange(of: reelManager.deepLinkLoading) { _, loading in
                 if loading && !showDeepLinkLoading && !showDeepLink {
-                    // Open loading detail view immediately
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    // Push the loading detail view as soon as possible.
+                    // A minimal delay lets the NavigationStack register the destination
+                    // before we push, but we no longer need to wait for visual "settle".
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                         showDeepLinkLoading = true
                     }
                 }
@@ -93,7 +103,9 @@ struct SharedReelsView: View {
             .onAppear {
                 // Handle deep-link that arrived before this view was mounted
                 if reelManager.deepLinkLoading && !showDeepLinkLoading {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    // The NavigationStack is already laid out by the time onAppear fires,
+                    // so a very small delay is sufficient — no need for the old 0.3 s wait.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                         showDeepLinkLoading = true
                     }
                 } else if let item = reelManager.pendingDeepLinkItem {

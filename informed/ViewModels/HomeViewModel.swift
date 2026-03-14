@@ -143,11 +143,17 @@ class HomeViewModel: ObservableObject {
         if !hasCache { isFeedLoading = true }
         defer { isFeedLoading = false }
 
+        guard let currentUserId = UserManager.shared.currentUserId,
+              let currentSessionId = UserManager.shared.currentSessionId else {
+            print("⚠️ HomeViewModel: cannot load feed — user not authenticated")
+            return
+        }
+
         do {
             let response = try await NetworkService.shared.withRetry {
                 try await NetworkService.shared.fetchPersonalizedFeed(
-                    userId: self.userId,
-                    sessionId: self.sessionId,
+                    userId: currentUserId,
+                    sessionId: currentSessionId,
                     limit: 20
                 )
             }
@@ -227,7 +233,7 @@ class HomeViewModel: ObservableObject {
                 debounceTask = Task {
                     try? await Task.sleep(nanoseconds: 1_000_000_000)
                     guard !Task.isCancelled else { return }
-                    await performFactCheck(for: trimmed, userId: userId, sessionId: sessionId)
+                    await performFactCheck(for: trimmed, userId: UserManager.shared.currentUserId ?? "", sessionId: UserManager.shared.currentSessionId ?? "")
                 }
                 return
             }
@@ -262,8 +268,8 @@ class HomeViewModel: ObservableObject {
         do {
             let response = try await NetworkService.shared.searchReels(
                 query: query,
-                userId: userId,
-                sessionId: sessionId,
+                userId: UserManager.shared.currentUserId ?? "",
+                sessionId: UserManager.shared.currentSessionId ?? "",
                 limit: 30,
                 category: category ?? selectedCategory
             )
