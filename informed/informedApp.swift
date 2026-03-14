@@ -52,6 +52,11 @@ struct informedApp: App {
                         }
                         .environmentObject(subscriptionManager)
                     }
+                    .fullScreenCover(isPresented: $userManager.needsTutorial) {
+                        HowItWorksCarouselView(onComplete: {
+                            userManager.markTutorialSeen()
+                        }, allowSkip: false)
+                    }
                     .onOpenURL { url in
                         handleIncomingURL(url)
                     }
@@ -63,8 +68,14 @@ struct informedApp: App {
                               url.host == "informed-app.com",
                               url.pathComponents.count >= 3,
                               url.pathComponents[1] == "share" else { return }
-                        let submissionId = url.pathComponents[2]
-                        openFactCheck(submissionId: submissionId)
+                        let uniqueId = url.pathComponents[2]
+                        // Post to ContentView which will switch to Discover tab and
+                        // present SharedFactCheckSheet with a loading skeleton
+                        NotificationCenter.default.post(
+                            name: NSNotification.Name("ShowSharedFactCheck"),
+                            object: nil,
+                            userInfo: ["uniqueId": uniqueId]
+                        )
                     }
                     .onAppear {
                         // Check for pending shared URLs from Share Extension

@@ -1639,6 +1639,20 @@ class SharedReelManager: ObservableObject {
     private func fetchUserReels(userId: String, sessionId: String) async throws -> [UserReel] {
         try await NetworkService.shared.fetchUserReels(userId: userId, sessionId: sessionId)
     }
+
+    /// Fetches a single fact-check by uniqueID from the public backend endpoint.
+    /// Returns nil on network failure or if the ID doesn't exist.
+    func fetchPublicFactCheck(uniqueId: String) async -> UserReel? {
+        guard let url = URL(string: Config.Endpoints.factCheckById + "/" + uniqueId) else { return nil }
+        do {
+            let (data, response) = try await URLSession.shared.data(from: url)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
+            return try JSONDecoder().decode(UserReel.self, from: data)
+        } catch {
+            print("⚠️ [fetchPublicFactCheck] Failed to fetch \(uniqueId.prefix(8)): \(error)")
+            return nil
+        }
+    }
     
     // MARK: - Live Activity Management
     

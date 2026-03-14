@@ -141,7 +141,6 @@ struct AuthenticationView: View {
     @State private var isLoading: Bool = false
     @State private var errorMessage: String?
     @State private var showPassword: Bool = false
-    @State private var showHowItWorks: Bool = false
     @State private var appleSignInCoordinator: AppleSignInCoordinator?
 
     @FocusState private var focusedField: Field?
@@ -415,9 +414,6 @@ struct AuthenticationView: View {
                         Button(action: {
                             isLoginMode.toggle()
                             errorMessage = nil
-                            if !isLoginMode {
-                                showHowItWorks = true
-                            }
                         }) {
                             HStack(spacing: 4) {
                                 Text(isLoginMode ? "Don't have an account?" : "Already have an account?")
@@ -469,9 +465,6 @@ struct AuthenticationView: View {
                 }
                 .padding(.horizontal, 20)
             }
-        }
-        .sheet(isPresented: $showHowItWorks) {
-            HowItWorksSheet(isPresented: $showHowItWorks)
         }
     }
     
@@ -675,25 +668,6 @@ private class AppleSignInCoordinator: NSObject, ASAuthorizationControllerDelegat
 
     func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: Error) {
         onCompletion(.failure(error))
-    }
-}
-
-// MARK: - How It Works Sheet (shown on sign-up)
-
-struct HowItWorksSheet: View {
-    @Binding var isPresented: Bool
-
-    var body: some View {
-        NavigationView {
-            ZStack {
-                Color.backgroundLight.ignoresSafeArea()
-                HowItWorksCarouselView {
-                    isPresented = false
-                }
-            }
-            .navigationTitle("How It Works")
-            .navigationBarTitleDisplayMode(.inline)
-        }
     }
 }
 

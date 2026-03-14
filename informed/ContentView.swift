@@ -8,6 +8,8 @@ struct ContentView: View {
     @EnvironmentObject var reelManager: SharedReelManager
     @EnvironmentObject var subscriptionManager: SubscriptionManager
     @State private var selectedTab: Int = 0
+    @State private var sharedLinkUniqueId: String = ""
+    @State private var showSharedLinkSheet: Bool = false
 
     init() {
         let appearance = UITabBarAppearance()
@@ -51,6 +53,10 @@ struct ContentView: View {
             PaywallView(limitType: subscriptionManager.paywallLimitType)
                 .environmentObject(subscriptionManager)
         }
+        .sheet(isPresented: $showSharedLinkSheet) {
+            SharedFactCheckSheet(uniqueId: sharedLinkUniqueId)
+                .environmentObject(reelManager)
+        }
         .onChange(of: selectedTab) { oldValue, newValue in
             if newValue == 2 {
                 // Sync so newly completed reels appear immediately on tab switch
@@ -87,6 +93,21 @@ struct ContentView: View {
                     if let item {
                         reelManager.pendingDeepLinkItem = item
                     }
+                }
+            }
+
+            // Open a shared fact check via universal link (informed-app.com/share/{id})
+            // Navigates to the Discover tab and presents the result as a sheet
+            NotificationCenter.default.addObserver(
+                forName: NSNotification.Name("ShowSharedFactCheck"),
+                object: nil,
+                queue: .main
+            ) { notification in
+                guard let uniqueId = notification.userInfo?["uniqueId"] as? String else { return }
+                DispatchQueue.main.async {
+                    selectedTab = 1
+                    sharedLinkUniqueId = uniqueId
+                    showSharedLinkSheet = true
                 }
             }
         }

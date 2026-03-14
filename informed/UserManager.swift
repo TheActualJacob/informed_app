@@ -8,6 +8,7 @@ class UserManager: ObservableObject {
     
     @Published var isAuthenticated: Bool = false
     @Published var isNewUser: Bool = false
+    @Published var needsTutorial: Bool = false
     @Published var currentUserId: String?
     @Published var currentUsername: String?
     @Published var currentSessionId: String?
@@ -61,10 +62,11 @@ class UserManager: ObservableObject {
         self.currentSessionId = sessionId
         self.isAuthenticated = true
 
-        // Show onboarding only the very first time this user signs up
-        let seenKey = "hasSeenWelcome_\(userId)"
-        if !UserDefaults.standard.bool(forKey: seenKey) {
-            self.isNewUser = true
+        // Show tutorial only for brand-new users who have never seen either flow
+        let tutorialKey = "hasSeenTutorial_\(userId)"
+        let welcomeKey = "hasSeenWelcome_\(userId)"
+        if !UserDefaults.standard.bool(forKey: tutorialKey) && !UserDefaults.standard.bool(forKey: welcomeKey) {
+            self.needsTutorial = true
         }
 
         print("✅ User saved: \(username) (ID: \(userId), Session: \(sessionId))")
@@ -85,6 +87,16 @@ class UserManager: ObservableObject {
             UserDefaults.standard.set(true, forKey: "hasSeenWelcome_\(userId)")
         }
         isNewUser = false
+    }
+
+    /// Call once the video tutorial is completed so it never shows again.
+    /// Chains the WelcomeView (pro upgrade screen) immediately after.
+    func markTutorialSeen() {
+        if let userId = currentUserId {
+            UserDefaults.standard.set(true, forKey: "hasSeenTutorial_\(userId)")
+        }
+        needsTutorial = false
+        isNewUser = true
     }
 
     func deleteAccount() async throws {

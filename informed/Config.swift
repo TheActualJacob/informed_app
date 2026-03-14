@@ -73,6 +73,10 @@ struct Config {
         // e.g. Config.Endpoints.shareBase + "abc-123-uuid"
         static let shareBase = "\(Config.shareBaseURL)/share/"
 
+        // Fetch a single fact-check by uniqueID (public, no auth)
+        // Append "/<uniqueID>" to build the full URL
+        static let factCheckById = Config.endpoint("/api/fact-check")
+
         // Account management
         static let deleteAccount = Config.endpoint("/api/delete-account")
         static let reportContent = Config.endpoint("/api/report-content")

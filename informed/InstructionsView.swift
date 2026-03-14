@@ -13,7 +13,7 @@ struct InstructionsView: View {
 
     var body: some View {
         ZStack {
-            Color.backgroundLight.ignoresSafeArea()
+            Color(red: 0.04, green: 0.06, blue: 0.12).ignoresSafeArea()
 
             VStack(spacing: 0) {
                 // Notification banner (shown only when notifications are disabled)
