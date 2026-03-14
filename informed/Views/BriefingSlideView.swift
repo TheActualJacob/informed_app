@@ -110,11 +110,10 @@ struct BriefingSlideView: View {
             }
             .padding(.bottom, 14)
 
-            Text(block.attributedText)
+            Text(styledBodyText(block, accent: Color.brandTeal))
                 .font(.custom("Inter-Regular", size: 19))
                 .foregroundColor(.white.opacity(0.93))
                 .lineSpacing(6)
-                .tint(Color.brandTeal)
 
             if !links.isEmpty {
                 sourcePills(links, accent: Color.brandTeal)
@@ -150,12 +149,11 @@ struct BriefingSlideView: View {
             }
             .padding(.bottom, 14)
 
-            Text(block.attributedText)
+            Text(styledBodyText(block, accent: Color.brandYellow))
                 .font(.custom("Inter-Regular", size: 18))
                 .italic()
                 .foregroundColor(.white.opacity(0.88))
                 .lineSpacing(5)
-                .tint(Color.brandYellow)
 
             if !links.isEmpty {
                 sourcePills(links, accent: Color.brandYellow)
@@ -286,6 +284,26 @@ struct BriefingSlideView: View {
             }
         }
         .padding(.horizontal, 24)
+    }
+
+    // MARK: - Inline citation styling
+    // Converts markdown link runs ([label](url)) into accent-coloured, semi-bold
+    // inline text. The .link attribute is removed so they don't look like bare
+    // web hyperlinks — the source pills below serve as the actual tap targets.
+    private func styledBodyText(_ block: StoryBlock, accent: Color) -> AttributedString {
+        guard let raw = block.text else { return AttributedString() }
+        var attributed = (try? AttributedString(
+            markdown: raw,
+            options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+        )) ?? AttributedString(raw)
+        for run in attributed.runs {
+            if run.link != nil {
+                attributed[run.range].link = nil
+                attributed[run.range].foregroundColor = accent
+                attributed[run.range].font = .custom("Inter-SemiBold", size: 19)
+            }
+        }
+        return attributed
     }
 
     // MARK: - Source Pills
