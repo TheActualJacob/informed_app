@@ -16,6 +16,24 @@ struct DailyStoryPlayerView: View {
 
     @Environment(\.dismiss) private var dismiss
 
+    /// Groups blocks into pages:
+    /// - heading / image → solo page
+    /// - consecutive text / factCheck / editorNote → stacked on one page
+    private var pages: [[StoryBlock]] {
+        var result: [[StoryBlock]] = []
+        var group: [StoryBlock] = []
+        for block in story.blocks {
+            if block.type == .heading || block.type == .image {
+                if !group.isEmpty { result.append(group); group = [] }
+                result.append([block])
+            } else {
+                group.append(block)
+            }
+        }
+        if !group.isEmpty { result.append(group) }
+        return result
+    }
+
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
@@ -23,13 +41,13 @@ struct DailyStoryPlayerView: View {
             if isFinished {
                 finishedView
                     .transition(.opacity.combined(with: .scale(scale: 0.95)))
-            } else if !story.blocks.isEmpty {
+            } else if !pages.isEmpty {
                 // Slide content
                 BriefingSlideView(
-                    block: story.blocks[currentIndex],
+                    blocks: pages[currentIndex],
                     storyHeadline: story.headline,
                     slideIndex: currentIndex,
-                    totalSlides: story.blocks.count
+                    totalSlides: pages.count
                 )
                 .id(currentIndex)
                 .transition(.asymmetric(
@@ -63,7 +81,7 @@ struct DailyStoryPlayerView: View {
         .onReceive(
             Timer.publish(every: 0.05, on: .main, in: .common).autoconnect()
         ) { _ in
-            guard !isPaused, !isFinished, !story.blocks.isEmpty else { return }
+            guard !isPaused, !isFinished, !pages.isEmpty else { return }
             let step = 0.05 / slideDuration
             timerProgress += step
             if timerProgress >= 1.0 {
@@ -78,7 +96,7 @@ struct DailyStoryPlayerView: View {
         HStack(alignment: .top, spacing: 0) {
             // Segmented progress
             StoryProgressBarView(
-                total: story.blocks.count,
+                total: pages.count,
                 current: currentIndex,
                 timerProgress: timerProgress
             )
@@ -103,7 +121,7 @@ struct DailyStoryPlayerView: View {
     private var bottomBar: some View {
         HStack {
             // Slide counter
-            Text("\(currentIndex + 1) of \(story.blocks.count)")
+            Text("\(currentIndex + 1) of \(pages.count)")
                 .font(.custom("Inter-Medium", size: 12))
                 .foregroundStyle(.white.opacity(0.5))
                 .padding(.horizontal, 12)
@@ -158,7 +176,7 @@ struct DailyStoryPlayerView: View {
 
     private func advanceSlide() {
         withAnimation(.easeInOut(duration: 0.25)) {
-            if currentIndex < story.blocks.count - 1 {
+            if currentIndex < pages.count - 1 {
                 currentIndex += 1
             } else {
                 isFinished = true
