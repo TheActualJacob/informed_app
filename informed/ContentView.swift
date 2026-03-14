@@ -27,10 +27,10 @@ struct ContentView: View {
                 }
                 .tag(0)
 
-            FeedView()
+            DailyDashboardView()
                 .tabItem {
-                    Image(systemName: "newspaper.fill")
-                    Text("News")
+                    Image(systemName: "sun.max.fill")
+                    Text("Daily")
                 }
                 .tag(1)
 
