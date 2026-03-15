@@ -64,9 +64,11 @@ struct ContentView: View {
         .onChange(of: reelManager.pendingSharedLinkId) { _, uniqueId in
             guard let uniqueId else { return }
             reelManager.pendingSharedLinkId = nil
-            selectedTab = 1
             sharedLinkUniqueId = uniqueId
-            showSharedLinkSheet = true
+            // Delay sheet slightly to avoid racing with any ongoing view transitions
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                showSharedLinkSheet = true
+            }
         }
         .onChange(of: selectedTab) { oldValue, newValue in
             if newValue == 2 {
@@ -77,6 +79,18 @@ struct ContentView: View {
             }
         }
         .onAppear {
+            // Drain any universal link that arrived before this view was mounted.
+            // onChange only fires on changes AFTER the observer subscribes, so cold-
+            // launch links set on reelManager before ContentView was in the hierarchy
+            // are consumed here instead.
+            if let uniqueId = reelManager.pendingSharedLinkId {
+                reelManager.pendingSharedLinkId = nil
+                sharedLinkUniqueId = uniqueId
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    showSharedLinkSheet = true
+                }
+            }
+
             // Navigate to My Reels (from notifications / Live Activity taps)
             NotificationCenter.default.addObserver(
                 forName: NSNotification.Name("NavigateToMyReels"),
