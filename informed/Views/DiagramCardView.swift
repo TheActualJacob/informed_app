@@ -7,67 +7,86 @@ struct DiagramCardView: View {
     let articleText: String
 
     @State private var svg: String?
-    @State private var isLoading = false
-    @State private var hasFailed = false
+    @State private var loadState: LoadState = .loading
+
+    private enum LoadState {
+        case loading, loaded, failed
+    }
 
     var body: some View {
         Group {
-            if let svg {
-                VStack(spacing: 0) {
-                    // Header
+            switch loadState {
+            case .loading:
+                // Skeleton shimmer — always visible until fetch completes
+                VStack(spacing: 12) {
                     HStack(spacing: 8) {
                         Image(systemName: "chart.bar.xaxis.ascending")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Text("Visual Summary")
+                            .foregroundStyle(.white.opacity(0.5))
+                        Text("Generating visual…")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 12)
-                    .padding(.bottom, 8)
-
-                    SVGWebView(svg: svg)
-                        .frame(height: 240)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                        .padding(.horizontal, 12)
-                        .padding(.bottom, 12)
-                }
-                .background(.ultraThinMaterial)
-                .clipShape(RoundedRectangle(cornerRadius: 16))
-            } else if isLoading {
-                // Skeleton shimmer
-                VStack(spacing: 12) {
-                    HStack {
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(Color.gray.opacity(0.2))
-                            .frame(width: 120, height: 14)
+                            .foregroundStyle(.white.opacity(0.5))
                         Spacer()
                     }
                     RoundedRectangle(cornerRadius: 12)
-                        .fill(Color.gray.opacity(0.15))
+                        .fill(Color.white.opacity(0.08))
                         .frame(height: 240)
+                        .overlay(ProgressView().tint(.white.opacity(0.4)))
                 }
                 .padding(16)
-                .background(.ultraThinMaterial)
-                .clipShape(RoundedRectangle(cornerRadius: 16))
-                .shimmering()
+                .background(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(.ultraThinMaterial)
+                )
+
+            case .loaded:
+                if let svg {
+                    VStack(spacing: 0) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "chart.bar.xaxis.ascending")
+                                .font(.caption)
+                                .foregroundStyle(.white.opacity(0.6))
+                            Text("Visual Summary")
+                                .font(.caption)
+                                .foregroundStyle(.white.opacity(0.6))
+                            Spacer()
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.top, 12)
+                        .padding(.bottom, 8)
+
+                        SVGWebView(svg: svg)
+                            .frame(height: 240)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .padding(.horizontal, 12)
+                            .padding(.bottom, 12)
+                    }
+                    .background(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .fill(.ultraThinMaterial)
+                    )
+                }
+
+            case .failed:
+                EmptyView()
             }
-            // If hasFailed, render nothing — silent fail
         }
         .task {
-            guard svg == nil, !isLoading, !hasFailed else { return }
-            guard !articleText.isEmpty else { hasFailed = true; return }
-            isLoading = true
+            guard svg == nil, loadState == .loading else { return }
+            guard !articleText.isEmpty else {
+                print("📊 Diagram skipped for \(storyId): empty text")
+                loadState = .failed
+                return
+            }
+            print("📊 Diagram fetching for \(storyId)…")
             do {
                 svg = try await DiagramService.shared.fetchDiagram(storyId: storyId, articleText: articleText)
                 print("📊 Diagram loaded for \(storyId) (\(svg?.count ?? 0) chars)")
+                loadState = .loaded
             } catch {
                 print("📊 Diagram failed for \(storyId): \(error)")
-                hasFailed = true
+                loadState = .failed
             }
-            isLoading = false
         }
     }
 }
