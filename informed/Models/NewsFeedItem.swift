@@ -29,6 +29,7 @@ enum StoryBlockType: String, Codable {
     case factCheck = "fact_check"
     case editorNote = "editor_note"
     case inDepth = "in_depth"
+    case diagram
 }
 
 struct StoryBlock: Identifiable, Codable {

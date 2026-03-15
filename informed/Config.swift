@@ -92,5 +92,8 @@ struct Config {
 
         // Curated stories
         static let stories      = Config.endpoint("/api/v1/stories")
+
+        // Diagram generation (Qwen SVG infographics)
+        static let generateDiagram = Config.endpoint("/api/v1/generate-diagram")
     }
 }

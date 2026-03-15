@@ -30,6 +30,7 @@ struct DailyStoryPlayerView: View {
             case .image:     return 4.0
             case .factCheck: return 10.0
             case .inDepth:   return 18.0
+            case .diagram:   return 12.0
             default: break
             }
         }
@@ -53,6 +54,24 @@ struct DailyStoryPlayerView: View {
                 result.append([block])
             }
         }
+        // Auto-append a diagram slide at the end using the story's full text
+        let fullText = story.blocks
+            .compactMap { $0.text }
+            .joined(separator: "\n")
+        if !fullText.isEmpty {
+            let diagramBlock = StoryBlock(
+                blockId: "\(story.storyId)_auto_diagram",
+                position: (story.blocks.last?.position ?? 0) + 1,
+                type: .diagram,
+                text: fullText,
+                imageUrl: nil,
+                caption: nil,
+                factCheck: nil,
+                pageBreakBefore: false,
+                attachToPrevious: false
+            )
+            result.append([diagramBlock])
+        }
         return result
     }
 
@@ -68,6 +87,7 @@ struct DailyStoryPlayerView: View {
                 BriefingSlideView(
                     blocks: pages[currentIndex],
                     storyHeadline: story.headline,
+                    storyId: story.storyId,
                     slideIndex: currentIndex,
                     totalSlides: pages.count
                 )

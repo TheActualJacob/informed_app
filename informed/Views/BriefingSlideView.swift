@@ -8,6 +8,7 @@ import SwiftUI
 struct BriefingSlideView: View {
     let blocks: [StoryBlock]
     let storyHeadline: String
+    var storyId: String = ""
     var slideIndex: Int = 0
     var totalSlides: Int = 1
 
@@ -94,6 +95,7 @@ struct BriefingSlideView: View {
         case .factCheck:  factCheckCard(block)
         case .inDepth:    inDepthCard(block)
         case .image:      imageCard(block)
+        case .diagram:    DiagramCardView(storyId: storyId, articleText: block.text ?? "")
         default:          EmptyView()
         }
     }
