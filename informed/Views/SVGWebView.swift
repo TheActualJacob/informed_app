@@ -32,13 +32,25 @@ struct SVGWebView: UIViewRepresentable {
         <style>
         * { margin: 0; padding: 0; }
         body { background: transparent; }
-        svg { width: 100%; height: auto; display: block; }
+        svg { width: 100% !important; height: auto !important; display: block; max-width: 100%; }
         </style>
         </head>
-        <body>\(svg)</body>
+        <body>\(sanitizedSVG(svg))</body>
         </html>
         """
         webView.loadHTMLString(html, baseURL: nil)
+    }
+
+    /// Remove explicit width/height attributes from the <svg> opening tag so the
+    /// CSS width:100%/height:auto controls sizing correctly in WKWebView.
+    private func sanitizedSVG(_ raw: String) -> String {
+        guard let tagRange = raw.range(of: #"<svg[^>]*>"#, options: .regularExpression) else {
+            return raw
+        }
+        var tag = String(raw[tagRange])
+        tag = tag.replacingOccurrences(of: #"\s*width="[^"]*""#, with: "", options: .regularExpression)
+        tag = tag.replacingOccurrences(of: #"\s*height="[^"]*""#, with: "", options: .regularExpression)
+        return raw.replacingCharacters(in: tagRange, with: tag)
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
