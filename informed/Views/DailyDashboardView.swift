@@ -4,6 +4,9 @@ struct DailyDashboardView: View {
     @EnvironmentObject private var viewModel: FeedViewModel
     @EnvironmentObject var userManager: UserManager
 
+    /// Set by ContentView when a push notification arrives requesting a specific story
+    @Binding var pendingStoryId: String?
+
     @State private var activeStory: Story?
     @State private var headerAppeared = false
 
@@ -66,6 +69,14 @@ struct DailyDashboardView: View {
                 withAnimation(.easeOut(duration: 0.6).delay(0.1)) {
                     headerAppeared = true
                 }
+                // Open story from push notification once feed is loaded
+                openPendingStoryIfNeeded()
+            }
+            .onChange(of: pendingStoryId) { _, _ in
+                openPendingStoryIfNeeded()
+            }
+            .onChange(of: viewModel.stories) { _, _ in
+                openPendingStoryIfNeeded()
             }
         }
     }
@@ -214,6 +225,15 @@ struct DailyDashboardView: View {
             }
             .padding(.top, 8)
         }
+    }
+
+    // MARK: - Deep-link helper
+
+    private func openPendingStoryIfNeeded() {
+        guard let storyId = pendingStoryId,
+              let story = viewModel.stories.first(where: { $0.storyId == storyId }) else { return }
+        pendingStoryId = nil
+        activeStory = story
     }
 }
 

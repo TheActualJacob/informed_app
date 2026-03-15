@@ -254,6 +254,16 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
                 )
             }
         }
+        // Handle story published notification
+        else if let action = userInfo["action"] as? String, action == "open_story" {
+            if let storyId = userInfo["story_id"] as? String {
+                NotificationCenter.default.post(
+                    name: NSNotification.Name("OpenStory"),
+                    object: nil,
+                    userInfo: ["storyId": storyId]
+                )
+            }
+        }
         // Handle push notification from backend (if you implement APNs later)
         else if let factCheckId = userInfo["fact_check_id"] as? String {
             print("🔍 Fact-check complete for ID: \(factCheckId)")

@@ -10,6 +10,7 @@ struct ContentView: View {
     @State private var selectedTab: Int = 0
     @State private var sharedLinkUniqueId: String = ""
     @State private var showSharedLinkSheet: Bool = false
+    @State private var pendingStoryId: String? = nil
 
     init() {
         let appearance = UITabBarAppearance()
@@ -27,7 +28,7 @@ struct ContentView: View {
                 }
                 .tag(0)
 
-            DailyDashboardView()
+            DailyDashboardView(pendingStoryId: $pendingStoryId)
                 .tabItem {
                     Image(systemName: "sun.max.fill")
                     Text("Daily")
@@ -108,6 +109,19 @@ struct ContentView: View {
                     selectedTab = 1
                     sharedLinkUniqueId = uniqueId
                     showSharedLinkSheet = true
+                }
+            }
+
+            // Navigate to Daily tab and open a specific story (from push notification)
+            NotificationCenter.default.addObserver(
+                forName: NSNotification.Name("OpenStory"),
+                object: nil,
+                queue: .main
+            ) { notification in
+                guard let storyId = notification.userInfo?["storyId"] as? String else { return }
+                DispatchQueue.main.async {
+                    selectedTab = 1
+                    pendingStoryId = storyId
                 }
             }
         }

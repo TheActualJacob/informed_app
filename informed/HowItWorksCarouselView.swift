@@ -48,6 +48,7 @@ private final class VideoTutorialViewModel: ObservableObject {
     private var periodicObserver: Any?
     private var boundaryObserver: Any?
     private var endObserver: NSObjectProtocol?
+    private var audioPlayer: AVAudioPlayer?
 
     // MARK: Init
     init() {
@@ -56,6 +57,15 @@ private final class VideoTutorialViewModel: ObservableObject {
         }
         self.player = AVPlayer(url: url)
         self.player.actionAtItemEnd = .pause
+        self.player.isMuted = true
+
+        // Background music
+        if let musicURL = Bundle.main.url(forResource: "background", withExtension: "mp3") {
+            audioPlayer = try? AVAudioPlayer(contentsOf: musicURL)
+            audioPlayer?.numberOfLoops = -1   // loop indefinitely
+            audioPlayer?.volume = 0.4
+            audioPlayer?.prepareToPlay()
+        }
 
         // Detect the real video dimensions so the phone frame has no black bars
         let asset = AVURLAsset(url: url)
@@ -110,10 +120,12 @@ private final class VideoTutorialViewModel: ObservableObject {
     func startPlayback() {
         player.seek(to: .zero)
         player.play()
+        audioPlayer?.play()
     }
 
     func pausePlayback() {
         player.pause()
+        audioPlayer?.stop()
     }
 
     // MARK: Private helpers
