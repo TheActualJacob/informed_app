@@ -33,6 +33,7 @@ struct informedApp: App {
     @State private var showErrorAlert = false
     @State private var alertMessage = ""
     @State private var checkTimer: Timer?
+    @State private var showNotificationPrimer = false
     
     @Environment(\.scenePhase) private var scenePhase
     
@@ -56,6 +57,9 @@ struct informedApp: App {
                         HowItWorksCarouselView(onComplete: {
                             userManager.markTutorialSeen()
                         }, allowSkip: false)
+                    }
+                    .sheet(isPresented: $showNotificationPrimer) {
+                        NotificationPermissionSheet()
                     }
                     .onOpenURL { url in
                         handleIncomingURL(url)
@@ -167,7 +171,7 @@ struct informedApp: App {
 
                         // Request notification permissions on first launch
                         if notificationManager.authorizationStatus == .notDetermined {
-                            _ = await notificationManager.requestNotificationPermissions()
+                            showNotificationPrimer = true
                         }
                         // Background-preload both feeds in parallel so data is warm
                         // before the user even taps a tab.

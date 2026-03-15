@@ -99,56 +99,82 @@ struct NotificationPermissionSheet: View {
     @State private var isRequesting = false
 
     var body: some View {
-        NavigationView {
-            VStack(spacing: 30) {
+        ZStack {
+            Color(red: 0.04, green: 0.06, blue: 0.12)
+                .ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                // Dynamic Island preview pill
+                dynamicIslandPreview
+                    .padding(.top, 52)
+
+                Spacer().frame(height: 36)
+
+                // Title + subtitle
+                VStack(spacing: 10) {
+                    Text("Live in the\nDynamic Island")
+                        .font(.system(size: 30, weight: .bold, design: .rounded))
+                        .foregroundColor(.white)
+                        .multilineTextAlignment(.center)
+
+                    Text("Notifications power live fact-check progress\nright at the top of your screen.")
+                        .font(.subheadline)
+                        .foregroundColor(Color.white.opacity(0.55))
+                        .multilineTextAlignment(.center)
+                        .lineSpacing(3)
+                }
+                .padding(.horizontal, 32)
+
+                Spacer().frame(height: 40)
+
+                // Benefit rows
+                VStack(spacing: 14) {
+                    NotifBenefitRow(
+                        icon: "waveform",
+                        color: .brandTeal,
+                        title: "Live progress tracking",
+                        detail: "Watch your analysis unfold in the Dynamic Island in real time"
+                    )
+                    NotifBenefitRow(
+                        icon: "checkmark.seal.fill",
+                        color: .brandGreen,
+                        title: "Instant results",
+                        detail: "Get notified the moment your fact-check is complete"
+                    )
+                    NotifBenefitRow(
+                        icon: "bell.slash.fill",
+                        color: Color.white.opacity(0.4),
+                        title: "No noise",
+                        detail: "Only important updates about your own submissions"
+                    )
+                }
+                .padding(.horizontal, 28)
+
                 Spacer()
 
-                Image(systemName: "bell.badge.fill")
-                    .font(.system(size: 80))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [.brandTeal, .brandBlue],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-
-                VStack(spacing: 12) {
-                    Text("Enable Notifications")
-                        .font(.title)
-                        .fontWeight(.bold)
-
-                    Text("Get notified instantly when your fact-checks are ready. We'll only send you important updates about your submissions.")
-                        .font(.body)
-                        .foregroundColor(.gray)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal)
-                }
-
-                VStack(spacing: 16) {
-                    Button(action: {
+                // CTA buttons
+                VStack(spacing: 14) {
+                    Button {
                         isRequesting = true
                         Task {
                             let granted = await notificationManager.requestNotificationPermissions()
                             isRequesting = false
-                            if granted {
-                                dismiss()
-                            }
+                            if granted { dismiss() }
                         }
-                    }) {
-                        HStack {
+                    } label: {
+                        HStack(spacing: 8) {
                             if isRequesting {
                                 ProgressView()
-                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                Text("Requesting...")
-                            } else {
-                                Text("Enable Notifications")
+                                    .progressViewStyle(.circular)
+                                    .tint(.white)
+                                    .scaleEffect(0.85)
                             }
+                            Text(isRequesting ? "Requesting…" : "Enable Notifications")
+                                .font(.headline)
+                                .foregroundColor(.white)
                         }
-                        .font(.headline)
-                        .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
-                        .padding()
+                        .padding(.vertical, 16)
                         .background(
                             LinearGradient(
                                 colors: [.brandTeal, .brandBlue],
@@ -156,26 +182,101 @@ struct NotificationPermissionSheet: View {
                                 endPoint: .trailing
                             )
                         )
-                        .cornerRadius(12)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                     }
                     .disabled(isRequesting)
 
-                    Button(action: { dismiss() }) {
-                        Text("Maybe Later")
-                            .font(.headline)
-                            .foregroundColor(.gray)
+                    Button("Not Now") { dismiss() }
+                        .font(.subheadline)
+                        .foregroundColor(Color.white.opacity(0.35))
+                }
+                .padding(.horizontal, 28)
+                .padding(.bottom, 44)
+            }
+        }
+        .presentationDetents([.large])
+        .presentationDragIndicator(.hidden)
+        .presentationCornerRadius(32)
+    }
+
+    // MARK: - Dynamic Island Preview
+
+    private var dynamicIslandPreview: some View {
+        ZStack {
+            // Outer glow
+            Capsule()
+                .fill(
+                    LinearGradient(
+                        colors: [Color.brandTeal.opacity(0.25), Color.brandBlue.opacity(0.2)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .frame(width: 220, height: 56)
+                .blur(radius: 14)
+
+            // Pill body
+            Capsule()
+                .fill(Color.black)
+                .frame(width: 200, height: 40)
+
+            // Content inside pill — fixed width so nothing wraps
+            HStack(spacing: 8) {
+                // Waveform dots
+                HStack(spacing: 3) {
+                    ForEach(0..<3) { _ in
+                        Capsule()
+                            .fill(Color.brandTeal)
+                            .frame(width: 3, height: 12)
                     }
                 }
-                .padding(.horizontal, 30)
 
-                Spacer()
+                Text("Fact-checking…")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+                    .fixedSize()
+
+                Spacer(minLength: 0)
+
+                Circle()
+                    .fill(Color.brandTeal.opacity(0.85))
+                    .frame(width: 8, height: 8)
             }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Close") { dismiss() }
-                }
+            .padding(.horizontal, 16)
+            .frame(width: 200)
+        }
+    }
+}
+
+// MARK: - Benefit Row
+
+private struct NotifBenefitRow: View {
+    let icon: String
+    let color: Color
+    let title: String
+    let detail: String
+
+    var body: some View {
+        HStack(spacing: 16) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(color.opacity(0.12))
+                    .frame(width: 46, height: 46)
+                Image(systemName: icon)
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundColor(color)
             }
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(.white)
+                Text(detail)
+                    .font(.caption)
+                    .foregroundColor(Color.white.opacity(0.5))
+                    .lineLimit(2)
+            }
+            Spacer()
         }
     }
 }
