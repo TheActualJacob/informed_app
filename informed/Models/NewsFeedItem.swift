@@ -7,7 +7,7 @@ import Foundation
 
 // MARK: - Story (curated editorial walkthrough)
 
-struct Story: Identifiable, Codable {
+struct Story: Identifiable, Codable, Equatable {
     let storyId: String
     let headline: String
     let summary: String?
@@ -18,6 +18,10 @@ struct Story: Identifiable, Codable {
     let blocks: [StoryBlock]
 
     var id: String { storyId }
+
+    static func == (lhs: Story, rhs: Story) -> Bool {
+        lhs.storyId == rhs.storyId
+    }
 }
 
 // MARK: - Story Block
