@@ -83,6 +83,9 @@ struct DiagramCardView: View {
                 svg = try await DiagramService.shared.fetchDiagram(storyId: storyId, articleText: articleText)
                 print("📊 Diagram loaded for \(storyId) (\(svg?.count ?? 0) chars)")
                 loadState = .loaded
+            } catch is CancellationError {
+                // View disappeared — keep .loading so next .task retries
+                print("📊 Diagram task cancelled for \(storyId), will retry on reappear")
             } catch {
                 print("📊 Diagram failed for \(storyId): \(error)")
                 loadState = .failed
