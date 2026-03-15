@@ -40,9 +40,19 @@ struct DailyStoryPlayerView: View {
         return max(7.0, min(24.0, Double(totalWords) * 0.3 + 4.0))
     }
 
-    /// One block = one slide, matching the CMS 1:1.
+    /// Builds slides: default is 1 block per slide.
+    /// If a block has attachToPrevious=true it is grouped onto the same slide
+    /// as the block before it (stacked, scrollable), matching the CMS grouping.
     private var pages: [[StoryBlock]] {
-        story.blocks.map { [$0] }
+        var result: [[StoryBlock]] = []
+        for block in story.blocks {
+            if block.attachToPrevious && !result.isEmpty {
+                result[result.count - 1].append(block)
+            } else {
+                result.append([block])
+            }
+        }
+        return result
     }
 
     var body: some View {

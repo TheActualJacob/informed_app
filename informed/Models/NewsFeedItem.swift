@@ -48,6 +48,9 @@ struct StoryBlock: Identifiable, Codable {
     // Page break hint — if true, this block always starts a new page
     let pageBreakBefore: Bool
 
+    // Grouping hint — if true, this block is stacked onto the same slide as the block above it
+    let attachToPrevious: Bool
+
     var id: String { blockId }
 
     /// Parses inline markdown links ([label](url)) so the iOS app can render
@@ -61,7 +64,7 @@ struct StoryBlock: Identifiable, Codable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case blockId, position, type, text, imageUrl, caption, factCheck, pageBreakBefore
+        case blockId, position, type, text, imageUrl, caption, factCheck, pageBreakBefore, attachToPrevious
     }
 
     init(from decoder: Decoder) throws {
@@ -74,6 +77,7 @@ struct StoryBlock: Identifiable, Codable {
         caption  = try c.decodeIfPresent(String.self, forKey: .caption)
         factCheck = try c.decodeIfPresent(PublicReel.self, forKey: .factCheck)
         pageBreakBefore = (try? c.decodeIfPresent(Bool.self, forKey: .pageBreakBefore)) ?? false
+        attachToPrevious = (try? c.decodeIfPresent(Bool.self, forKey: .attachToPrevious)) ?? false
     }
 }
 
