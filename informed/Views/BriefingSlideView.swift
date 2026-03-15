@@ -16,9 +16,9 @@ struct BriefingSlideView: View {
 
     private var primaryBlock: StoryBlock { blocks[0] }
 
-    /// Heading/image always fill the screen solo. Everything else stacks.
+    /// Only headings fill the screen solo. Everything else (including images) stacks.
     private var isSolo: Bool {
-        blocks.count == 1 && (primaryBlock.type == .heading || primaryBlock.type == .image)
+        blocks.count == 1 && primaryBlock.type == .heading
     }
 
     var body: some View {
@@ -67,7 +67,6 @@ struct BriefingSlideView: View {
     private var soloContent: some View {
         switch primaryBlock.type {
         case .heading: headingView(primaryBlock)
-        case .image:   imageView(primaryBlock)
         default:       EmptyView()
         }
     }
@@ -94,8 +93,42 @@ struct BriefingSlideView: View {
         case .editorNote: editorNoteCard(block)
         case .factCheck:  factCheckCard(block)
         case .inDepth:    inDepthCard(block)
+        case .image:      imageCard(block)
         default:          EmptyView()
         }
+    }
+
+    // MARK: - Image card (inline supplementary)
+
+    private func imageCard(_ block: StoryBlock) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if let urlStr = block.imageUrl, let url = URL(string: urlStr) {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image.resizable().scaledToFill()
+                    default:
+                        Rectangle().fill(.white.opacity(0.06))
+                            .overlay(ProgressView().tint(.white.opacity(0.35)))
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 200)
+                .clipped()
+            }
+            if let caption = block.caption, !caption.isEmpty {
+                Text(caption)
+                    .font(.custom("Inter-Regular", size: 12))
+                    .foregroundStyle(.white.opacity(0.48))
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 9)
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(.white.opacity(0.09), lineWidth: 1)
+        )
     }
 
     // MARK: - In-depth card
@@ -428,7 +461,7 @@ struct BriefingSlideView: View {
         // Mixed pages always get the neutral dark gradient.
         if blocks.count == 1 {
             switch primaryBlock.type {
-            case .image:     imageBackground
+            case .image:     darkBase
             case .heading:   headingBackground
             case .factCheck: factCheckBackground
             case .editorNote:

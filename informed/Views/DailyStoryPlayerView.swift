@@ -15,11 +15,11 @@ struct DailyStoryPlayerView: View {
 
     @Environment(\.dismiss) private var dismiss
 
-    /// True when the current page is a single heading or image (no scroll needed).
+    /// True when the current page is a single heading (no scroll needed).
     private var currentPageIsSolo: Bool {
         guard currentIndex < pages.count else { return true }
         let page = pages[currentIndex]
-        return page.count == 1 && (page[0].type == .heading || page[0].type == .image)
+        return page.count == 1 && page[0].type == .heading
     }
 
     /// Adaptive reading duration based on block types and word count.
@@ -27,7 +27,7 @@ struct DailyStoryPlayerView: View {
         if page.count == 1 {
             switch page[0].type {
             case .heading:   return 4.0
-            case .image:     return 6.0
+            case .image:     return 4.0
             case .factCheck: return 10.0
             case .inDepth:   return 18.0
             default: break
