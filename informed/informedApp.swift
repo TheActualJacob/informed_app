@@ -359,6 +359,22 @@ struct informedApp: App {
     private func handleIncomingURL(_ url: URL) {
         print("🔗 Received URL: \(url.absoluteString)")
         
+        // Handle universal links (https://informed-app.com/share/{id}) arriving via onOpenURL.
+        // iOS can deliver universal links through either onContinueUserActivity OR onOpenURL
+        // depending on context — we must handle both paths.
+        if url.scheme == "https" || url.scheme == "http" {
+            if url.host == "informed-app.com",
+               url.pathComponents.count >= 3,
+               url.pathComponents[1] == "share" {
+                let uniqueId = url.pathComponents[2]
+                print("🔗 Universal link received via onOpenURL: uniqueId=\(uniqueId)")
+                reelManager.pendingSharedLinkId = uniqueId
+            } else {
+                print("⚠️ Unhandled https URL: \(url.absoluteString)")
+            }
+            return
+        }
+
         // Check if this is our app's URL scheme
         guard url.scheme == "factcheckapp" else {
             print("⚠️ Unknown URL scheme: \(url.scheme ?? "nil")")
