@@ -40,6 +40,12 @@ class HomeViewModel: ObservableObject {
     /// True for the entire duration of the in-flight network request (not cleared early
     /// when cache is present). Used to prevent concurrent loadPersonalizedFeed() calls.
     private var isFeedFetching: Bool = false
+
+    // Feed pagination
+    @Published var isFeedLoadingMore: Bool = false
+    private var feedNextCursor: String? = nil
+    private var feedHasMore: Bool = false
+    private var isFeedLoadingMoreFetching: Bool = false
     
     // Shared state
     @Published var isLoading: Bool = false
@@ -162,6 +168,9 @@ class HomeViewModel: ObservableObject {
                 feedSource       = response.source
                 isFeedFromStaleCache = false
             }
+            // Store pagination state for load-more
+            feedNextCursor = response.pagination?.nextCursor
+            feedHasMore    = response.pagination?.hasMore ?? false
             let cache = AppDataCache.shared
             cache.personalizedFeed  = response.reels
             cache.feedSource        = response.source
@@ -176,10 +185,44 @@ class HomeViewModel: ObservableObject {
             }
         }
     }
+
+    /// Appends the next page of the personalized/trending feed using the cursor
+    /// returned from the previous request.  Only available for chronological feeds.
+    func loadMorePersonalizedFeed() {
+        guard feedHasMore, let cursor = feedNextCursor, !isFeedLoadingMoreFetching else { return }
+        isFeedLoadingMoreFetching = true
+        Task {
+            defer { isFeedLoadingMoreFetching = false }
+            guard let currentUserId = UserManager.shared.currentUserId,
+                  let currentSessionId = UserManager.shared.currentSessionId else { return }
+            isFeedLoadingMore = true
+            defer { isFeedLoadingMore = false }
+            do {
+                let response = try await NetworkService.shared.fetchPersonalizedFeed(
+                    userId: currentUserId,
+                    sessionId: currentSessionId,
+                    limit: 20,
+                    cursor: cursor
+                )
+                let newReels = response.reels.filter { reel in
+                    !self.personalizedFeed.contains(where: { $0.id == reel.id })
+                }
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    self.personalizedFeed.append(contentsOf: newReels)
+                }
+                self.feedNextCursor = response.pagination?.nextCursor
+                self.feedHasMore    = response.pagination?.hasMore ?? false
+            } catch {
+                print("⚠️ Could not load more feed: \(error)")
+            }
+        }
+    }
     
     /// Pull-to-refresh: always hits the network regardless of staleness threshold.
     func refresh() {
-        // Reset the staleness gate so loadPersonalizedFeed() won't short-circuit
+        // Reset pagination state and staleness gate
+        feedNextCursor = nil
+        feedHasMore    = false
         AppDataCache.shared.lastFeedRefresh = nil
         Task {
             await withTaskGroup(of: Void.self) { group in

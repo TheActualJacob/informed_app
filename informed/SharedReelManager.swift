@@ -217,6 +217,10 @@ class SharedReelManager: ObservableObject {
     @Published var pendingDeepLinkId: String? = nil
     @Published var pendingDeepLinkItem: FactCheckItem? = nil
 
+    // Universal-link state: set directly so cold-launch links aren't lost before
+    // ContentView's onAppear has registered its NotificationCenter observer.
+    @Published var pendingSharedLinkId: String? = nil
+
     /// Set to `true` immediately when the user taps a completed Dynamic Island
     /// so the detail view can navigate instantly (with a loading skeleton).
     /// Cleared once the item resolves or resolution fails.

@@ -58,6 +58,16 @@ struct ContentView: View {
             SharedFactCheckSheet(uniqueId: sharedLinkUniqueId)
                 .environmentObject(reelManager)
         }
+        // Handles universal links set directly on reelManager — works for both
+        // cold launches (before onAppear registers the NotificationCenter observer)
+        // and foreground launches.
+        .onChange(of: reelManager.pendingSharedLinkId) { _, uniqueId in
+            guard let uniqueId else { return }
+            reelManager.pendingSharedLinkId = nil
+            selectedTab = 1
+            sharedLinkUniqueId = uniqueId
+            showSharedLinkSheet = true
+        }
         .onChange(of: selectedTab) { oldValue, newValue in
             if newValue == 2 {
                 // Sync so newly completed reels appear immediately on tab switch
@@ -94,21 +104,6 @@ struct ContentView: View {
                     if let item {
                         reelManager.pendingDeepLinkItem = item
                     }
-                }
-            }
-
-            // Open a shared fact check via universal link (informed-app.com/share/{id})
-            // Navigates to the Discover tab and presents the result as a sheet
-            NotificationCenter.default.addObserver(
-                forName: NSNotification.Name("ShowSharedFactCheck"),
-                object: nil,
-                queue: .main
-            ) { notification in
-                guard let uniqueId = notification.userInfo?["uniqueId"] as? String else { return }
-                DispatchQueue.main.async {
-                    selectedTab = 1
-                    sharedLinkUniqueId = uniqueId
-                    showSharedLinkSheet = true
                 }
             }
 

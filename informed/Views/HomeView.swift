@@ -373,6 +373,20 @@ struct HomeView: View {
                     .buttonStyle(PlainButtonStyle())
                     .padding(.horizontal)
                     .onTapGesture { HapticManager.lightImpact() }
+                    .onAppear {
+                        // Trigger load-more when the last item becomes visible
+                        if reel.id == viewModel.personalizedFeed.last?.id {
+                            viewModel.loadMorePersonalizedFeed()
+                        }
+                    }
+                }
+                if viewModel.isFeedLoadingMore {
+                    HStack {
+                        Spacer()
+                        ProgressView()
+                            .padding(.vertical, 16)
+                        Spacer()
+                    }
                 }
             }
         }

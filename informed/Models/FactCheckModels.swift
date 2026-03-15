@@ -331,7 +331,13 @@ struct PublicFeedResponse:       Codable { let reels: [PublicReel]; let paginati
 struct CategoryItem:             Identifiable, Codable { var id: String { name }; let name: String; let count: Int }
 struct CategoryResponse:         Codable { let categories: [CategoryItem] }
 struct SearchResponse:           Codable { let reels: [PublicReel]; let totalCount: Int; let query: String }
-struct PersonalizedFeedResponse: Codable { let reels: [PublicReel]; let totalCount: Int; let source: String }
+struct PersonalizedFeedResponse: Codable {
+    let reels: [PublicReel]
+    let totalCount: Int
+    let source: String
+    let pagination: PersonalizedFeedPagination?
+}
+struct PersonalizedFeedPagination: Codable { let hasMore: Bool; let nextCursor: String? }
 struct PaginationInfo:           Codable { let currentPage, totalPages, totalCount: Int; let hasMore: Bool; let nextCursor: String? }
 
 // MARK: - UserReel

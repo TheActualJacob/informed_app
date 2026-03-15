@@ -73,13 +73,11 @@ struct informedApp: App {
                               url.pathComponents.count >= 3,
                               url.pathComponents[1] == "share" else { return }
                         let uniqueId = url.pathComponents[2]
-                        // Post to ContentView which will switch to Discover tab and
-                        // present SharedFactCheckSheet with a loading skeleton
-                        NotificationCenter.default.post(
-                            name: NSNotification.Name("ShowSharedFactCheck"),
-                            object: nil,
-                            userInfo: ["uniqueId": uniqueId]
-                        )
+                        // Store directly on reelManager so cold-launch links are never dropped.
+                        // If ContentView's onAppear hasn't registered its NotificationCenter
+                        // observer yet (cold launch race), the @Published property's onChange
+                        // on ContentView picks it up once the view mounts.
+                        reelManager.pendingSharedLinkId = uniqueId
                     }
                     .onAppear {
                         // Check for pending shared URLs from Share Extension

@@ -290,7 +290,8 @@ class NetworkService {
         userId: String,
         sessionId: String,
         limit: Int = 20,
-        category: String? = nil
+        category: String? = nil,
+        cursor: String? = nil
     ) async throws -> PersonalizedFeedResponse {
         guard var urlComponents = URLComponents(string: Config.Endpoints.personalizedFeed) else {
             throw NetworkError.invalidURL
@@ -302,6 +303,7 @@ class NetworkService {
             URLQueryItem(name: "limit", value: String(limit))
         ]
         if let category = category { queryItems.append(URLQueryItem(name: "category", value: category)) }
+        if let cursor  = cursor  { queryItems.append(URLQueryItem(name: "cursor",   value: cursor)) }
         urlComponents.queryItems = queryItems
         
         guard let url = urlComponents.url else { throw NetworkError.invalidURL }
