@@ -54,24 +54,6 @@ struct DailyStoryPlayerView: View {
                 result.append([block])
             }
         }
-        // Auto-append a diagram slide at the end using the story's full text
-        let fullText = story.blocks
-            .compactMap { $0.text }
-            .joined(separator: "\n")
-        if !fullText.isEmpty {
-            let diagramBlock = StoryBlock(
-                blockId: "\(story.storyId)_auto_diagram",
-                position: (story.blocks.last?.position ?? 0) + 1,
-                type: .diagram,
-                text: fullText,
-                imageUrl: nil,
-                caption: nil,
-                factCheck: nil,
-                pageBreakBefore: false,
-                attachToPrevious: false
-            )
-            result.append([diagramBlock])
-        }
         return result
     }
 
