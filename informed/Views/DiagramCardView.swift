@@ -69,33 +69,3 @@ struct DiagramCardView: View {
         }
     }
 }
-
-// MARK: - Shimmer modifier
-
-private struct ShimmerModifier: ViewModifier {
-    @State private var phase: CGFloat = 0
-
-    func body(content: Content) -> some View {
-        content
-            .overlay(
-                LinearGradient(
-                    colors: [.clear, .white.opacity(0.2), .clear],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-                .offset(x: phase)
-                .onAppear {
-                    withAnimation(.linear(duration: 1.5).repeatForever(autoreverses: false)) {
-                        phase = UIScreen.main.bounds.width
-                    }
-                }
-            )
-            .clipped()
-    }
-}
-
-private extension View {
-    func shimmering() -> some View {
-        modifier(ShimmerModifier())
-    }
-}
