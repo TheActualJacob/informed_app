@@ -40,28 +40,9 @@ struct DailyStoryPlayerView: View {
         return max(7.0, min(24.0, Double(totalWords) * 0.3 + 4.0))
     }
 
-    /// Groups blocks into pages:
-    /// - heading / image → solo page
-    /// - pageBreakBefore=true → forces a new page
-    /// - consecutive text / factCheck / editorNote → stacked on one page
+    /// One block = one slide, matching the CMS 1:1.
     private var pages: [[StoryBlock]] {
-        var result: [[StoryBlock]] = []
-        var group: [StoryBlock] = []
-        for block in story.blocks {
-            let isSoloType = block.type == .heading || block.type == .image
-            let forceBreak = block.pageBreakBefore
-            if isSoloType {
-                if !group.isEmpty { result.append(group); group = [] }
-                result.append([block])
-            } else if forceBreak && !group.isEmpty {
-                result.append(group)
-                group = [block]
-            } else {
-                group.append(block)
-            }
-        }
-        if !group.isEmpty { result.append(group) }
-        return result
+        story.blocks.map { [$0] }
     }
 
     var body: some View {

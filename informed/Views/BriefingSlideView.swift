@@ -1,10 +1,9 @@
 import SwiftUI
 
 // MARK: - BriefingSlideView
-// Each "page" may contain one or more blocks.
-// Heading/image blocks are always solo and centered full-screen.
-// All other block types (text, editorNote, factCheck) are stacked in a
-// scrollable card column so the editor can group related content on one page.
+// Each page is always exactly one block (matching CMS slide order 1:1).
+// Heading/image blocks are solo full-screen. Text/factCheck/editorNote
+// are shown as a scrollable card so long content can be read in full.
 
 struct BriefingSlideView: View {
     let blocks: [StoryBlock]
@@ -13,6 +12,7 @@ struct BriefingSlideView: View {
     var totalSlides: Int = 1
 
     @State private var contentAppeared = false
+    @State private var selectedReel: PublicReel?
 
     private var primaryBlock: StoryBlock { blocks[0] }
 
@@ -55,6 +55,9 @@ struct BriefingSlideView: View {
             withAnimation(.spring(response: 0.5, dampingFraction: 0.84).delay(0.06)) {
                 contentAppeared = true
             }
+        }
+        .sheet(item: $selectedReel) { reel in
+            NavigationStack { PublicReelDetailView(reel: reel) }
         }
     }
 
@@ -181,32 +184,9 @@ struct BriefingSlideView: View {
                 let verdict = firstClaim?.verdict ?? ""
                 let vColor = verdictColor(for: verdict)
 
-                VStack(spacing: 10) {
-                    // Verdict strip
-                    HStack(spacing: 10) {
-                        Image(systemName: verdictIcon(for: verdict))
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundStyle(vColor)
-                        Text(verdict.isEmpty ? "UNVERIFIED" : verdict.uppercased())
-                            .font(.custom("GreycliffCF-Bold", size: 20))
-                            .foregroundStyle(vColor)
-                            .minimumScaleFactor(0.7)
-                            .lineLimit(1)
-                        Spacer()
-                    }
-                    .padding(.vertical, 12)
-                    .padding(.horizontal, 18)
-                    .background(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .fill(vColor.opacity(0.08))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                    .stroke(vColor.opacity(0.18), lineWidth: 1)
-                            )
-                    )
-
-                    // Details card
-                    VStack(alignment: .leading, spacing: 8) {
+                Button { selectedReel = reel } label: {
+                    VStack(alignment: .leading, spacing: 0) {
+                        // Header row
                         HStack(spacing: 5) {
                             Image(systemName: "checkmark.shield.fill")
                                 .font(.system(size: 10))
@@ -215,29 +195,75 @@ struct BriefingSlideView: View {
                                 .font(.custom("Inter-Bold", size: 10))
                                 .tracking(1.2)
                                 .foregroundStyle(Color.brandTeal)
+                            Spacer()
+                            Image(systemName: "arrow.up.right")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.30))
                         }
-                        Text(reel.title)
-                            .font(.custom("Inter-SemiBold", size: 15))
-                            .foregroundColor(.white)
-                            .lineLimit(3)
-                        if let claim = firstClaim, !claim.claim.isEmpty {
-                            Text(claim.claim)
-                                .font(.custom("Inter-Regular", size: 13))
-                                .foregroundStyle(.white.opacity(0.58))
+                        .padding(.horizontal, 16)
+                        .padding(.top, 14)
+                        .padding(.bottom, 10)
+
+                        // Thumbnail
+                        if let thumbStr = reel.thumbnailUrl, let thumbUrl = URL(string: thumbStr) {
+                            AsyncImage(url: thumbUrl) { phase in
+                                switch phase {
+                                case .success(let img):
+                                    img.resizable().scaledToFill()
+                                default:
+                                    Rectangle().fill(.white.opacity(0.04))
+                                }
+                            }
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 168)
+                            .clipped()
+                        }
+
+                        // Title + claim
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(reel.title)
+                                .font(.custom("Inter-SemiBold", size: 15))
+                                .foregroundColor(.white)
                                 .lineLimit(3)
+                            if let claim = firstClaim, !claim.claim.isEmpty {
+                                Text(claim.claim)
+                                    .font(.custom("Inter-Regular", size: 13))
+                                    .foregroundStyle(.white.opacity(0.55))
+                                    .lineLimit(2)
+                            }
                         }
+                        .padding(.horizontal, 16)
+                        .padding(.top, 12)
+                        .padding(.bottom, 14)
+
+                        // Verdict strip — bottom
+                        HStack(spacing: 8) {
+                            Image(systemName: verdictIcon(for: verdict))
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(vColor)
+                            Text(verdict.isEmpty ? "UNVERIFIED" : verdict.uppercased())
+                                .font(.custom("GreycliffCF-Bold", size: 15))
+                                .foregroundStyle(vColor)
+                                .minimumScaleFactor(0.7)
+                                .lineLimit(1)
+                            Spacer()
+                            Text("TAP FOR DETAILS")
+                                .font(.custom("Inter-Bold", size: 9))
+                                .tracking(1.2)
+                                .foregroundStyle(.white.opacity(0.28))
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 11)
+                        .background(vColor.opacity(0.09))
                     }
-                    .padding(16)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .fill(.ultraThinMaterial)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                    .stroke(.white.opacity(0.07), lineWidth: 1)
-                            )
+                    .background(.ultraThinMaterial)
+                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .stroke(vColor.opacity(0.22), lineWidth: 1)
                     )
                 }
+                .buttonStyle(.plain)
             } else {
                 Text("Fact check unavailable")
                     .font(.custom("Inter-Regular", size: 14))
