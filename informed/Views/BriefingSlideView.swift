@@ -396,11 +396,21 @@ struct BriefingSlideView: View {
     // Converts markdown link runs ([label](url)) into accent-coloured, semi-bold
     // inline text. The links remain natively clickable.
     private func styledBodyText(_ block: StoryBlock, accent: Color) -> AttributedString {
-        guard let raw = block.text else { return AttributedString() }
-        var attributed = (try? AttributedString(
-            markdown: raw,
-            options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-        )) ?? AttributedString(raw)
+        guard var raw = block.text else { return AttributedString() }
+
+        // Ensure literal escaped "\n" sequences are turned into real newlines
+        raw = raw.replacingOccurrences(of: "\\n", with: "\n")
+
+        // Use full markdown parsing so double-newlines become paragraph breaks;
+        // fall back to inline-only, then plain text.
+        var attributed: AttributedString
+        if let full = try? AttributedString(markdown: raw, options: .init(interpretedSyntax: .full)) {
+            attributed = full
+        } else if let inline = try? AttributedString(markdown: raw, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
+            attributed = inline
+        } else {
+            attributed = AttributedString(raw)
+        }
         
         // Process in reverse to safely modify string lengths without invalidating ranges
         let linkRanges = attributed.runs.compactMap { $0.link != nil ? $0.range : nil }.reversed()

@@ -58,7 +58,10 @@ struct StoryBlock: Identifiable, Codable {
     /// Parses inline markdown links ([label](url)) so the iOS app can render
     /// citation links as tappable text. Falls back to plain text if parsing fails.
     var attributedText: AttributedString {
-        guard let raw = text else { return AttributedString("") }
+        guard let raw = text?.replacingOccurrences(of: "\\n", with: "\n") else { return AttributedString("") }
+        if let full = try? AttributedString(markdown: raw, options: .init(interpretedSyntax: .full)) {
+            return full
+        }
         return (try? AttributedString(
             markdown: raw,
             options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)

@@ -62,7 +62,9 @@ struct DiagramCardView: View {
             isLoading = true
             do {
                 svg = try await DiagramService.shared.fetchDiagram(storyId: storyId, articleText: articleText)
+                print("📊 Diagram loaded for \(storyId) (\(svg?.count ?? 0) chars)")
             } catch {
+                print("📊 Diagram failed for \(storyId): \(error)")
                 hasFailed = true
             }
             isLoading = false
