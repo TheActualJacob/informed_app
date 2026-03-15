@@ -69,6 +69,20 @@ struct StoryBlock: Identifiable, Codable {
         case blockId, position, type, text, imageUrl, caption, factCheck, pageBreakBefore, attachToPrevious
     }
 
+    init(blockId: String, position: Int, type: StoryBlockType, text: String? = nil,
+         imageUrl: String? = nil, caption: String? = nil, factCheck: PublicReel? = nil,
+         pageBreakBefore: Bool = false, attachToPrevious: Bool = false) {
+        self.blockId = blockId
+        self.position = position
+        self.type = type
+        self.text = text
+        self.imageUrl = imageUrl
+        self.caption = caption
+        self.factCheck = factCheck
+        self.pageBreakBefore = pageBreakBefore
+        self.attachToPrevious = attachToPrevious
+    }
+
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         blockId  = try c.decode(String.self, forKey: .blockId)
