@@ -169,7 +169,9 @@ struct informedApp: App {
                             await subscriptionManager.syncCustomerInfo()
                         }
 
-                        // Request notification permissions on first launch
+                        // Request notification permissions — check actual system status first
+                        // so we don't show the primer to someone who already granted/denied
+                        await notificationManager.checkAuthorizationStatus()
                         if notificationManager.authorizationStatus == .notDetermined {
                             showNotificationPrimer = true
                         }

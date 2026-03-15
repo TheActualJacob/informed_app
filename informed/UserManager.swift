@@ -62,9 +62,19 @@ class UserManager: ObservableObject {
         self.currentSessionId = sessionId
         self.isAuthenticated = true
 
-        // Show tutorial only for brand-new users who have never seen either flow
+        // Show tutorial only for brand-new users who have never seen either flow,
+        // OR for existing users who haven't seen the tutorial for the current app version.
         let tutorialKey = "hasSeenTutorial_\(userId)"
         let welcomeKey = "hasSeenWelcome_\(userId)"
+        let tutorialVersionKey = "tutorialSeenVersion_\(userId)"
+        let currentVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+        let seenVersion = UserDefaults.standard.string(forKey: tutorialVersionKey)
+
+        // Reset tutorial flag if the app was updated since they last saw it
+        if UserDefaults.standard.bool(forKey: tutorialKey) && seenVersion != currentVersion {
+            UserDefaults.standard.removeObject(forKey: tutorialKey)
+        }
+
         if !UserDefaults.standard.bool(forKey: tutorialKey) && !UserDefaults.standard.bool(forKey: welcomeKey) {
             self.needsTutorial = true
         }
@@ -93,7 +103,9 @@ class UserManager: ObservableObject {
     /// Chains the WelcomeView (pro upgrade screen) immediately after.
     func markTutorialSeen() {
         if let userId = currentUserId {
+            let currentVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
             UserDefaults.standard.set(true, forKey: "hasSeenTutorial_\(userId)")
+            UserDefaults.standard.set(currentVersion, forKey: "tutorialSeenVersion_\(userId)")
         }
         needsTutorial = false
         isNewUser = true
