@@ -47,6 +47,9 @@ struct StoryBlock: Identifiable, Codable {
     // Fact check embed
     let factCheck: PublicReel?
 
+    // Pre-generated SVG content for diagram blocks
+    let svgContent: String?
+
     // Page break hint — if true, this block always starts a new page
     let pageBreakBefore: Bool
 
@@ -69,12 +72,12 @@ struct StoryBlock: Identifiable, Codable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case blockId, position, type, text, imageUrl, caption, factCheck, pageBreakBefore, attachToPrevious
+        case blockId, position, type, text, imageUrl, caption, factCheck, svgContent, pageBreakBefore, attachToPrevious
     }
 
     init(blockId: String, position: Int, type: StoryBlockType, text: String? = nil,
          imageUrl: String? = nil, caption: String? = nil, factCheck: PublicReel? = nil,
-         pageBreakBefore: Bool = false, attachToPrevious: Bool = false) {
+         svgContent: String? = nil, pageBreakBefore: Bool = false, attachToPrevious: Bool = false) {
         self.blockId = blockId
         self.position = position
         self.type = type
@@ -82,6 +85,7 @@ struct StoryBlock: Identifiable, Codable {
         self.imageUrl = imageUrl
         self.caption = caption
         self.factCheck = factCheck
+        self.svgContent = svgContent
         self.pageBreakBefore = pageBreakBefore
         self.attachToPrevious = attachToPrevious
     }
@@ -95,6 +99,7 @@ struct StoryBlock: Identifiable, Codable {
         imageUrl = try c.decodeIfPresent(String.self, forKey: .imageUrl)
         caption  = try c.decodeIfPresent(String.self, forKey: .caption)
         factCheck = try c.decodeIfPresent(PublicReel.self, forKey: .factCheck)
+        svgContent = try c.decodeIfPresent(String.self, forKey: .svgContent)
         pageBreakBefore = (try? c.decodeIfPresent(Bool.self, forKey: .pageBreakBefore)) ?? false
         attachToPrevious = (try? c.decodeIfPresent(Bool.self, forKey: .attachToPrevious)) ?? false
     }

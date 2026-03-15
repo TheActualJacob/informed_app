@@ -95,7 +95,7 @@ struct BriefingSlideView: View {
         case .factCheck:  factCheckCard(block)
         case .inDepth:    inDepthCard(block)
         case .image:      imageCard(block)
-        case .diagram:    DiagramCardView(storyId: storyId, articleText: block.text ?? "")
+        case .diagram:    DiagramCardView(storyId: storyId, articleText: block.text ?? "", preloadedSvg: block.svgContent)
         default:          EmptyView()
         }
     }
