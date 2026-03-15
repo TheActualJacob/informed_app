@@ -29,6 +29,7 @@ struct DailyStoryPlayerView: View {
             case .heading:   return 4.0
             case .image:     return 6.0
             case .factCheck: return 10.0
+            case .inDepth:   return 18.0
             default: break
             }
         }
@@ -174,10 +175,9 @@ struct DailyStoryPlayerView: View {
 
             Spacer()
 
-            // Share
-            ShareLink(
-                item: "Check out this briefing on Informed: \(story.headline)"
-            ) {
+            // Share — links directly to the Informed App Store page
+            let appStoreURL = URL(string: "https://apps.apple.com/app/informed/id6738921897")!
+            ShareLink(item: appStoreURL, message: Text("Check out this briefing on Informed: \(story.headline)")) {
                 Image(systemName: "square.and.arrow.up")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(.white)
@@ -188,29 +188,30 @@ struct DailyStoryPlayerView: View {
     }
 
     // MARK: - Tap Controls
-    // Only active on solo (heading/image) pages. On stacked/scrollable pages
-    // hit-testing is disabled so all touches reach the underlying ScrollView.
-    // Navigation on stacked pages is handled by the horizontal swipe gesture
-    // applied to the parent ZStack.
+    // Left and right edge strips always advance/go-back on every page type.
+    // The centre 50% has no contentShape so touches pass straight through to
+    // the ScrollView on stacked/scrollable pages.
 
     private var tapControls: some View {
         GeometryReader { geometry in
             HStack(spacing: 0) {
-                // Left 30% → previous
+                // Left 25% → previous
                 Color.clear
                     .contentShape(Rectangle())
-                    .frame(width: geometry.size.width * 0.3)
+                    .frame(width: geometry.size.width * 0.25)
                     .onTapGesture { goBack() }
 
-                // Right 70% → next
+                // Middle 50% → transparent; ScrollView on stacked pages receives touches
+                Color.clear
+                    .frame(width: geometry.size.width * 0.50)
+
+                // Right 25% → next
                 Color.clear
                     .contentShape(Rectangle())
-                    .frame(width: geometry.size.width * 0.7)
+                    .frame(width: geometry.size.width * 0.25)
                     .onTapGesture { advanceSlide() }
             }
         }
-        // Transparent to touches on scrollable pages so the ScrollView works.
-        .allowsHitTesting(currentPageIsSolo)
     }
 
     // MARK: - Navigation

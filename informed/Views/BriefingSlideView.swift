@@ -26,7 +26,7 @@ struct BriefingSlideView: View {
             background.ignoresSafeArea()
 
             VStack(spacing: 0) {
-                Spacer().frame(height: 58) // chrome clearance
+                Spacer().frame(height: 72) // chrome clearance (progress bar + safe area)
 
                 // Faint story watermark
                 Text(storyHeadline.uppercased())
@@ -93,8 +93,48 @@ struct BriefingSlideView: View {
         case .text:       textCard(block)
         case .editorNote: editorNoteCard(block)
         case .factCheck:  factCheckCard(block)
+        case .inDepth:    inDepthCard(block)
         default:          EmptyView()
         }
+    }
+
+    // MARK: - In-depth card
+
+    private func inDepthCard(_ block: StoryBlock) -> some View {
+        let links = extractLinks(from: block.text ?? "")
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                Image(systemName: "doc.text.fill")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color.indigo)
+                Text("IN-DEPTH")
+                    .font(.custom("Inter-Bold", size: 10))
+                    .tracking(1.5)
+                    .foregroundStyle(Color.indigo)
+                Spacer()
+            }
+            .padding(.bottom, 14)
+
+            Text(styledBodyText(block, accent: Color.indigo))
+                .font(.custom("Inter-Regular", size: 17))
+                .foregroundColor(.white.opacity(0.93))
+                .lineSpacing(7)
+
+            if !links.isEmpty {
+                sourcePills(links, accent: Color.indigo)
+                    .padding(.top, 14)
+            }
+        }
+        .padding(22)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(Color.indigo.opacity(0.08))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .stroke(Color.indigo.opacity(0.20), lineWidth: 1)
+                )
+        )
     }
 
     // MARK: - Text card
@@ -396,6 +436,14 @@ struct BriefingSlideView: View {
                     Color(red: 0.06, green: 0.05, blue: 0.02)
                     LinearGradient(
                         colors: [Color.brandYellow.opacity(0.07), .clear],
+                        startPoint: .top, endPoint: .center
+                    )
+                }
+            case .inDepth:
+                ZStack {
+                    Color(red: 0.04, green: 0.04, blue: 0.10)
+                    LinearGradient(
+                        colors: [Color.indigo.opacity(0.14), .clear],
                         startPoint: .top, endPoint: .center
                     )
                 }
