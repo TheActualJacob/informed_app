@@ -467,6 +467,9 @@ struct StoryWalkthroughView: View {
                     .strokeBorder(Color.indigo.opacity(0.20), lineWidth: 1)
             )
             .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.md))
+
+        case .diagram:
+            EmptyView()
         }
     }
 }
