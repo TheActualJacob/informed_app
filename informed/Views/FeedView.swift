@@ -444,6 +444,29 @@ struct StoryWalkthroughView: View {
             .padding(16)
             .background(Color.brandBlue.opacity(0.06))
             .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.md))
+
+        case .inDepth:
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 6) {
+                    Image(systemName: "doc.text.fill")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Color.indigo)
+                    Text("IN-DEPTH")
+                        .font(.system(size: 11, weight: .heavy, design: .rounded))
+                        .foregroundStyle(Color.indigo)
+                }
+                Text(block.attributedText)
+                    .font(.system(size: 16))
+                    .foregroundStyle(.primary.opacity(0.88))
+                    .lineSpacing(5)
+            }
+            .padding(16)
+            .background(Color.indigo.opacity(0.07))
+            .overlay(
+                RoundedRectangle(cornerRadius: Theme.CornerRadius.md)
+                    .strokeBorder(Color.indigo.opacity(0.20), lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.md))
         }
     }
 }
