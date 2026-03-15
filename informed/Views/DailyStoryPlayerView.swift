@@ -64,7 +64,7 @@ struct DailyStoryPlayerView: View {
                 finishedView
                     .transition(.opacity.combined(with: .scale(scale: 0.95)))
             } else if !pages.isEmpty {
-                // Slide content
+                // Slide content with location-based tap navigation
                 BriefingSlideView(
                     blocks: pages[currentIndex],
                     storyHeadline: story.headline,
@@ -76,6 +76,11 @@ struct DailyStoryPlayerView: View {
                     insertion: .opacity.combined(with: .offset(x: 20)),
                     removal: .opacity.combined(with: .offset(x: -20))
                 ))
+
+                // Tap controls for single-block (non-scrollable) pages
+                if currentPageIsSolo {
+                    tapControls
+                }
 
                 // Controls overlay
                 VStack(spacing: 0) {
@@ -91,8 +96,6 @@ struct DailyStoryPlayerView: View {
                 }
                 .padding(.horizontal, 16)
 
-                // Tap + long-press zones
-                tapControls
             } else {
                 Text("This briefing has no content.")
                     .foregroundStyle(.secondary)

@@ -150,22 +150,24 @@ struct BriefingSlideView: View {
 
             Text(styledBodyText(block, accent: Color.indigo))
                 .font(.custom("Inter-Regular", size: 17))
+                .tint(Color.indigo) // Ensure links get colored correctly
                 .foregroundColor(.white.opacity(0.93))
-                .lineSpacing(7)
+                .lineSpacing(8)
 
             if !links.isEmpty {
                 sourcePills(links, accent: Color.indigo)
-                    .padding(.top, 14)
+                    .padding(.top, 16)
             }
         }
         .padding(22)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(Color.indigo.opacity(0.08))
+                .fill(Color.indigo.opacity(0.12))
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 22, style: .continuous)
-                        .stroke(Color.indigo.opacity(0.20), lineWidth: 1)
+                        .stroke(Color.indigo.opacity(0.30), lineWidth: 1)
                 )
         )
     }
@@ -188,12 +190,13 @@ struct BriefingSlideView: View {
 
             Text(styledBodyText(block, accent: Color.brandTeal))
                 .font(.custom("Inter-Regular", size: 19))
+                .tint(Color.brandTeal) // Ensure links get colored correctly
                 .foregroundColor(.white.opacity(0.93))
-                .lineSpacing(6)
+                .lineSpacing(8)
 
             if !links.isEmpty {
                 sourcePills(links, accent: Color.brandTeal)
-                    .padding(.top, 14)
+                    .padding(.top, 16)
             }
         }
         .padding(22)
@@ -203,7 +206,7 @@ struct BriefingSlideView: View {
                 .fill(.ultraThinMaterial)
                 .overlay(
                     RoundedRectangle(cornerRadius: 22, style: .continuous)
-                        .stroke(.white.opacity(0.07), lineWidth: 1)
+                        .stroke(.white.opacity(0.15), lineWidth: 1.5)
                 )
         )
     }
@@ -228,22 +231,24 @@ struct BriefingSlideView: View {
             Text(styledBodyText(block, accent: Color.brandYellow))
                 .font(.custom("Inter-Regular", size: 18))
                 .italic()
+                .tint(Color.brandYellow) // Ensure links get colored correctly
                 .foregroundColor(.white.opacity(0.88))
-                .lineSpacing(5)
+                .lineSpacing(7)
 
             if !links.isEmpty {
                 sourcePills(links, accent: Color.brandYellow)
-                    .padding(.top, 14)
+                    .padding(.top, 16)
             }
         }
         .padding(22)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(Color.brandYellow.opacity(0.07))
+                .fill(Color.brandYellow.opacity(0.10))
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 22, style: .continuous)
-                        .stroke(Color.brandYellow.opacity(0.12), lineWidth: 1)
+                        .stroke(Color.brandYellow.opacity(0.25), lineWidth: 1)
                 )
         )
     }
@@ -387,21 +392,37 @@ struct BriefingSlideView: View {
 
     // MARK: - Inline citation styling
     // Converts markdown link runs ([label](url)) into accent-coloured, semi-bold
-    // inline text. The .link attribute is removed so they don't look like bare
-    // web hyperlinks — the source pills below serve as the actual tap targets.
+    // inline text. The links remain natively clickable.
     private func styledBodyText(_ block: StoryBlock, accent: Color) -> AttributedString {
         guard let raw = block.text else { return AttributedString() }
         var attributed = (try? AttributedString(
             markdown: raw,
             options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
         )) ?? AttributedString(raw)
-        for run in attributed.runs {
-            if run.link != nil {
-                attributed[run.range].link = nil
-                attributed[run.range].foregroundColor = accent
-                attributed[run.range].font = .custom("Inter-SemiBold", size: 19)
+        
+        // Process in reverse to safely modify string lengths without invalidating ranges
+        let linkRanges = attributed.runs.compactMap { $0.link != nil ? $0.range : nil }.reversed()
+        
+        for range in linkRanges {
+            // Remove background highlights & underlines
+            attributed[range].backgroundColor = nil
+            attributed[range].underlineStyle = nil
+            attributed[range].foregroundColor = accent
+            attributed[range].font = .custom("Inter-SemiBold", size: 17)
+            
+            // If the link text is just a number (like [1]), put a circle around it (①)
+            let textStr = String(attributed.characters[range]).trimmingCharacters(in: .whitespacesAndNewlines)
+            if let num = Int(textStr), num >= 1, num <= 20 {
+                if let scalar = UnicodeScalar(0x245F + num) {
+                    var circledRep = AttributedString(String(Character(scalar)))
+                    circledRep.link = attributed[range].link
+                    circledRep.foregroundColor = accent
+                    circledRep.font = .custom("Inter-SemiBold", size: 18)
+                    attributed.replaceSubrange(range, with: circledRep)
+                }
             }
         }
+        
         return attributed
     }
 
