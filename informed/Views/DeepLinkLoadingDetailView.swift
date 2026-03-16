@@ -50,6 +50,15 @@ struct DeepLinkLoadingDetailView: View {
                 reelManager.deepLinkLoading = false
             }
         }
+        .onDisappear {
+            // Safety net: if the user dismisses the view (swipe-back, system gesture)
+            // before the item resolves, clear deepLinkLoading so the overlay in
+            // SharedReelsView is lifted and the list becomes visible again.
+            if resolvedItem == nil {
+                reelManager.deepLinkLoading = false
+                reelManager.pendingDeepLinkItem = nil
+            }
+        }
     }
 
     // MARK: - Loading Skeleton

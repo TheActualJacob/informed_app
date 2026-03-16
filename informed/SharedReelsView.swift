@@ -83,8 +83,26 @@ struct SharedReelsView: View {
                     // A minimal delay lets the NavigationStack register the destination
                     // before we push, but we no longer need to wait for visual "settle".
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                        // Guard: if the direct-detail path already fired (race condition where
+                        // cached data resolved before this 0.05s timer), don't push the
+                        // loading view on top — that would leave both destinations active.
+                        guard !showDeepLink else { return }
                         showDeepLinkLoading = true
                     }
+                }
+            }
+            // Fix: detect swipe-back dismissal of the loading view and clear residual
+            // deep-link state so the overlay goes away and the list becomes visible again.
+            .onChange(of: showDeepLinkLoading) { _, showing in
+                if !showing {
+                    reelManager.deepLinkLoading = false
+                    reelManager.pendingDeepLinkItem = nil
+                }
+            }
+            // Fix: symmetric cleanup when the direct detail view is dismissed.
+            .onChange(of: showDeepLink) { _, showing in
+                if !showing {
+                    reelManager.deepLinkLoading = false
                 }
             }
             .onChange(of: reelManager.pendingDeepLinkItem) { _, item in
@@ -95,8 +113,12 @@ struct SharedReelsView: View {
                 guard !showDeepLinkLoading else { return }
                 deepLinkItem = item
                 reelManager.pendingDeepLinkItem = nil
-                // Small delay so the NavigationLink has time to mount
+                // Clear the overlay before pushing the real detail view.
+                reelManager.deepLinkLoading = false
+                // Small delay so the NavigationLink has time to mount.
+                // Also cancel any in-flight loading-view push that may be pending.
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    showDeepLinkLoading = false
                     showDeepLink = true
                 }
             }
@@ -106,11 +128,13 @@ struct SharedReelsView: View {
                     // The NavigationStack is already laid out by the time onAppear fires,
                     // so a very small delay is sufficient — no need for the old 0.3 s wait.
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                        guard !showDeepLink else { return }
                         showDeepLinkLoading = true
                     }
                 } else if let item = reelManager.pendingDeepLinkItem {
                     deepLinkItem = item
                     reelManager.pendingDeepLinkItem = nil
+                    reelManager.deepLinkLoading = false
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                         showDeepLink = true
                     }
