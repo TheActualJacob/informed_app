@@ -9,8 +9,8 @@ struct DiscoverCardView: View {
 
     let reel: PublicReel
     @ObservedObject var viewModel: DiscoverFeedViewModel
+    let onTap: () -> Void
 
-    @State private var showDetail    = false
     @State private var showSources   = false
     @State private var showComments  = false
 
@@ -25,7 +25,6 @@ struct DiscoverCardView: View {
                 startPoint: UnitPoint(x: 0.5, y: 0.35),
                 endPoint: .bottom
             )
-            .ignoresSafeArea()
             .allowsHitTesting(false)
 
             // Top scrim — behind platform label
@@ -35,7 +34,6 @@ struct DiscoverCardView: View {
                 endPoint: UnitPoint(x: 0.5, y: 0.25)
             )
             .frame(maxHeight: .infinity, alignment: .top)
-            .ignoresSafeArea()
             .allowsHitTesting(false)
 
             // Top bar: platform + time ago
@@ -44,7 +42,7 @@ struct DiscoverCardView: View {
                 .allowsHitTesting(false)
 
             // Bottom content: claim section + reaction bar
-            // (Buttons here intercept their own taps; background tap navigates to detail)
+            // Sits above the tab bar using safeAreaInset so it's never hidden.
             VStack(spacing: 0) {
                 CardClaimSection(reel: reel, showSources: $showSources)
                     .padding(.horizontal, 16)
@@ -58,15 +56,15 @@ struct DiscoverCardView: View {
                     onShare:   { presentShareSheet() }
                 )
                 .padding(.horizontal, 16)
-                .padding(.bottom, 32)
             }
+            .padding(.bottom, 16)
+            .safeAreaPadding(.bottom)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .clipped()
         // Tap anywhere that isn't a button → navigate to detail
         .contentShape(Rectangle())
-        .onTapGesture { showDetail = true }
-        .navigationDestination(isPresented: $showDetail) {
-            PublicReelDetailView(reel: reel)
-        }
+        .onTapGesture { onTap() }
         .sheet(isPresented: $showSources) {
             SourcesSheetView(sources: reel.sources)
         }
@@ -96,17 +94,18 @@ private struct CardThumbnailView: View {
     let reel: PublicReel
 
     var body: some View {
-        Group {
-            if let urlStr = reel.thumbnailUrl, let url = URL(string: urlStr) {
-                ThumbnailImage(url: url, platform: reel.detectedPlatform)
-                    .aspectRatio(contentMode: .fill)
-            } else {
-                ThumbnailPlaceholder(platform: reel.detectedPlatform)
+        // Color.clear anchors the size to the proposed bounds;
+        // the image is an overlay so it never participates in layout.
+        Color.clear
+            .overlay {
+                if let urlStr = reel.thumbnailUrl, let url = URL(string: urlStr) {
+                    ThumbnailImage(url: url, platform: reel.detectedPlatform)
+                        .scaledToFill()
+                } else {
+                    ThumbnailPlaceholder(platform: reel.detectedPlatform)
+                }
             }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .clipped()
-        .ignoresSafeArea()
+            .clipped()
     }
 }
 
@@ -169,12 +168,14 @@ private struct CardClaimSection: View {
                 .foregroundStyle(.white)
                 .lineLimit(3)
                 .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
             // Platform name + Sources chip
             HStack {
                 Label(reel.platformDisplayName, systemImage: reel.platformIcon)
                     .font(.caption)
                     .foregroundStyle(.white.opacity(0.75))
+                    .lineLimit(1)
 
                 Spacer()
 
@@ -192,10 +193,22 @@ private struct CardClaimSection: View {
                 .font(.subheadline)
                 .foregroundStyle(.white.opacity(0.82))
                 .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(14)
-        .background(.ultraThinMaterial.opacity(0.6))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .padding(16)
+        .background {
+            RoundedRectangle(cornerRadius: 16)
+                .fill(.ultraThinMaterial)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(Color.black.opacity(0.35))
+                }
+                .overlay {
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
+                }
+        }
     }
 }
 

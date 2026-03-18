@@ -3,6 +3,7 @@
 //  informed
 
 import Foundation
+import Combine
 
 @MainActor
 final class DiscoverFeedViewModel: ObservableObject {
@@ -50,6 +51,11 @@ final class DiscoverFeedViewModel: ObservableObject {
         } catch {
             errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
+    }
+
+    func loadFeedIfNeeded() async {
+        guard reels.isEmpty else { return }
+        await loadFeed()
     }
 
     func loadMore() {

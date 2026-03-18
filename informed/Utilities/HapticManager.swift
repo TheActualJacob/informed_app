@@ -5,6 +5,7 @@
 //  Centralized haptic feedback management
 //
 
+import Combine
 import UIKit
 
 struct HapticManager {

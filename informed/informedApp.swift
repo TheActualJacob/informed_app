@@ -28,6 +28,7 @@ struct informedApp: App {
     // is always available and never reset when the user navigates away.
     @StateObject private var homeViewModel = HomeViewModel()
     @StateObject private var feedViewModel = FeedViewModel()
+    @StateObject private var discoverViewModel = DiscoverFeedViewModel()
     
     @State private var showSuccessAlert = false
     @State private var showErrorAlert = false
@@ -46,6 +47,7 @@ struct informedApp: App {
                     .environmentObject(reelManager)
                     .environmentObject(homeViewModel)
                     .environmentObject(feedViewModel)
+                    .environmentObject(discoverViewModel)
                     .environmentObject(subscriptionManager)
                     .fullScreenCover(isPresented: $userManager.isNewUser) {
                         WelcomeView {
@@ -184,6 +186,7 @@ struct informedApp: App {
                         await withTaskGroup(of: Void.self) { group in
                             group.addTask { await homeViewModel.loadInitialData() }
                             group.addTask { await feedViewModel.loadFeedIfNeeded() }
+                            group.addTask { await discoverViewModel.loadFeedIfNeeded() }
                             group.addTask { await subscriptionManager.refreshUsage() }
                         }
                     }

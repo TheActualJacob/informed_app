@@ -3,6 +3,7 @@
 //  informed
 
 import Foundation
+import Combine
 
 @MainActor
 final class CommentsViewModel: ObservableObject {

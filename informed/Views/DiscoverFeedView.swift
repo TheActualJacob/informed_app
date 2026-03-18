@@ -6,7 +6,8 @@ import SwiftUI
 
 struct DiscoverFeedView: View {
 
-    @StateObject private var viewModel = DiscoverFeedViewModel()
+    @EnvironmentObject private var viewModel: DiscoverFeedViewModel
+    @State private var selectedReel: PublicReel?
 
     var body: some View {
         NavigationStack {
@@ -15,8 +16,16 @@ struct DiscoverFeedView: View {
                 feedContent
             }
             .toolbar(.hidden, for: .navigationBar)
+            .navigationDestination(isPresented: Binding(
+                get: { selectedReel != nil },
+                set: { if !$0 { selectedReel = nil } }
+            )) {
+                if let reel = selectedReel {
+                    PublicReelDetailView(reel: reel)
+                }
+            }
             .task {
-                await viewModel.loadFeed()
+                await viewModel.loadFeedIfNeeded()
             }
         }
     }
@@ -31,19 +40,22 @@ struct DiscoverFeedView: View {
         } else if viewModel.reels.isEmpty {
             DiscoverEmptyView()
         } else {
-            TabView {
-                ForEach(viewModel.reels) { reel in
-                    DiscoverCardView(reel: reel, viewModel: viewModel)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .onAppear {
-                            if reel.id == viewModel.reels.last?.id {
-                                viewModel.loadMore()
+            ScrollView(.vertical, showsIndicators: false) {
+                LazyVStack(spacing: 0) {
+                    ForEach(viewModel.reels) { reel in
+                        DiscoverCardView(reel: reel, viewModel: viewModel, onTap: { selectedReel = reel })
+                            .containerRelativeFrame([.horizontal, .vertical])
+                            .onAppear {
+                                if reel.id == viewModel.reels.last?.id {
+                                    viewModel.loadMore()
+                                }
                             }
-                        }
+                    }
                 }
+                .scrollTargetLayout()
             }
-            .tabViewStyle(.page(indexDisplayMode: .never))
-            .ignoresSafeArea()
+            .scrollTargetBehavior(.paging)
+            .ignoresSafeArea(.container, edges: .top)
         }
     }
 }
