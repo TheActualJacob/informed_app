@@ -755,6 +755,9 @@ struct PublicReelDetailView: View {
             }
         }
         .toolbarBackground(.hidden, for: .navigationBar)
+        .onAppear {
+            PersistenceService.shared.saveFactCheck(reel.toFactCheckItem())
+        }
         .confirmationDialog("Content Actions", isPresented: $showReportSheet, titleVisibility: .visible) {
             Button("Report: Inappropriate or harmful") {
                 submitReport(reason: "inappropriate")

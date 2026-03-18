@@ -26,6 +26,19 @@ class PersistenceService {
     
     func saveFactCheck(_ item: FactCheckItem) {
         var history = getFactCheckHistory()
+
+        // Remove any existing entry for the same reel so re-views move to top
+        history.removeAll { existing in
+            if let rid = item.reelID, !rid.isEmpty,
+               let existingRid = existing.reelID, !existingRid.isEmpty {
+                return existingRid == rid
+            }
+            if let link = item.originalLink, !link.isEmpty {
+                return existing.originalLink == link
+            }
+            return false
+        }
+
         history.insert(item, at: 0)
         
         // Keep only last 100 items

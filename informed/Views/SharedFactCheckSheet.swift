@@ -53,9 +53,11 @@ struct SharedFactCheckSheet: View {
         // Fast path: check the user's own synced reels first (avoids network round-trip)
         if let reel = reelManager.reels.first(where: { $0.id == uniqueId && $0.factCheckData != nil }),
            let data = reel.factCheckData {
+            let item = data.toFactCheckItem(originalLink: reel.url)
+            PersistenceService.shared.saveFactCheck(item)
             await MainActor.run {
                 withAnimation(.easeInOut(duration: 0.3)) {
-                    factCheckItem = data.toFactCheckItem(originalLink: reel.url)
+                    factCheckItem = item
                 }
             }
             return
@@ -74,9 +76,11 @@ struct SharedFactCheckSheet: View {
                 aiProbability: userReel.aiProbability,
                 reelID: userReel.id
             )
+            let item = storedData.toFactCheckItem(originalLink: userReel.link)
+            PersistenceService.shared.saveFactCheck(item)
             await MainActor.run {
                 withAnimation(.easeInOut(duration: 0.3)) {
-                    factCheckItem = storedData.toFactCheckItem(originalLink: userReel.link)
+                    factCheckItem = item
                 }
             }
         } else {
