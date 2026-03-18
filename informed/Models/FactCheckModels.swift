@@ -430,3 +430,35 @@ struct UserReel: Identifiable, Codable {
 }
 
 struct UserReelsResponse: Codable { let reels: [UserReel]; let totalCount: Int }
+
+// MARK: - Comment
+
+struct Comment: Identifiable, Codable {
+    let id: String
+    let userId: String
+    let username: String
+    let text: String
+    let createdAt: String   // ISO-8601 string from backend
+
+    enum CodingKeys: String, CodingKey {
+        case id, text, username
+        case userId    = "userId"
+        case createdAt = "createdAt"
+    }
+}
+
+struct CommentsResponse: Codable {
+    let comments: [Comment]
+    let hasMore: Bool
+    let nextCursor: String?
+}
+
+// MARK: - ReactionCounts
+
+struct ReactionCounts {
+    var likes: Int
+    var dislikes: Int
+    var userReaction: UserReaction?
+
+    enum UserReaction: Equatable { case like, dislike }
+}
