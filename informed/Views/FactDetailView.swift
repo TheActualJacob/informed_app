@@ -12,6 +12,7 @@ import ActivityKit
 struct FactDetailView: View {
     let item: FactCheckItem
     @Environment(\.presentationMode) var presentationMode
+    @State private var showComments = false
 
     private var hasRealThumbnail: Bool {
         guard let url = item.thumbnailURL else { return false }
@@ -111,6 +112,26 @@ struct FactDetailView: View {
 
                 // Claims pager — swipeable when 2-3 claims are present
                 ClaimsPagerView(claims: item.claims)
+
+                Divider()
+
+                Button { showComments = true } label: {
+                    HStack {
+                        Image(systemName: "bubble.left.and.bubble.right")
+                            .font(.system(size: 15, weight: .semibold))
+                        Text("Comments")
+                            .font(.system(size: 16, weight: .semibold))
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+                    .foregroundStyle(.primary)
+                    .padding(.vertical, 4)
+                }
+                .sheet(isPresented: $showComments) {
+                    CommentsSheetView(factCheckId: item.reelID ?? "")
+                }
             }
             .padding(Theme.Spacing.xl)
             .background(Color.backgroundLight)

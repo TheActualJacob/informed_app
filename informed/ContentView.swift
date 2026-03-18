@@ -28,10 +28,16 @@ struct ContentView: View {
                 }
                 .tag(0)
 
-            DailyDashboardView(pendingStoryId: $pendingStoryId)
+            // DailyDashboardView(pendingStoryId: $pendingStoryId)
+            //     .tabItem {
+            //         Image(systemName: "sun.max.fill")
+            //         Text("Daily")
+            //     }
+            //     .tag(1)
+            DiscoverFeedView()
                 .tabItem {
-                    Image(systemName: "sun.max.fill")
-                    Text("Daily")
+                    Image(systemName: "safari.fill")
+                    Text("Discover")
                 }
                 .tag(1)
 
