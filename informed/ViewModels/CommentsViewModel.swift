@@ -15,6 +15,7 @@ final class CommentsViewModel: ObservableObject {
     @Published var isPosting = false
     @Published var newCommentText = ""
     @Published var errorMessage: String?
+    @Published var requiresEmailVerification: Bool = false
 
     // MARK: - Properties
 
@@ -65,6 +66,8 @@ final class CommentsViewModel: ObservableObject {
             comments.insert(comment, at: 0)
             newCommentText = ""
             errorMessage   = nil
+        } catch NetworkError.emailNotVerified {
+            requiresEmailVerification = true
         } catch {
             errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }

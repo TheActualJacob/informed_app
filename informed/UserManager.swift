@@ -12,9 +12,15 @@ class UserManager: ObservableObject {
     @Published var currentUserId: String?
     @Published var currentUsername: String?
     @Published var currentSessionId: String?
+    @Published var isEmailVerified: Bool = false
+    @Published var hasPassword: Bool = true
+    @Published var userEmail: String = ""
     
     private let userIdKey = "stored_user_id"
     private let usernameKey = "stored_username"
+    private let emailKey = "stored_email"
+    private let emailVerifiedKey = "stored_email_verified"
+    private let hasPasswordKey = "stored_has_password"
     
     init() {
         loadStoredUser()
@@ -25,6 +31,9 @@ class UserManager: ObservableObject {
            let username = UserDefaults.standard.string(forKey: usernameKey) {
             self.currentUserId = userId
             self.currentUsername = username
+            self.userEmail = UserDefaults.standard.string(forKey: emailKey) ?? ""
+            self.isEmailVerified = UserDefaults.standard.bool(forKey: emailVerifiedKey)
+            self.hasPassword = UserDefaults.standard.object(forKey: hasPasswordKey) as? Bool ?? true
             
             // Load session ID from Keychain
             self.currentSessionId = KeychainManager.shared.getSessionId()
@@ -39,10 +48,14 @@ class UserManager: ObservableObject {
         }
     }
     
-    func saveUser(userId: String, username: String, sessionId: String) {
+    func saveUser(userId: String, username: String, sessionId: String,
+                  email: String = "", emailVerified: Bool = false, hasPassword: Bool = true) {
         // Save user ID and username to UserDefaults
         UserDefaults.standard.set(userId, forKey: userIdKey)
         UserDefaults.standard.set(username, forKey: usernameKey)
+        UserDefaults.standard.set(email, forKey: emailKey)
+        UserDefaults.standard.set(emailVerified, forKey: emailVerifiedKey)
+        UserDefaults.standard.set(hasPassword, forKey: hasPasswordKey)
         
         // Save session ID to Keychain
         KeychainManager.shared.saveSessionId(sessionId)
@@ -60,6 +73,9 @@ class UserManager: ObservableObject {
         self.currentUserId = userId
         self.currentUsername = username
         self.currentSessionId = sessionId
+        self.userEmail = email
+        self.isEmailVerified = emailVerified
+        self.hasPassword = hasPassword
         self.isAuthenticated = true
 
         // Show tutorial only for brand-new users who have never seen either flow,
@@ -137,6 +153,9 @@ class UserManager: ObservableObject {
         self.currentUserId = nil
         self.currentUsername = nil
         self.currentSessionId = nil
+        self.userEmail = ""
+        self.isEmailVerified = false
+        self.hasPassword = true
         self.isAuthenticated = false
         
         print("✅ User logged out and session cleared")

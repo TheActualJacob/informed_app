@@ -15,6 +15,8 @@ struct UserResponse: Codable {
     let username: String
     let email: String
     let sessionId: String
+    let emailVerified: Bool?
+    let hasPassword: Bool?
 }
 
 struct UserLogin: Codable {
@@ -32,6 +34,8 @@ struct LoginResponse: Codable {
         let username: String
         let email: String
         let sessionID: String
+        let emailVerified: Bool?
+        let hasPassword: Bool?
     }
 }
 
@@ -59,6 +63,8 @@ struct OAuthResponse: Codable {
         let username: String
         let email: String
         let sessionID: String
+        let emailVerified: Bool?
+        let hasPassword: Bool?
     }
 }
 
@@ -510,7 +516,10 @@ struct AuthenticationView: View {
                     userManager.saveUser(
                         userId: loginResponse.user.userID, 
                         username: loginResponse.user.username,
-                        sessionId: loginResponse.user.sessionID
+                        sessionId: loginResponse.user.sessionID,
+                        email: loginResponse.user.email,
+                        emailVerified: loginResponse.user.emailVerified ?? false,
+                        hasPassword: loginResponse.user.hasPassword ?? true
                     )
                     print("✅ User logged in successfully! ID: \(loginResponse.user.userID), Session: \(loginResponse.user.sessionID)")
                 }
@@ -555,7 +564,10 @@ struct AuthenticationView: View {
                     userManager.saveUser(
                         userId: userResponse.userId, 
                         username: userResponse.username,
-                        sessionId: userResponse.sessionId
+                        sessionId: userResponse.sessionId,
+                        email: userResponse.email,
+                        emailVerified: userResponse.emailVerified ?? false,
+                        hasPassword: userResponse.hasPassword ?? true
                     )
                     print("✅ User created successfully! ID: \(userResponse.userId), Session: \(userResponse.sessionId)")
                 }
@@ -630,7 +642,10 @@ struct AuthenticationView: View {
                     userManager.saveUser(
                         userId: response.user.userID,
                         username: response.user.username,
-                        sessionId: response.user.sessionID
+                        sessionId: response.user.sessionID,
+                        email: response.user.email,
+                        emailVerified: response.user.emailVerified ?? false,
+                        hasPassword: response.user.hasPassword ?? false
                     )
                     print("✅ Apple Sign In successful! ID: \(response.user.userID)")
                 }

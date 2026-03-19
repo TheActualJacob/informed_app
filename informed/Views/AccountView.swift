@@ -149,6 +149,11 @@ struct AccountView: View {
                         }
                         .padding(.horizontal)
                     }
+                    // Email verification banner
+                    if !userManager.isEmailVerified {
+                        EmailVerificationBannerView()
+                            .padding(.horizontal)
+                    }
                     VStack(spacing: 0) {
                         // History
                         NavigationLink(destination: HistoryView()) {
@@ -223,7 +228,19 @@ struct AccountView: View {
                         }
                         
                         Divider().padding(.leading, 60)
-                        
+
+                        // Change Password (hidden for Apple-only accounts)
+                        if userManager.hasPassword {
+                            NavigationLink(destination: ChangePasswordView()) {
+                                MenuRow(
+                                    icon: "lock.rotation",
+                                    title: "Change Password",
+                                    color: .secondary
+                                )
+                            }
+                            Divider().padding(.leading, 60)
+                        }
+
                         // About
                         NavigationLink(destination: AboutView()) {
                             MenuRow(

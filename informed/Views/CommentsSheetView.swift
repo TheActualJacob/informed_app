@@ -8,6 +8,7 @@ struct CommentsSheetView: View {
 
     @StateObject private var viewModel: CommentsViewModel
     @FocusState  private var composerFocused: Bool
+    @State       private var selectedDetent: PresentationDetent = .medium
     @Environment(\.dismiss) private var dismiss
 
     init(factCheckId: String) {
@@ -30,9 +31,15 @@ struct CommentsSheetView: View {
                              }
                          })
         }
-        .presentationDetents([.medium, .large])
+        .presentationDetents([.medium, .large], selection: $selectedDetent)
         .presentationDragIndicator(.visible)
         .task { await viewModel.loadComments() }
+        .onChange(of: composerFocused) { _, focused in
+            if focused { selectedDetent = .large }
+        }
+        .sheet(isPresented: $viewModel.requiresEmailVerification) {
+            VerifyEmailPromptView()
+        }
     }
 
     // MARK: Comment list
@@ -59,6 +66,7 @@ struct CommentsSheetView: View {
                 }
             }
         }
+        .scrollDismissesKeyboard(.never)
     }
 }
 

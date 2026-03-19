@@ -95,5 +95,11 @@ struct Config {
 
         // Diagram generation (Qwen SVG infographics)
         static let generateDiagram = Config.endpoint("/api/v1/generate-diagram")
+
+        // Email verification & password change
+        static let sendVerificationEmail = Config.endpoint("/api/email/send-verification")
+        static let verifyCode            = Config.endpoint("/api/email/verify-code")
+        static let verificationStatus    = Config.endpoint("/api/email/verification-status")
+        static let changePassword        = Config.endpoint("/api/auth/change-password")
     }
 }

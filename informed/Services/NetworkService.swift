@@ -20,6 +20,7 @@ enum NetworkError: LocalizedError {
     case decodingError(String)
     case requestCancelled
     case limitReached(type: String, limit: Int, tier: String)
+    case emailNotVerified
     case unknown(Error)
     
     var errorDescription: String? {
@@ -45,6 +46,8 @@ enum NetworkError: LocalizedError {
         case .limitReached(let type, let limit, _):
             let period = type == "weekly" ? "this week" : "today"
             return "You've reached your \(limit) fact-check limit \(period). Upgrade to +informed Pro for more."
+        case .emailNotVerified:
+            return "You must verify your email to post comments."
         case .unknown(let error):
             return "An error occurred: \(error.localizedDescription)"
         }
@@ -656,6 +659,12 @@ class NetworkService {
             let (data, response) = try await session.data(for: request)
             guard let httpResponse = response as? HTTPURLResponse else { throw NetworkError.invalidResponse }
             if httpResponse.statusCode == 401 { throw NetworkError.unauthorized }
+            if httpResponse.statusCode == 403 {
+                if let body = try? JSONDecoder().decode([String: String].self, from: data),
+                   body["error"] == "email_not_verified" {
+                    throw NetworkError.emailNotVerified
+                }
+            }
             guard (200...299).contains(httpResponse.statusCode) else {
                 throw NetworkError.serverError(statusCode: httpResponse.statusCode)
             }
