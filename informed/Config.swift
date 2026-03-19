@@ -101,5 +101,6 @@ struct Config {
         static let verifyCode            = Config.endpoint("/api/email/verify-code")
         static let verificationStatus    = Config.endpoint("/api/email/verification-status")
         static let changePassword        = Config.endpoint("/api/auth/change-password")
+        static let changeUsername        = Config.endpoint("/api/user/username")
     }
 }

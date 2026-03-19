@@ -229,6 +229,16 @@ struct AccountView: View {
                         
                         Divider().padding(.leading, 60)
 
+                        // Change Username
+                        NavigationLink(destination: ChangeUsernameView()) {
+                            MenuRow(
+                                icon: "person.crop.circle",
+                                title: "Change Username",
+                                color: .secondary
+                            )
+                        }
+                        Divider().padding(.leading, 60)
+
                         // Change Password (hidden for Apple-only accounts)
                         if userManager.hasPassword {
                             NavigationLink(destination: ChangePasswordView()) {

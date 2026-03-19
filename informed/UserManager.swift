@@ -106,7 +106,13 @@ class UserManager: ObservableObject {
             print("📢 Posted UserDidChange notification")
         }
     }
-    
+
+    @MainActor
+    func updateUsername(_ newUsername: String) {
+        currentUsername = newUsername
+        UserDefaults.standard.set(newUsername, forKey: usernameKey)
+    }
+
     /// Call once the welcome/onboarding screen is dismissed so it never shows again.
     func markWelcomeSeen() {
         if let userId = currentUserId {
