@@ -645,7 +645,8 @@ struct AuthenticationView: View {
                         sessionId: response.user.sessionID,
                         email: response.user.email,
                         emailVerified: response.user.emailVerified ?? false,
-                        hasPassword: response.user.hasPassword ?? false
+                        hasPassword: response.user.hasPassword ?? false,
+                        isAppleUser: true
                     )
                     print("✅ Apple Sign In successful! ID: \(response.user.userID)")
                 }

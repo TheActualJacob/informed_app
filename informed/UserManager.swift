@@ -14,6 +14,7 @@ class UserManager: ObservableObject {
     @Published var currentSessionId: String?
     @Published var isEmailVerified: Bool = false
     @Published var hasPassword: Bool = true
+    @Published var isAppleUser: Bool = false
     @Published var userEmail: String = ""
     
     private let userIdKey = "stored_user_id"
@@ -21,6 +22,7 @@ class UserManager: ObservableObject {
     private let emailKey = "stored_email"
     private let emailVerifiedKey = "stored_email_verified"
     private let hasPasswordKey = "stored_has_password"
+    private let isAppleUserKey = "stored_is_apple_user"
     
     init() {
         loadStoredUser()
@@ -34,6 +36,7 @@ class UserManager: ObservableObject {
             self.userEmail = UserDefaults.standard.string(forKey: emailKey) ?? ""
             self.isEmailVerified = UserDefaults.standard.bool(forKey: emailVerifiedKey)
             self.hasPassword = UserDefaults.standard.object(forKey: hasPasswordKey) as? Bool ?? true
+            self.isAppleUser = UserDefaults.standard.bool(forKey: isAppleUserKey)
             
             // Load session ID from Keychain
             self.currentSessionId = KeychainManager.shared.getSessionId()
@@ -49,13 +52,15 @@ class UserManager: ObservableObject {
     }
     
     func saveUser(userId: String, username: String, sessionId: String,
-                  email: String = "", emailVerified: Bool = false, hasPassword: Bool = true) {
+                  email: String = "", emailVerified: Bool = false, hasPassword: Bool = true,
+                  isAppleUser: Bool = false) {
         // Save user ID and username to UserDefaults
         UserDefaults.standard.set(userId, forKey: userIdKey)
         UserDefaults.standard.set(username, forKey: usernameKey)
         UserDefaults.standard.set(email, forKey: emailKey)
         UserDefaults.standard.set(emailVerified, forKey: emailVerifiedKey)
         UserDefaults.standard.set(hasPassword, forKey: hasPasswordKey)
+        UserDefaults.standard.set(isAppleUser, forKey: isAppleUserKey)
         
         // Save session ID to Keychain
         KeychainManager.shared.saveSessionId(sessionId)
@@ -76,6 +81,7 @@ class UserManager: ObservableObject {
         self.userEmail = email
         self.isEmailVerified = emailVerified
         self.hasPassword = hasPassword
+        self.isAppleUser = isAppleUser
         self.isAuthenticated = true
 
         // Show tutorial only for brand-new users who have never seen either flow,
@@ -162,6 +168,7 @@ class UserManager: ObservableObject {
         self.userEmail = ""
         self.isEmailVerified = false
         self.hasPassword = true
+        self.isAppleUser = false
         self.isAuthenticated = false
         
         print("✅ User logged out and session cleared")

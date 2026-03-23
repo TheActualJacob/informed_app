@@ -150,7 +150,7 @@ struct AccountView: View {
                         .padding(.horizontal)
                     }
                     // Email verification banner
-                    if !userManager.isEmailVerified {
+                    if !userManager.isEmailVerified && !userManager.isAppleUser {
                         EmailVerificationBannerView()
                             .padding(.horizontal)
                     }
