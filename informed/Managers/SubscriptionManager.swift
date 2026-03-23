@@ -61,8 +61,8 @@ final class SubscriptionManager: ObservableObject {
         }
     }
     @Published var usage: UsageStatus = UsageStatus(
-        tier: "free", dailyUsed: 0, dailyLimit: 5,
-        weeklyUsed: 0, weeklyLimit: 10, subscriptionExpiresAt: nil
+        tier: "free", dailyUsed: 0, dailyLimit: 2,
+        weeklyUsed: 0, weeklyLimit: nil, subscriptionExpiresAt: nil
     )
     @Published var currentOffering: Offering? = nil
     @Published var isLoadingOffering: Bool = false

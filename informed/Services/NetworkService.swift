@@ -103,11 +103,11 @@ class NetworkService {
                 if let limitBody = try? JSONDecoder().decode(LimitReachedResponse.self, from: data) {
                     throw NetworkError.limitReached(
                         type:  limitBody.type  ?? "daily",
-                        limit: limitBody.limit ?? 5,
+                        limit: limitBody.limit ?? 2,
                         tier:  limitBody.tier  ?? "free"
                     )
                 }
-                throw NetworkError.limitReached(type: "daily", limit: 5, tier: "free")
+                throw NetworkError.limitReached(type: "daily", limit: 2, tier: "free")
             }
 
             // Check for API-level error response first (error field present)

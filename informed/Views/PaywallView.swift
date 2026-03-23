@@ -17,7 +17,7 @@ struct PaywallView: View {
     private var limitMessage: String {
         let usage = subscriptionManager.usage
         if limitType == "weekly" {
-            return "You've used all \(usage.weeklyLimit ?? 10) free fact checks this week."
+            return "You've used all \(usage.weeklyLimit ?? 0) free fact checks this week."
         }
         return "You've used all \(usage.dailyLimit) free fact checks today."
     }
@@ -90,13 +90,7 @@ struct PaywallView: View {
 
                         paywallRow(icon: "bolt.fill",
                                    color: .brandTeal,
-                                   text: "5 fact checks / day (free)",
-                                   proOnly: false)
-                        Divider().padding(.leading, 52)
-
-                        paywallRow(icon: "clock.fill",
-                                   color: .secondary,
-                                   text: "10 checks / week (free)",
+                                   text: "2 fact checks / day (free)",
                                    proOnly: false)
                     }
                     .background(Color.cardBackground)
