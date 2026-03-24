@@ -355,7 +355,37 @@ struct AccountView: View {
             }
             .onAppear {
                 viewModel.loadStats()
+                refreshVerificationStatus()
             }
+        }
+    }
+
+    private func refreshVerificationStatus() {
+        guard let userId = userManager.currentUserId,
+              let sessionId = userManager.currentSessionId else { return }
+        Task {
+            guard var comps = URLComponents(string: Config.Endpoints.verificationStatus) else { return }
+            comps.queryItems = [
+                URLQueryItem(name: "userId", value: userId),
+                URLQueryItem(name: "sessionId", value: sessionId),
+            ]
+            guard let url = comps.url else { return }
+            guard let (data, response) = try? await URLSession.shared.data(from: url),
+                  let http = response as? HTTPURLResponse,
+                  (200...299).contains(http.statusCode),
+                  let body = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+            let verified = (body["verified"] as? Bool) ?? false
+            let hasPassword = (body["hasPassword"] as? Bool) ?? true
+            await MainActor.run {
+                userManager.isEmailVerified = verified
+                UserDefaults.standard.set(verified, forKey: "stored_email_verified")
+                // No password means Apple (or future OAuth) user — mark accordingly
+                if !hasPassword {
+                    userManager.isAppleUser = true
+                    UserDefaults.standard.set(true, forKey: "stored_is_apple_user")
+                }
+            }
+        }
         }
     }
 }
