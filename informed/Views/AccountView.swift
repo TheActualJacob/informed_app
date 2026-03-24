@@ -23,68 +23,8 @@ struct AccountView: View {
             ScrollView {
                 VStack(spacing: Theme.Spacing.xxl) {
                     
-                    // Profile Header
-                    VStack(spacing: Theme.Spacing.md) {
-                        ZStack {
-                            Circle()
-                                .fill(
-                                    Color.brandGradient(
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                )
-                                .frame(width: 100, height: 100)
-                            
-                            Text(userManager.currentUsername?.prefix(1).uppercased() ?? "U")
-                                .font(.system(size: 40, weight: .bold))
-                                .foregroundColor(.white)
-                        }
-                        
-                        if let username = userManager.currentUsername {
-                            HStack(spacing: 6) {
-                                Text(username)
-                                    .font(.title2)
-                                    .fontWeight(.bold)
-                                NavigationLink(destination: EditProfileView()) {
-                                    Image(systemName: "pencil.circle.fill")
-                                        .font(.title3)
-                                        .foregroundColor(.secondary)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                        
-                        if let userId = userManager.currentUserId {
-                            Text("ID: \(userId.prefix(8))")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                                .padding(.horizontal, Theme.Spacing.md)
-                                .padding(.vertical, 6)
-                                .background(Color.secondary.opacity(0.1))
-                                .clipShape(.rect(cornerRadius: Theme.CornerRadius.sm))
-                        }
-
-                        // Pro badge
-                        if subscriptionManager.isPro {
-                            HStack(spacing: 5) {
-                                Text("✦")
-                                    .font(.caption.weight(.bold))
-                                Text("+informed Pro")
-                                    .font(.caption.weight(.bold))
-                            }
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 5)
-                            .background(
-                                LinearGradient(
-                                    colors: [Color.brandBlue, Color.brandTeal],
-                                    startPoint: .leading, endPoint: .trailing
-                                )
-                            )
-                            .clipShape(.rect(cornerRadius: 20))
-                        }
-                    }
-                    .padding(.top, Theme.Spacing.xl)
+                    profileHeader
+                        .padding(.top, Theme.Spacing.xl)
                     
                     // Stats Section
                     HStack(spacing: Theme.Spacing.xl) {
@@ -162,94 +102,8 @@ struct AccountView: View {
                         EmailVerificationBannerView()
                             .padding(.horizontal)
                     }
-                    VStack(spacing: 0) {
-                        // History
-                        NavigationLink(destination: HistoryView()) {
-                            MenuRow(
-                                icon: "clock.arrow.circlepath",
-                                title: "History",
-                                color: .brandBlue
-                            )
-                        }
-
-                        Divider().padding(.leading, 60)
-
-                        // Subscription
-                        NavigationLink(destination: SubscriptionView().environmentObject(subscriptionManager)) {
-                            MenuRow(
-                                icon: subscriptionManager.isPro ? "star.circle.fill" : "star.circle",
-                                title: subscriptionManager.isPro ? "+informed Pro" : "Upgrade to Pro",
-                                color: subscriptionManager.isPro
-                                    ? Color(red: 1.0, green: 0.78, blue: 0.25)
-                                    : .brandBlue
-                            )
-                        }
-
-                        Divider().padding(.leading, 60)
-                        
-                        // How to Use
-                        NavigationLink(destination: InstructionsView()) {
-                            MenuRow(
-                                icon: "info.circle.fill",
-                                title: "How to Use",
-                                color: .brandTeal
-                            )
-                        }
-                        
-                        Divider().padding(.leading, 60)
-                        
-                        // Notifications
-                        NavigationLink(destination: NotificationSettingsDetailView()) {
-                            HStack {
-                                Image(systemName: "bell.fill")
-                                    .foregroundStyle(.brandYellow)
-                                    .frame(width: 30)
-                                
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Notifications")
-                                        .font(.body)
-                                        .foregroundStyle(.primary)
-                                    
-                                    Text(notificationManager.notificationPermissionGranted ? "Enabled" : "Disabled")
-                                        .font(.caption)
-                                        .foregroundStyle(notificationManager.notificationPermissionGranted ? .brandGreen : .secondary)
-                                }
-                                
-                                Spacer()
-                                
-                                Image(systemName: "chevron.right")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            .padding()
-                        }
-                        
-                        Divider().padding(.leading, 60)
-                        
-                        // Privacy
-                        NavigationLink(destination: PrivacyPolicyView()) {
-                            MenuRow(
-                                icon: "shield.fill",
-                                title: "Privacy & Security",
-                                color: .secondary
-                            )
-                        }
-                        
-                        Divider().padding(.leading, 60)
-
-                        // About
-                        NavigationLink(destination: AboutView()) {
-                            MenuRow(
-                                icon: "info.circle",
-                                title: "About Informed",
-                                color: .secondary
-                            )
-                        }
-                    }
-                    .background(Color.cardBackground)
-                    .clipShape(.rect(cornerRadius: Theme.CornerRadius.md))
-                    .shadow(color: Color.black.opacity(0.05), radius: Theme.Shadow.sm, y: 2)
-                    .padding(.horizontal)
+                    menuCard
+                        .padding(.horizontal)
                     
                     // Logout Button
                     Button(action: {
@@ -344,6 +198,137 @@ struct AccountView: View {
                 refreshVerificationStatus()
             }
         }
+    }
+
+    @ViewBuilder
+    private var profileHeader: some View {
+        VStack(spacing: Theme.Spacing.md) {
+            ZStack {
+                Circle()
+                    .fill(
+                        Color.brandGradient(
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 100, height: 100)
+
+                Text(userManager.currentUsername?.prefix(1).uppercased() ?? "U")
+                    .font(.system(size: 40, weight: .bold))
+                    .foregroundColor(.white)
+            }
+
+            if let username = userManager.currentUsername {
+                HStack(spacing: 6) {
+                    Text(username)
+                        .font(.title2)
+                        .fontWeight(.bold)
+                    NavigationLink(destination: EditProfileView()) {
+                        Image(systemName: "pencil.circle.fill")
+                            .font(.title3)
+                            .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            if let userId = userManager.currentUserId {
+                Text("ID: \(userId.prefix(8))")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.vertical, 6)
+                    .background(Color.secondary.opacity(0.1))
+                    .clipShape(.rect(cornerRadius: Theme.CornerRadius.sm))
+            }
+
+            if subscriptionManager.isPro {
+                HStack(spacing: 5) {
+                    Text("✦")
+                        .font(.caption.weight(.bold))
+                    Text("+informed Pro")
+                        .font(.caption.weight(.bold))
+                }
+                .foregroundColor(.white)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 5)
+                .background(
+                    LinearGradient(
+                        colors: [Color.brandBlue, Color.brandTeal],
+                        startPoint: .leading, endPoint: .trailing
+                    )
+                )
+                .clipShape(.rect(cornerRadius: 20))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var menuCard: some View {
+        VStack(spacing: 0) {
+            NavigationLink(destination: HistoryView()) {
+                MenuRow(icon: "clock.arrow.circlepath", title: "History", color: .brandBlue)
+            }
+
+            Divider().padding(.leading, 60)
+
+            NavigationLink(destination: SubscriptionView().environmentObject(subscriptionManager)) {
+                MenuRow(
+                    icon: subscriptionManager.isPro ? "star.circle.fill" : "star.circle",
+                    title: subscriptionManager.isPro ? "+informed Pro" : "Upgrade to Pro",
+                    color: subscriptionManager.isPro
+                        ? Color(red: 1.0, green: 0.78, blue: 0.25)
+                        : .brandBlue
+                )
+            }
+
+            Divider().padding(.leading, 60)
+
+            NavigationLink(destination: InstructionsView()) {
+                MenuRow(icon: "info.circle.fill", title: "How to Use", color: .brandTeal)
+            }
+
+            Divider().padding(.leading, 60)
+
+            NavigationLink(destination: NotificationSettingsDetailView()) {
+                HStack {
+                    Image(systemName: "bell.fill")
+                        .foregroundStyle(.brandYellow)
+                        .frame(width: 30)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Notifications")
+                            .font(.body)
+                            .foregroundStyle(.primary)
+                        Text(notificationManager.notificationPermissionGranted ? "Enabled" : "Disabled")
+                            .font(.caption)
+                            .foregroundStyle(notificationManager.notificationPermissionGranted ? .brandGreen : .secondary)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding()
+            }
+
+            Divider().padding(.leading, 60)
+
+            NavigationLink(destination: PrivacyPolicyView()) {
+                MenuRow(icon: "shield.fill", title: "Privacy & Security", color: .secondary)
+            }
+
+            Divider().padding(.leading, 60)
+
+            NavigationLink(destination: AboutView()) {
+                MenuRow(icon: "info.circle", title: "About Informed", color: .secondary)
+            }
+        }
+        .background(Color.cardBackground)
+        .clipShape(.rect(cornerRadius: Theme.CornerRadius.md))
+        .shadow(color: Color.black.opacity(0.05), radius: Theme.Shadow.sm, y: 2)
     }
 
     private func refreshVerificationStatus() {
