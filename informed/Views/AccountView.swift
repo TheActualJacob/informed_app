@@ -41,9 +41,17 @@ struct AccountView: View {
                         }
                         
                         if let username = userManager.currentUsername {
-                            Text(username)
-                                .font(.title2)
-                                .fontWeight(.bold)
+                            HStack(spacing: 6) {
+                                Text(username)
+                                    .font(.title2)
+                                    .fontWeight(.bold)
+                                NavigationLink(destination: EditProfileView()) {
+                                    Image(systemName: "pencil.circle.fill")
+                                        .font(.title3)
+                                        .foregroundColor(.secondary)
+                                }
+                                .buttonStyle(.plain)
+                            }
                         }
                         
                         if let userId = userManager.currentUserId {
@@ -229,28 +237,6 @@ struct AccountView: View {
                         
                         Divider().padding(.leading, 60)
 
-                        // Change Username
-                        NavigationLink(destination: ChangeUsernameView()) {
-                            MenuRow(
-                                icon: "person.crop.circle",
-                                title: "Change Username",
-                                color: .secondary
-                            )
-                        }
-                        Divider().padding(.leading, 60)
-
-                        // Change Password (hidden for Apple-only accounts)
-                        if userManager.hasPassword {
-                            NavigationLink(destination: ChangePasswordView()) {
-                                MenuRow(
-                                    icon: "lock.rotation",
-                                    title: "Change Password",
-                                    color: .secondary
-                                )
-                            }
-                            Divider().padding(.leading, 60)
-                        }
-
                         // About
                         NavigationLink(destination: AboutView()) {
                             MenuRow(
@@ -297,7 +283,7 @@ struct AccountView: View {
                             } else {
                                 Image(systemName: "person.crop.circle.badge.minus")
                             }
-                            Text(isDeletingAccount ? "Deleting…" : "Delete Account")
+                            Text(isDeletingAccount ? "Deleting\u{2026}" : "Delete Account")
                         }
                         .font(.subheadline)
                         .foregroundColor(.red)
