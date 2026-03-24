@@ -293,7 +293,7 @@ struct AccountView: View {
             NavigationLink(destination: NotificationSettingsDetailView()) {
                 HStack {
                     Image(systemName: "bell.fill")
-                        .foregroundStyle(.brandYellow)
+                        .foregroundStyle(Color.brandYellow)
                         .frame(width: 30)
 
                     VStack(alignment: .leading, spacing: 2) {
