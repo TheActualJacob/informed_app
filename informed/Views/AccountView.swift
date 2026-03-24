@@ -302,7 +302,7 @@ struct AccountView: View {
                             .foregroundStyle(.primary)
                         Text(notificationManager.notificationPermissionGranted ? "Enabled" : "Disabled")
                             .font(.caption)
-                            .foregroundStyle(notificationManager.notificationPermissionGranted ? .brandGreen : .secondary)
+                            .foregroundStyle(notificationManager.notificationPermissionGranted ? Color.brandGreen : .secondary)
                     }
 
                     Spacer()
