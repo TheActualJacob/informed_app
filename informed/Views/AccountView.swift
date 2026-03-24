@@ -19,7 +19,7 @@ struct AccountView: View {
     @State private var deleteAccountError: String?
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView {
                 VStack(spacing: Theme.Spacing.xxl) {
                     
@@ -61,7 +61,7 @@ struct AccountView: View {
                                 .padding(.horizontal, Theme.Spacing.md)
                                 .padding(.vertical, 6)
                                 .background(Color.secondary.opacity(0.1))
-                                .cornerRadius(Theme.CornerRadius.sm)
+                                .clipShape(.rect(cornerRadius: Theme.CornerRadius.sm))
                         }
 
                         // Pro badge
@@ -81,7 +81,7 @@ struct AccountView: View {
                                     startPoint: .leading, endPoint: .trailing
                                 )
                             )
-                            .cornerRadius(20)
+                            .clipShape(.rect(cornerRadius: 20))
                         }
                     }
                     .padding(.top, Theme.Spacing.xl)
@@ -142,7 +142,7 @@ struct AccountView: View {
                             }
                             .padding()
                             .background(Color.cardBackground)
-                            .cornerRadius(Theme.CornerRadius.md)
+                            .clipShape(.rect(cornerRadius: Theme.CornerRadius.md))
                             .shadow(color: .black.opacity(0.05), radius: 4, y: 2)
                             .overlay(
                                 RoundedRectangle(cornerRadius: Theme.CornerRadius.md)
@@ -202,24 +202,24 @@ struct AccountView: View {
                         NavigationLink(destination: NotificationSettingsDetailView()) {
                             HStack {
                                 Image(systemName: "bell.fill")
-                                    .foregroundColor(.brandYellow)
+                                    .foregroundStyle(.brandYellow)
                                     .frame(width: 30)
                                 
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text("Notifications")
                                         .font(.body)
-                                        .foregroundColor(.primary)
+                                        .foregroundStyle(.primary)
                                     
                                     Text(notificationManager.notificationPermissionGranted ? "Enabled" : "Disabled")
                                         .font(.caption)
-                                        .foregroundColor(notificationManager.notificationPermissionGranted ? .brandGreen : .secondary)
+                                        .foregroundStyle(notificationManager.notificationPermissionGranted ? .brandGreen : .secondary)
                                 }
                                 
                                 Spacer()
                                 
                                 Image(systemName: "chevron.right")
                                     .font(.caption)
-                                    .foregroundColor(.secondary)
+                                    .foregroundStyle(.secondary)
                             }
                             .padding()
                         }
@@ -247,7 +247,7 @@ struct AccountView: View {
                         }
                     }
                     .background(Color.cardBackground)
-                    .cornerRadius(Theme.CornerRadius.md)
+                    .clipShape(.rect(cornerRadius: Theme.CornerRadius.md))
                     .shadow(color: Color.black.opacity(0.05), radius: Theme.Shadow.sm, y: 2)
                     .padding(.horizontal)
                     
@@ -265,7 +265,7 @@ struct AccountView: View {
                         .frame(maxWidth: .infinity)
                         .padding()
                         .background(Color.brandRed)
-                        .cornerRadius(Theme.CornerRadius.md)
+                        .clipShape(.rect(cornerRadius: Theme.CornerRadius.md))
                     }
                     .padding(.horizontal)
                     .padding(.top, Theme.Spacing.xl)
@@ -290,7 +290,7 @@ struct AccountView: View {
                         .frame(maxWidth: .infinity)
                         .padding()
                         .background(Color.red.opacity(0.08))
-                        .cornerRadius(Theme.CornerRadius.md)
+                        .clipShape(.rect(cornerRadius: Theme.CornerRadius.md))
                         .overlay(
                             RoundedRectangle(cornerRadius: Theme.CornerRadius.md)
                                 .stroke(Color.red.opacity(0.3), lineWidth: 1)
@@ -374,7 +374,7 @@ struct AccountView: View {
         }
         }
     }
-}
+
 
 // MARK: - Supporting Views
 
@@ -388,7 +388,7 @@ struct StatCard: View {
         VStack(spacing: Theme.Spacing.sm) {
             Image(systemName: icon)
                 .font(.title2)
-                .foregroundColor(color)
+                .foregroundStyle(color)
             
             Text(value)
                 .font(.title2)
@@ -396,12 +396,12 @@ struct StatCard: View {
             
             Text(title)
                 .font(.caption)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
         .padding()
         .background(Color.cardBackground)
-        .cornerRadius(Theme.CornerRadius.md)
+        .clipShape(.rect(cornerRadius: Theme.CornerRadius.md))
         .shadow(color: Color.black.opacity(0.05), radius: Theme.Shadow.sm, y: 2)
     }
 }
@@ -414,17 +414,17 @@ struct MenuRow: View {
     var body: some View {
         HStack {
             Image(systemName: icon)
-                .foregroundColor(color)
+                .foregroundStyle(color)
                 .frame(width: 30)
             
             Text(title)
-                .foregroundColor(.primary)
+                .foregroundStyle(.primary)
             
             Spacer()
             
             Image(systemName: "chevron.right")
                 .font(.caption)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
         }
         .padding()
     }

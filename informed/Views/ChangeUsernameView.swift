@@ -17,8 +17,8 @@ struct ChangeUsernameView: View {
         Form {
             Section {
                 TextField("New username", text: $newUsername)
-                    .autocapitalization(.none)
-                    .disableAutocorrection(true)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
             }
 
             if let error = errorMessage {

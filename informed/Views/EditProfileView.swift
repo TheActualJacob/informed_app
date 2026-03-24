@@ -8,28 +8,34 @@ struct EditProfileView: View {
     @EnvironmentObject var userManager: UserManager
 
     var body: some View {
-        List {
-            NavigationLink(destination: ChangeUsernameView()) {
-                MenuRow(
-                    icon: "person.crop.circle",
-                    title: "Change Username",
-                    color: .secondary
-                )
-            }
-            .listRowInsets(EdgeInsets())
-
-            if userManager.hasPassword {
-                NavigationLink(destination: ChangePasswordView()) {
+        ScrollView {
+            VStack(spacing: 0) {
+                NavigationLink(destination: ChangeUsernameView()) {
                     MenuRow(
-                        icon: "lock.rotation",
-                        title: "Change Password",
+                        icon: "person.crop.circle",
+                        title: "Change Username",
                         color: .secondary
                     )
                 }
-                .listRowInsets(EdgeInsets())
+
+                if userManager.hasPassword {
+                    Divider().padding(.leading, 60)
+                    NavigationLink(destination: ChangePasswordView()) {
+                        MenuRow(
+                            icon: "lock.rotation",
+                            title: "Change Password",
+                            color: .secondary
+                        )
+                    }
+                }
             }
+            .background(Color.cardBackground)
+            .clipShape(.rect(cornerRadius: Theme.CornerRadius.md))
+            .shadow(color: .black.opacity(0.05), radius: Theme.Shadow.sm, y: 2)
+            .padding(.horizontal)
+            .padding(.top, Theme.Spacing.xl)
         }
-        .listStyle(.insetGrouped)
+        .background(Color.backgroundLight)
         .navigationTitle("Edit Profile")
         .navigationBarTitleDisplayMode(.inline)
     }
