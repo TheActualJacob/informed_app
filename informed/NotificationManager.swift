@@ -199,51 +199,93 @@ class NotificationManager: NSObject, ObservableObject {
     }
     
     // MARK: - Activity Push Token
-    
+
     /// Sends the per-activity APNs update token to the backend so the server can
     /// push Live Activity updates directly to this specific activity.
-    func sendActivityPushTokenToBackend(_ token: String, submissionId: String) async {
+    /// Returns `true` when the backend acknowledged the token (2xx) — from that
+    /// point the backend owns the completion alert for this submission.
+    @discardableResult
+    func sendActivityPushTokenToBackend(_ token: String, submissionId: String) async -> Bool {
         guard let userId = UserManager.shared.currentUserId,
               let sessionId = UserManager.shared.currentSessionId else {
             print("⚠️ No user/session — cannot send activity push token for \(submissionId.prefix(8))")
-            return
+            return false
         }
-        
+
         guard let url = URL(string: Config.Endpoints.registerActivityToken) else {
             print("❌ Invalid activity token URL")
-            return
+            return false
         }
-        
+
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
+        request.timeoutInterval = 15
+
         let body: [String: Any] = [
             "activityPushToken": token,
             "submissionId": submissionId,
             "userId": userId,
             "sessionId": sessionId
         ]
-        
+
         do {
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
-            let (_, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await URLSession.shared.data(for: request)
             if let httpResponse = response as? HTTPURLResponse,
                (200...299).contains(httpResponse.statusCode) {
-                print("✅ Activity push token registered for \(submissionId.prefix(8))")
+                // Only a backend that implements the single-owner alert protocol says
+                // so explicitly. Against an older backend (silent completion pushes)
+                // we must keep alerting locally, so treat that as "not registered".
+                let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+                let backendOwnsAlert = (json?["alert_owner"] as? String) == "backend"
+                print("✅ Activity push token registered for \(submissionId.prefix(8)) (alert owner: \(backendOwnsAlert ? "backend" : "app"))")
+                return backendOwnsAlert
             } else {
                 print("⚠️ Failed to register activity push token for \(submissionId.prefix(8))")
+                return false
             }
         } catch {
             print("❌ Error sending activity push token: \(error)")
+            return false
         }
     }
-    
+
+    /// Tells the backend to forget this session's push-to-start token. Called when the
+    /// device reports Live Activities are unavailable, so the backend falls through to
+    /// its regular-notification path instead of pushing to an island that never renders.
+    func clearPushToStartTokenOnBackend() async {
+        guard let userId = UserManager.shared.currentUserId,
+              let sessionId = UserManager.shared.currentSessionId else { return }
+        UserDefaults.standard.removeObject(forKey: pendingPushToStartTokenKey)
+
+        var components = URLComponents(string: Config.Endpoints.updatePushToken)
+        components?.queryItems = [
+            URLQueryItem(name: "userId", value: userId),
+            URLQueryItem(name: "sessionId", value: sessionId)
+        ]
+        guard let url = components?.url else { return }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 15
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: ["clearPushToStartToken": true])
+            let (_, response) = try await URLSession.shared.data(for: request)
+            if let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) {
+                print("✅ Cleared push-to-start token on backend (Live Activities unavailable)")
+            }
+        } catch {
+            print("⚠️ Could not clear push-to-start token: \(error)")
+        }
+    }
+
     // MARK: - Handle Received Notifications
-    
+
     func handleNotification(userInfo: [AnyHashable: Any]) {
         print("📬 Handling notification: \(userInfo)")
-        
+
         // Handle start_processing from background APNs push (mirrors foreground path in AppDelegate)
         if let action = userInfo["action"] as? String, action == "start_processing" {
             print("🎬 Background start_processing notification — checking pending Live Activities")
@@ -254,19 +296,22 @@ class NotificationManager: NSObject, ObservableObject {
             }
             return
         }
-        
-        // Handle fact_check_completed from backend regular push fallback
+
+        // Handle fact_check_completed from backend regular push fallback.
+        // The push itself already produced a system banner, so this only refreshes
+        // the island content (source: .remotePush → never alerts again).
         if let action = userInfo["action"] as? String, action == "fact_check_completed",
-           let submissionId = userInfo["submission_id"] as? String,
-           let title = userInfo["title"] as? String,
-           let verdict = userInfo["verdict"] as? String {
+           let submissionId = userInfo["submission_id"] as? String {
+            let title = (userInfo["title"] as? String) ?? "Fact-Check Complete"
+            let verdict = userInfo["verdict"] as? String
             print("✅ [APNs] Completion push for \(submissionId.prefix(8)) — updating Live Activity")
             Task { @MainActor in
                 if #available(iOS 16.1, *) {
                     await ReelProcessingActivityManager.shared.completeActivity(
                         submissionId: submissionId,
                         title: title,
-                        verdict: verdict
+                        verdict: verdict,
+                        source: .remotePush
                     )
                 }
             }

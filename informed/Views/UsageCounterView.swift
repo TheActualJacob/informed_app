@@ -25,10 +25,11 @@ struct UsageCounterView: View {
                     Image(systemName: "checkmark.seal")
                         .font(.caption2)
                         .foregroundColor(counterColor)
-                    Text("\(subscriptionManager.usage.dailyUsed) / \(subscriptionManager.usage.dailyLimit)")
+                    Text("\(subscriptionManager.usage.governingUsed) / \(subscriptionManager.usage.governingLimit ?? 0)")
                         .font(.caption2.weight(.semibold))
                         .foregroundColor(counterColor)
-                    Text("today")
+                        .contentTransition(.numericText())
+                    Text(subscriptionManager.usage.governingPeriodLabel)
                         .font(.caption2)
                         .foregroundColor(.secondary)
                 }
@@ -44,7 +45,7 @@ struct UsageCounterView: View {
         }
         .buttonStyle(.plain)
         .sheet(isPresented: $showPaywall) {
-            PaywallView(limitType: "daily")
+            PaywallView(limitType: subscriptionManager.usage.governingLimitType)
                 .environmentObject(subscriptionManager)
         }
         .task {
@@ -56,11 +57,11 @@ struct UsageCounterView: View {
 
     private var proGold: Color { Color(red: 1.0, green: 0.78, blue: 0.25) }
 
-    private var remaining: Int { subscriptionManager.usage.dailyRemaining }
+    private var remaining: Int { subscriptionManager.usage.governingRemaining }
 
     private var counterColor: Color {
-        if remaining <= 1 { return .brandRed }
-        if remaining <= 2 { return .brandYellow }
+        if remaining == 0 { return .brandRed }
+        if remaining == 1 { return .brandYellow }
         return .secondary
     }
 

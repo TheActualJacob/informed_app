@@ -92,7 +92,11 @@ struct HomeView: View {
                         Spacer()
                         ProcessingBanner(
                             link: link,
-                            thumbnailURL: viewModel.processingLink != nil ? viewModel.processingThumbnailURL : nil
+                            thumbnailURL: viewModel.processingLink != nil ? viewModel.processingThumbnailURL : nil,
+                            progress: reelManager.activeProcessingProgress,
+                            onTap: {
+                                NotificationCenter.default.post(name: NSNotification.Name("NavigateToMyReels"), object: nil)
+                            }
                         )
                         .padding(.horizontal, Theme.Spacing.xl)
                         .padding(.bottom, Theme.Spacing.xl)
@@ -212,8 +216,8 @@ struct HomeView: View {
                         subscriptionManager.showPaywall = true
                     } label: {
                         HStack(spacing: 6) {
-                            let checksLeft = max(0, subscriptionManager.usage.dailyLimit - subscriptionManager.usage.dailyUsed)
-                            Text("\(checksLeft) checks left today")
+                            let checksLeft = subscriptionManager.usage.governingRemaining
+                            Text("\(checksLeft) \(checksLeft == 1 ? "check" : "checks") left \(subscriptionManager.usage.governingPeriodLabel)")
                                 .font(.system(size: 12, weight: .bold, design: .rounded))
                                 .foregroundColor(.primary.opacity(0.8))
                             

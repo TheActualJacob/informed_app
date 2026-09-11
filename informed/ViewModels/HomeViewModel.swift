@@ -578,7 +578,8 @@ class HomeViewModel: ObservableObject {
                 currentSubmissionId = nil
                 Task { @MainActor in
                     await ReelProcessingActivityManager.shared.completeActivity(
-                        submissionId: sid, title: factCheckData.title ?? "", verdict: primaryClaim.verdict
+                        submissionId: sid, title: factCheckData.title ?? "", verdict: primaryClaim.verdict,
+                        source: .inApp
                     )
                     // Do NOT call endActivity here — the island stays visible ("Tap to view results")
                     // until the user opens FactDetailView, which dismisses it via .onAppear.

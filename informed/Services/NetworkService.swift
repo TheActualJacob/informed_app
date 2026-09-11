@@ -86,9 +86,13 @@ class NetworkService {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.timeoutInterval = 30  // only the submission round-trip
 
-        var body: [String: String] = ["link": link]
+        var body: [String: Any] = ["link": link]
         if let sid = submissionId { body["submission_id"] = sid }
         body["device_id"] = DeviceManager.deviceId
+        // The app is in the foreground and creates its own Live Activity as soon as
+        // the 202 lands. Telling the backend stops it from push-starting a second
+        // island (and a spurious "Fact-check started" alert) for the same submission.
+        body["live_activity_started"] = true
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         do {

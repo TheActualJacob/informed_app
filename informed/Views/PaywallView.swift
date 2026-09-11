@@ -17,9 +17,16 @@ struct PaywallView: View {
     private var limitMessage: String {
         let usage = subscriptionManager.usage
         if limitType == "weekly" {
-            return "You've used all \(usage.weeklyLimit ?? 0) free fact checks this week."
+            return "You've used all \(usage.weeklyLimit ?? 2) free fact checks this week."
         }
-        return "You've used all \(usage.dailyLimit) free fact checks today."
+        return "You've used all \(usage.dailyLimit ?? usage.weeklyLimit ?? 2) free fact checks today."
+    }
+
+    /// Monthly package price, used to compute the annual plan's savings.
+    private var monthlyPrice: Decimal? {
+        subscriptionManager.currentOffering?.availablePackages
+            .first(where: { $0.packageType == .monthly || $0.storeProduct.productIdentifier.contains("monthly") })?
+            .storeProduct.price
     }
 
     var body: some View {
@@ -102,7 +109,7 @@ struct PaywallView: View {
                     if let offering = subscriptionManager.currentOffering {
                         VStack(spacing: 12) {
                             ForEach(offering.availablePackages) { package in
-                                PurchaseButton(package: package) {
+                                PurchaseButton(package: package, monthlyPrice: monthlyPrice) {
                                     Task {
                                         try? await subscriptionManager.purchase(package: package)
                                         if subscriptionManager.isPro { dismiss() }
@@ -207,6 +214,8 @@ struct PaywallView: View {
 
 private struct PurchaseButton: View {
     let package: Package
+    /// Price of the monthly package in the same offering; drives the savings badge.
+    var monthlyPrice: Decimal? = nil
     let action: () -> Void
 
     private var isAnnual: Bool {
@@ -219,12 +228,30 @@ private struct PurchaseButton: View {
         package.storeProduct.localizedPriceString
     }
 
+    /// Annual price ÷ 12, formatted in the product's own currency — derived from
+    /// the live store price so App Store Connect price changes never leave a
+    /// stale number in the app.
+    private var perMonthEquivalent: String? {
+        guard isAnnual else { return nil }
+        let perMonth = package.storeProduct.price / 12
+        if let formatter = package.storeProduct.priceFormatter,
+           let s = formatter.string(from: perMonth as NSDecimalNumber) {
+            return s
+        }
+        return String(format: "%.2f", NSDecimalNumber(decimal: perMonth).doubleValue)
+    }
+
     private var periodLabel: String {
-        isAnnual ? "/ year  (~$4.17/mo)" : "/ month"
+        if isAnnual, let m = perMonthEquivalent { return "/ year  (~\(m)/mo)" }
+        return isAnnual ? "/ year" : "/ month"
     }
 
     private var savingsBadge: String? {
-        isAnnual ? "Save 17%" : nil
+        guard isAnnual, let monthly = monthlyPrice, monthly > 0 else { return nil }
+        let fullYear = monthly * 12
+        let saved = (fullYear - package.storeProduct.price) / fullYear
+        let pct = Int((NSDecimalNumber(decimal: saved).doubleValue * 100).rounded())
+        return pct > 0 ? "Save \(pct)%" : nil
     }
 
     var body: some View {

@@ -103,30 +103,27 @@ struct SubscriptionView: View {
             Text("Usage")
                 .font(.headline)
 
-            usageRow(
-                label: "Today",
-                used: subscriptionManager.usage.dailyUsed,
-                limit: subscriptionManager.usage.dailyLimit,
-                color: dailyBarColor
-            )
+            // Free accounts: capped per week, no daily cap. Pro: capped per day, no weekly cap.
+            if let dl = subscriptionManager.usage.dailyLimit {
+                usageRow(
+                    label: "Today",
+                    used: subscriptionManager.usage.dailyUsed,
+                    limit: dl,
+                    color: barColor(remaining: subscriptionManager.usage.dailyRemaining ?? 0, limit: dl)
+                )
+            } else {
+                uncappedRow(label: "Today", value: "No daily cap")
+            }
 
             if let wl = subscriptionManager.usage.weeklyLimit {
                 usageRow(
                     label: "This week",
                     used: subscriptionManager.usage.weeklyUsed,
                     limit: wl,
-                    color: .brandBlue
+                    color: barColor(remaining: subscriptionManager.usage.weeklyRemaining ?? 0, limit: wl)
                 )
             } else {
-                HStack {
-                    Text("This week")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                    Spacer()
-                    Text("Unlimited")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundColor(proGold)
-                }
+                uncappedRow(label: "This week", value: "Unlimited")
             }
         }
         .padding()
@@ -160,10 +157,23 @@ struct SubscriptionView: View {
         }
     }
 
-    private var dailyBarColor: Color {
-        let remaining = subscriptionManager.usage.dailyRemaining
-        if remaining <= 1 { return .brandRed }
-        if remaining <= 2 { return .brandYellow }
+    private func uncappedRow(label: String, value: String) -> some View {
+        HStack {
+            Text(label)
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+            Spacer()
+            Text(value)
+                .font(.subheadline.weight(.semibold))
+                .foregroundColor(subscriptionManager.isPro ? proGold : .secondary)
+        }
+    }
+
+    /// Red when exhausted, amber when one check is left (or the last third of a
+    /// larger allowance), green otherwise.
+    private func barColor(remaining: Int, limit: Int) -> Color {
+        if remaining == 0 { return .brandRed }
+        if remaining == 1 || Double(remaining) / Double(max(limit, 1)) <= 0.34 { return .brandYellow }
         return .brandGreen
     }
 
