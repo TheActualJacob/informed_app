@@ -355,94 +355,56 @@ struct ReelStatusCard: View {
                 // Show status-based card for non-completed reels
                 let live = liveProgress
                 let stageStatus: ProcessingStatus = live?.status ?? .submitting
-                let accent: Color = reel.status == .failed ? .brandRed : stageStatus.color
+                let isFailed = reel.status == .failed
+                let accent: Color = isFailed ? .brandRed : .brandBlue
+                let inFlight = reel.status == .processing || reel.status == .pending
                 VStack(alignment: .leading, spacing: 12) {
                     // Header with status
                     HStack(spacing: 12) {
                         ZStack {
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .fill(accent.opacity(0.12))
+                            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                                .fill(accent.opacity(0.14))
                                 .frame(width: 40, height: 40)
-                            Image(systemName: reel.status == .failed ? reel.status.icon : stageStatus.icon)
-                                .font(.system(size: 18, weight: .semibold))
+                            Image(systemName: isFailed ? "exclamationmark.shield.fill" : "checkmark.shield.fill")
+                                .font(.system(size: 20, weight: .semibold))
                                 .foregroundColor(accent)
-                                .contentTransition(.symbolEffect(.replace))
                         }
 
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(reel.status == .failed ? "Failed" : (live != nil ? stageStatus.shortLabel : reel.status.rawValue))
-                                .font(.headline)
-                                .foregroundColor(accent)
-                                .contentTransition(.opacity)
+                            Text(isFailed ? "Fact-check failed" : "Fact-checking \(platformInfo(for: reel.detectedPlatform).name) post")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundColor(.primary)
+                                .lineLimit(1)
 
-                            Text(live?.message.isEmpty == false ? live!.message : "\(platformInfo(for: reel.detectedPlatform).name) · \(reel.timeAgo)")
-                                .font(.caption)
+                            Text(live?.message.isEmpty == false ? live!.message : (isFailed ? reel.timeAgo : "Starting fact-check…"))
+                                .font(.system(size: 13))
                                 .foregroundColor(.secondary)
                                 .lineLimit(1)
                                 .contentTransition(.opacity)
                         }
 
-                        Spacer()
+                        Spacer(minLength: 8)
 
-                        if reel.status == .processing || reel.status == .pending {
-                            if let live {
-                                ZStack {
-                                    Circle().stroke(accent.opacity(0.18), lineWidth: 3)
-                                    Circle()
-                                        .trim(from: 0, to: max(live.progress, 0.04))
-                                        .stroke(accent, style: StrokeStyle(lineWidth: 3, lineCap: .round))
-                                        .rotationEffect(.degrees(-90))
-                                    Text("\(Int(live.progress * 100))%")
-                                        .font(.system(size: 10, weight: .bold, design: .rounded))
-                                        .monospacedDigit()
-                                        .contentTransition(.numericText())
-                                }
-                                .frame(width: 36, height: 36)
+                        if inFlight {
+                            if let eta = live?.etaDate, eta > Date().addingTimeInterval(1), eta < Date().addingTimeInterval(15 * 60) {
+                                Text(timerInterval: Date()...eta, countsDown: true, showsHours: false)
+                                    .font(.system(size: 17, weight: .semibold, design: .rounded))
+                                    .monospacedDigit()
+                                    .foregroundColor(.primary)
+                                    .frame(width: 46, alignment: .trailing)
                             } else {
                                 ProgressView()
-                                    .progressViewStyle(CircularProgressViewStyle(tint: accent))
+                                    .controlSize(.small)
+                                    .tint(.secondary)
                             }
                         }
                     }
 
-                    // Live progress bar while processing
-                    if reel.status == .processing || reel.status == .pending {
-                        GeometryReader { geo in
-                            ZStack(alignment: .leading) {
-                                Capsule().fill(Color.primary.opacity(0.08))
-                                Capsule()
-                                    .fill(LinearGradient(colors: [stageStatus.color, stageStatus.secondaryColor],
-                                                         startPoint: .leading, endPoint: .trailing))
-                                    .frame(width: max(geo.size.width * (live?.progress ?? 0.08), 8))
-                            }
-                        }
-                        .frame(height: 5)
-                        .animation(.spring(response: 0.5, dampingFraction: 0.85), value: live?.progress ?? 0)
-
-                        HStack(spacing: 6) {
-                            ForEach(Array(ProcessingStatus.pipelineStages.enumerated()), id: \.offset) { idx, name in
-                                let reached = idx <= stageStatus.stageIndex
-                                Text(name)
-                                    .font(.system(size: 10, weight: reached ? .semibold : .medium))
-                                    .foregroundColor(reached ? accent : .secondary.opacity(0.7))
-                                if idx < ProcessingStatus.pipelineStages.count - 1 {
-                                    Image(systemName: "chevron.right")
-                                        .font(.system(size: 7, weight: .bold))
-                                        .foregroundColor(.secondary.opacity(0.4))
-                                }
-                            }
-                            Spacer()
-                            if let eta = live?.etaDate, eta > Date().addingTimeInterval(1), eta < Date().addingTimeInterval(15 * 60) {
-                                HStack(spacing: 3) {
-                                    Image(systemName: "clock").font(.system(size: 9, weight: .semibold))
-                                    Text(timerInterval: Date()...eta, countsDown: true, showsHours: false)
-                                        .monospacedDigit()
-                                        .frame(maxWidth: 40, alignment: .trailing)
-                                }
-                                .font(.system(size: 10, weight: .medium, design: .rounded))
-                                .foregroundColor(.secondary)
-                            }
-                        }
+                    // Segmented stage bar while processing (same component as the island)
+                    if inFlight {
+                        SegmentedStageBar(status: stageStatus, progress: live?.progress ?? 0.06, tint: accent,
+                                          track: Color.primary.opacity(0.1), height: 5,
+                                          labelColor: .secondary, activeLabelColor: .primary, labelSize: 11)
                     }
 
                     Divider()

@@ -2,16 +2,17 @@
 //  ReelProcessingLiveActivity.swift
 //  informed
 //
-//  Dynamic Island and Live Activity UI for reel processing
+//  Dynamic Island and Live Activity UI for reel processing.
 //
-//  Rendering notes — this file runs inside the WidgetKit extension:
-//    • Views are re-rendered only when the activity's content state changes.
-//      `@State`, `onAppear` and `withAnimation(.repeatForever)` never fire, so
-//      any "live" motion has to come from system-driven primitives:
-//        – `Text(timerInterval:)` ticks every second on its own
-//        – `.animation(_, value:)` / `.contentTransition` animate between
-//          consecutive content states
-//    • Remote images can't be loaded (no network in the extension).
+//  Design notes
+//    • One accent colour per activity (brand blue; gold for Pro). Completed is
+//      green, failed is red. No per-stage colour changes, no gradients.
+//    • Flat tinted icon, system typography, and a Wallet-style segmented stage
+//      bar with plain labels — the same component the in-app banner uses.
+//    • Live motion comes from `Text(timerInterval:)` only. `@State`, `onAppear`
+//      and repeating animations never run inside a Live Activity, so nothing
+//      here relies on them.
+//    • Remote images can't be loaded in the widget process, so no thumbnails.
 //
 
 import ActivityKit
@@ -46,45 +47,52 @@ struct ReelProcessingLiveActivity: Widget {
             } minimal: {
                 MinimalView(context: context)
             }
-            .keylineTint(LAPalette.tint(for: context))
+            .keylineTint(LAStyle.tint(for: context))
             .widgetURL(URL(string: "factcheckapp://detail?id=\(context.attributes.submissionId)"))
         }
     }
 }
 
-// MARK: - Shared palette helpers
+// MARK: - Style helpers
 
 @available(iOS 16.1, *)
-enum LAPalette {
-    static let goldDark = Color(red: 0.72, green: 0.53, blue: 0.10)
-
-    /// Primary accent for the current state. Pro users get gold while processing;
-    /// terminal states always use their semantic colour so results read instantly.
+enum LAStyle {
+    /// The single accent for this activity.
     static func tint(for context: ActivityViewContext<ReelProcessingActivityAttributes>) -> Color {
-        let status = context.state.status
-        if status == .completed { return context.attributes.isPro ? .brandGold : .brandGreen }
-        if status == .failed    { return .brandRed }
-        return context.attributes.isPro ? .brandGold : status.color
-    }
-
-    static func gradient(for context: ActivityViewContext<ReelProcessingActivityAttributes>) -> LinearGradient {
-        let colors: [Color]
-        if context.attributes.isPro && !context.state.status.isTerminal {
-            colors = [.brandGold, goldDark]
-        } else {
-            colors = [context.state.status.color, context.state.status.secondaryColor]
+        switch context.state.status {
+        case .completed: return .brandGreen
+        case .failed:    return .brandRed
+        default:         return context.attributes.isPro ? .brandGold : .brandBlue
         }
-        return LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing)
     }
 
-    /// The verdict to show, or nil when we only have a placeholder.
+    /// Headline for the current state.
+    static func headline(for context: ActivityViewContext<ReelProcessingActivityAttributes>) -> String {
+        switch context.state.status {
+        case .completed: return "Fact-check complete"
+        case .failed:    return "Fact-check failed"
+        default:         return "Fact-checking"
+        }
+    }
+
+    /// "Instagram Reel", "TikTok video", …
+    static func sourceLabel(for context: ActivityViewContext<ReelProcessingActivityAttributes>) -> String {
+        switch context.attributes.platformName {
+        case "Instagram": return "Instagram Reel"
+        case "TikTok":    return "TikTok video"
+        case "YouTube":   return "YouTube Short"
+        case "X":         return "Post on X"
+        case "Threads":   return "Threads post"
+        default:          return "Shared link"
+        }
+    }
+
     static func verdict(for context: ActivityViewContext<ReelProcessingActivityAttributes>) -> String? {
         let v = context.state.verdict
         return VerdictStyle.isPlaceholder(v) ? nil : v
     }
 
-    /// A countdown end date that is safe to feed `Text(timerInterval:)` — in the
-    /// future, but not absurdly so (guards against a mis-decoded timestamp).
+    /// Countdown end date safe for `Text(timerInterval:)` — in the future, not absurdly so.
     static func countdownEnd(for context: ActivityViewContext<ReelProcessingActivityAttributes>) -> Date? {
         guard !context.state.status.isTerminal, let eta = context.state.etaDate else { return nil }
         let now = Date()
@@ -93,61 +101,108 @@ enum LAPalette {
     }
 }
 
-// MARK: - Lock Screen / Banner View
+/// Flat, tinted rounded-square icon (no gradients).
+@available(iOS 16.1, *)
+struct LAIcon: View {
+    let symbol: String
+    let tint: Color
+    var size: CGFloat = 36
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
+                .fill(tint.opacity(0.18))
+            Image(systemName: symbol)
+                .font(.system(size: size * 0.5, weight: .semibold))
+                .foregroundColor(tint)
+                .contentTransition(.symbolEffect(.replace))
+        }
+        .frame(width: size, height: size)
+    }
+}
+
+/// Live countdown ("0:42") with a fixed width so the digits don't jitter.
+@available(iOS 16.1, *)
+struct LACountdown: View {
+    let context: ActivityViewContext<ReelProcessingActivityAttributes>
+    var size: CGFloat = 15
+    var weight: Font.Weight = .semibold
+    var color: Color = .primary
+
+    var body: some View {
+        Group {
+            if let end = LAStyle.countdownEnd(for: context) {
+                Text(timerInterval: Date()...end, countsDown: true, showsHours: false)
+                    .font(.system(size: size, weight: weight, design: .rounded))
+                    .monospacedDigit()
+                    .multilineTextAlignment(.trailing)
+                    .frame(width: size * 2.7, alignment: .trailing)
+            } else if let est = context.state.estimatedSecondsRemaining, est > 0 {
+                Text(est > 60 ? "~\(Int((Double(est) / 60).rounded(.up))) min" : "~\(est)s")
+                    .font(.system(size: size, weight: weight, design: .rounded))
+                    .monospacedDigit()
+            } else {
+                Text("Finishing")
+                    .font(.system(size: size - 2, weight: .medium))
+            }
+        }
+        .foregroundColor(color)
+        .lineLimit(1)
+    }
+}
+
+/// Soft tinted verdict chip: coloured text on a light tint, not white on a solid.
+@available(iOS 16.1, *)
+struct LAVerdictChip: View {
+    let verdict: String
+    var body: some View {
+        let color = VerdictStyle.color(for: verdict)
+        HStack(spacing: 4) {
+            Image(systemName: VerdictStyle.icon(for: verdict))
+                .font(.system(size: 11, weight: .semibold))
+            Text(verdict)
+                .font(.system(size: 12, weight: .semibold))
+                .lineLimit(1)
+        }
+        .foregroundColor(color)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 4)
+        .background(color.opacity(0.16))
+        .clipShape(Capsule())
+    }
+}
+
+// MARK: - Lock Screen / Banner
 
 @available(iOS 16.1, *)
 struct LockScreenLiveActivityView: View {
     let context: ActivityViewContext<ReelProcessingActivityAttributes>
 
     private var status: ProcessingStatus { context.state.status }
-    private var tint: Color { LAPalette.tint(for: context) }
+    private var tint: Color { LAStyle.tint(for: context) }
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 13) {
-                // Gradient icon badge
-                ZStack {
-                    RoundedRectangle(cornerRadius: 13, style: .continuous)
-                        .fill(LAPalette.gradient(for: context))
-                        .frame(width: 46, height: 46)
-                    Image(systemName: status.icon)
-                        .font(.system(size: 21, weight: .semibold))
-                        .foregroundColor(.white)
-                        .contentTransition(.symbolEffect(.replace))
-                }
-                .animation(.spring(response: 0.35, dampingFraction: 0.7), value: status)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                LAIcon(symbol: status == .failed ? "exclamationmark.shield.fill" : "checkmark.shield.fill",
+                       tint: tint, size: 40)
 
-                // Text stack
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 4) {
-                        Text(context.attributes.isPro ? "+informed" : "informed")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(context.attributes.isPro ? .brandGold : .secondary)
-                        if context.attributes.isPro {
-                            Image(systemName: "star.fill")
-                                .font(.system(size: 7))
-                                .foregroundColor(.brandGold)
-                        }
-                        Text("·")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(.secondary)
-                        Text(context.attributes.platformName)
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(.secondary)
-                    }
-
+                VStack(alignment: .leading, spacing: 2) {
                     if status == .completed, let title = context.state.title, !title.isEmpty {
                         Text(title)
-                            .font(.system(size: 15, weight: .bold))
+                            .font(.system(size: 15, weight: .semibold))
                             .foregroundColor(.primary)
                             .lineLimit(2)
+                        Text("Tap to view results")
+                            .font(.system(size: 13))
+                            .foregroundColor(.secondary)
                     } else {
-                        Text(status == .failed ? "Fact-check failed" : status.shortLabel)
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundColor(status == .failed ? .brandRed : .primary)
+                        Text(status.isTerminal ? LAStyle.headline(for: context)
+                                               : "\(LAStyle.headline(for: context)) \(LAStyle.sourceLabel(for: context))")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(.primary)
                             .lineLimit(1)
                         Text(context.state.statusMessage)
-                            .font(.system(size: 12, weight: .medium))
+                            .font(.system(size: 13))
                             .foregroundColor(.secondary)
                             .lineLimit(1)
                     }
@@ -155,77 +210,46 @@ struct LockScreenLiveActivityView: View {
 
                 Spacer(minLength: 8)
 
-                // Right element
                 if status == .completed {
-                    if let verdict = LAPalette.verdict(for: context) {
-                        LAVerdictChip(verdict: verdict, isPro: context.attributes.isPro)
+                    if let verdict = LAStyle.verdict(for: context) {
+                        LAVerdictChip(verdict: verdict)
                     } else {
-                        Image(systemName: "checkmark.seal.fill")
-                            .font(.system(size: 26))
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 24))
                             .foregroundColor(tint)
                     }
                 } else if status == .failed {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 26))
-                        .foregroundColor(.brandRed)
+                        .font(.system(size: 24))
+                        .foregroundColor(tint)
                 } else {
-                    LACircularRing(progress: context.state.progress, color: tint, textColor: .primary)
-                        .frame(width: 42, height: 42)
+                    LACountdown(context: context, size: 17, weight: .semibold, color: .primary)
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 14)
-            .padding(.bottom, status.isTerminal ? 14 : 10)
 
-            // Stepper + progress bar + countdown — only while processing
             if !status.isTerminal {
-                VStack(spacing: 8) {
-                    LAStageStepper(status: status, tint: tint)
-                    LAProgressBar(progress: context.state.progress, gradient: LAPalette.gradient(for: context), track: Color.primary.opacity(0.1))
-                        .frame(height: 4)
-                    HStack {
-                        Text("\(Int(context.state.progress * 100))%")
-                            .font(.system(size: 12, weight: .bold, design: .rounded))
-                            .monospacedDigit()
-                            .foregroundColor(tint)
-                            .contentTransition(.numericText())
-                        Spacer()
-                        LACountdownLabel(context: context, color: .secondary)
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 12)
-            } else if status == .completed {
-                HStack(spacing: 5) {
-                    Image(systemName: "hand.tap.fill")
-                    Text("Tap to view results")
-                }
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(.secondary)
-                .padding(.horizontal, 16)
-                .padding(.bottom, 12)
+                SegmentedStageBar(status: status, progress: context.state.progress, tint: tint,
+                                  track: Color.primary.opacity(0.12), height: 5,
+                                  labelColor: .secondary, activeLabelColor: .primary, labelSize: 11)
             }
         }
-        .activityBackgroundTint(Color.cardBackground)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
         .activitySystemActionForegroundColor(tint)
         .widgetURL(URL(string: "factcheckapp://detail?id=\(context.attributes.submissionId)"))
     }
 }
 
-// MARK: - Compact Views
+// MARK: - Compact
 
 @available(iOS 16.1, *)
 struct CompactLeadingView: View {
     let context: ActivityViewContext<ReelProcessingActivityAttributes>
     var body: some View {
-        // Brand glyph — a stable identity mark, tinted by stage. Keeping the leading
-        // slot constant (rather than a per-stage icon) stops the island from looking
-        // like a slot machine as stages tick by; the trailing slot carries the data.
         Image(systemName: context.state.status == .failed ? "exclamationmark.shield.fill" : "checkmark.shield.fill")
-            .font(.system(size: 13, weight: .semibold))
-            .foregroundColor(LAPalette.tint(for: context))
-            .padding(.leading, 3)
-            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: context.state.status)
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundColor(LAStyle.tint(for: context))
+            .padding(.leading, 2)
     }
 }
 
@@ -233,33 +257,34 @@ struct CompactLeadingView: View {
 struct CompactTrailingView: View {
     let context: ActivityViewContext<ReelProcessingActivityAttributes>
     var body: some View {
-        Group {
-            switch context.state.status {
-            case .completed:
-                Image(systemName: context.attributes.isPro ? "star.fill" : "checkmark.seal.fill")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundColor(LAPalette.tint(for: context))
-                    .padding(.trailing, 3)
-            case .failed:
-                Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundColor(.brandRed)
-                    .padding(.trailing, 3)
-            default:
+        switch context.state.status {
+        case .completed:
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(LAStyle.tint(for: context))
+                .padding(.trailing, 2)
+        case .failed:
+            Image(systemName: "xmark.circle.fill")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(LAStyle.tint(for: context))
+                .padding(.trailing, 2)
+        default:
+            if LAStyle.countdownEnd(for: context) != nil {
+                LACountdown(context: context, size: 13, weight: .semibold, color: LAStyle.tint(for: context))
+                    .padding(.trailing, 2)
+            } else {
                 Text("\(Int(context.state.progress * 100))%")
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .monospacedDigit()
-                    .foregroundColor(LAPalette.tint(for: context))
+                    .foregroundColor(LAStyle.tint(for: context))
                     .contentTransition(.numericText())
-                    .padding(.trailing, 3)
+                    .padding(.trailing, 2)
             }
         }
-        .animation(.spring(response: 0.35, dampingFraction: 0.7), value: context.state.status)
-        .animation(.easeOut(duration: 0.4), value: context.state.progress)
     }
 }
 
-// MARK: - Minimal View
+// MARK: - Minimal
 
 @available(iOS 16.1, *)
 struct MinimalView: View {
@@ -267,48 +292,54 @@ struct MinimalView: View {
     var body: some View {
         switch context.state.status {
         case .completed:
-            Image(systemName: "checkmark.seal.fill")
-                .font(.system(size: 11, weight: .bold))
-                .foregroundColor(LAPalette.tint(for: context))
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(LAStyle.tint(for: context))
         case .failed:
             Image(systemName: "xmark.circle.fill")
-                .font(.system(size: 11, weight: .bold))
-                .foregroundColor(.brandRed)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(LAStyle.tint(for: context))
         default:
             ZStack {
-                Circle().stroke(Color.white.opacity(0.22), lineWidth: 2)
+                Circle().stroke(LAStyle.tint(for: context).opacity(0.25), lineWidth: 2)
                 Circle()
-                    .trim(from: 0, to: max(context.state.progress, 0.04))
-                    .stroke(LAPalette.tint(for: context), style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                    .trim(from: 0, to: max(context.state.progress, 0.05))
+                    .stroke(LAStyle.tint(for: context), style: StrokeStyle(lineWidth: 2, lineCap: .round))
                     .rotationEffect(.degrees(-90))
-                    .animation(.spring(response: 0.5, dampingFraction: 0.8), value: context.state.progress)
+                    .animation(.easeOut(duration: 0.5), value: context.state.progress)
             }
-            .frame(width: 13, height: 13)
+            .frame(width: 14, height: 14)
         }
     }
 }
 
-// MARK: - Expanded Views
+// MARK: - Expanded
 
 @available(iOS 16.1, *)
 struct ExpandedLeadingView: View {
     let context: ActivityViewContext<ReelProcessingActivityAttributes>
-
     var body: some View {
-        ZStack {
-            Circle()
-                .fill(LAPalette.tint(for: context).opacity(0.14))
-                .frame(width: 46, height: 46)
-            Circle()
-                .fill(LAPalette.gradient(for: context))
-                .frame(width: 34, height: 34)
-            Image(systemName: context.state.status.icon)
-                .font(.system(size: 16, weight: .semibold))
+        LAIcon(symbol: context.state.status == .failed ? "exclamationmark.shield.fill" : "checkmark.shield.fill",
+               tint: LAStyle.tint(for: context), size: 36)
+            .padding(.leading, 2)
+    }
+}
+
+@available(iOS 16.1, *)
+struct ExpandedCenterView: View {
+    let context: ActivityViewContext<ReelProcessingActivityAttributes>
+    var body: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(LAStyle.headline(for: context))
+                .font(.system(size: 15, weight: .semibold))
                 .foregroundColor(.white)
-                .contentTransition(.symbolEffect(.replace))
-                .scaleEffect(context.state.status == .completed ? 1.12 : 1.0)
+                .lineLimit(1)
+            Text(context.state.status.isTerminal ? "Tap to view" : LAStyle.sourceLabel(for: context))
+                .font(.system(size: 12))
+                .foregroundColor(.white.opacity(0.6))
+                .lineLimit(1)
         }
-        .animation(.spring(response: 0.4, dampingFraction: 0.6), value: context.state.status)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -318,60 +349,18 @@ struct ExpandedTrailingView: View {
     var body: some View {
         switch context.state.status {
         case .completed:
-            let verdict = LAPalette.verdict(for: context)
-            let color = context.attributes.isPro ? Color.brandGold : (verdict.map { VerdictStyle.color(for: $0) } ?? .brandGreen)
-            ZStack {
-                Circle()
-                    .fill(LinearGradient(colors: [color, color.opacity(0.7)],
-                                         startPoint: .topLeading, endPoint: .bottomTrailing))
-                    .frame(width: 38, height: 38)
-                Image(systemName: context.attributes.isPro ? "star.fill" : (verdict.map { VerdictStyle.icon(for: $0) } ?? "checkmark"))
-                    .font(.system(size: 17, weight: .bold))
-                    .foregroundColor(.white)
-            }
-            .animation(.spring(response: 0.45, dampingFraction: 0.5), value: context.state.status)
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 26, weight: .semibold))
+                .foregroundColor(LAStyle.tint(for: context))
+                .padding(.trailing, 2)
         case .failed:
-            ZStack {
-                Circle()
-                    .fill(Color.brandRed.opacity(0.18))
-                    .frame(width: 38, height: 38)
-                Image(systemName: "xmark")
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundColor(.brandRed)
-            }
+            Image(systemName: "xmark.circle.fill")
+                .font(.system(size: 26, weight: .semibold))
+                .foregroundColor(LAStyle.tint(for: context))
+                .padding(.trailing, 2)
         default:
-            LACircularRing(progress: context.state.progress, color: LAPalette.tint(for: context), textColor: .white)
-                .frame(width: 40, height: 40)
-        }
-    }
-}
-
-@available(iOS 16.1, *)
-struct ExpandedCenterView: View {
-    let context: ActivityViewContext<ReelProcessingActivityAttributes>
-    var body: some View {
-        VStack(spacing: 2) {
-            HStack(spacing: 3) {
-                Text(context.attributes.isPro ? "+informed" : "informed")
-                    .font(.system(size: 9, weight: .semibold))
-                    .tracking(0.6)
-                if context.attributes.isPro {
-                    Image(systemName: "star.fill")
-                        .font(.system(size: 6))
-                        .foregroundColor(.brandGold)
-                }
-                Text("· \(context.attributes.platformName)")
-                    .font(.system(size: 9, weight: .medium))
-            }
-            .foregroundColor(context.attributes.isPro ? Color.brandGold.opacity(0.85) : Color.white.opacity(0.55))
-            .lineLimit(1)
-
-            Text(context.state.status == .failed ? "Failed" : context.state.status.shortLabel)
-                .font(.system(size: 16, weight: .bold, design: .rounded))
-                .foregroundColor(LAPalette.tint(for: context))
-                .lineLimit(1)
-                .contentTransition(.opacity)
-                .animation(.spring(response: 0.3, dampingFraction: 0.7), value: context.state.status)
+            LACountdown(context: context, size: 17, weight: .semibold, color: .white)
+                .padding(.trailing, 2)
         }
     }
 }
@@ -381,226 +370,41 @@ struct ExpandedBottomView: View {
     let context: ActivityViewContext<ReelProcessingActivityAttributes>
 
     private var status: ProcessingStatus { context.state.status }
-    private var tint: Color { LAPalette.tint(for: context) }
+    private var tint: Color { LAStyle.tint(for: context) }
 
     var body: some View {
-        VStack(spacing: 8) {
-            if !status.isTerminal {
-                LAStageStepper(status: status, tint: tint)
-                    .padding(.top, 2)
-
-                LAProgressBar(progress: context.state.progress, gradient: LAPalette.gradient(for: context), track: Color.white.opacity(0.12))
-                    .frame(height: 6)
-
-                HStack(alignment: .center, spacing: 8) {
-                    Text(context.state.statusMessage)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.white.opacity(0.65))
-                        .lineLimit(1)
-                        .contentTransition(.opacity)
-                    Spacer(minLength: 4)
-                    LACountdownLabel(context: context, color: .white.opacity(0.8))
-                }
-                .padding(.horizontal, 2)
-            }
-
-            // Completed
-            if status == .completed {
-                VStack(spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
+            switch status {
+            case .completed:
+                VStack(alignment: .leading, spacing: 6) {
                     if let title = context.state.title, !title.isEmpty {
                         Text(title)
-                            .font(.system(size: 13, weight: .semibold))
-                            .lineLimit(2)
-                            .multilineTextAlignment(.center)
+                            .font(.system(size: 13, weight: .medium))
                             .foregroundColor(.white)
-                            .padding(.horizontal, 4)
+                            .lineLimit(2)
                     }
-                    if let verdict = LAPalette.verdict(for: context) {
-                        LAVerdictChip(verdict: verdict, isPro: context.attributes.isPro)
+                    if let verdict = LAStyle.verdict(for: context) {
+                        LAVerdictChip(verdict: verdict)
                     }
-                    Label("Tap to view results", systemImage: "hand.tap.fill")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.white.opacity(0.6))
-                        .padding(.top, 1)
                 }
-            }
-
-            // Failed
-            if status == .failed {
-                VStack(spacing: 6) {
-                    Label("Fact-check failed", systemImage: "exclamationmark.triangle.fill")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundColor(.brandRed)
-                    Text(context.state.statusMessage)
-                        .font(.system(size: 12))
-                        .foregroundColor(.white.opacity(0.7))
-                        .multilineTextAlignment(.center)
-                        .lineLimit(2)
-                        .padding(.horizontal, 6)
-                }
-                .padding(.vertical, 2)
+            case .failed:
+                Text(context.state.statusMessage)
+                    .font(.system(size: 13))
+                    .foregroundColor(.white.opacity(0.75))
+                    .lineLimit(2)
+            default:
+                SegmentedStageBar(status: status, progress: context.state.progress, tint: tint,
+                                  track: Color.white.opacity(0.14), height: 5,
+                                  labelColor: .white.opacity(0.55), activeLabelColor: .white, labelSize: 11)
+                Text(context.state.statusMessage)
+                    .font(.system(size: 12))
+                    .foregroundColor(.white.opacity(0.6))
+                    .lineLimit(1)
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.bottom, 4)
-    }
-}
-
-// MARK: - Supporting Views
-
-/// Four-step pipeline indicator: Fetch → Analyze → Verify → Done.
-/// Each column owns half of the connector on either side so the segments meet
-/// exactly at column boundaries and the dots stay centred over their labels.
-@available(iOS 16.1, *)
-struct LAStageStepper: View {
-    let status: ProcessingStatus
-    let tint: Color
-
-    private var current: Int { status.stageIndex }
-    private var stages: [String] { ProcessingStatus.pipelineStages }
-    private var dim: Color { Color.primary.opacity(0.14) }
-
-    var body: some View {
-        HStack(spacing: 0) {
-            ForEach(Array(stages.enumerated()), id: \.offset) { idx, name in
-                let isDone   = idx < current || status == .completed
-                let isActive = idx == current && !status.isTerminal
-                let isLast   = idx == stages.count - 1
-                VStack(spacing: 4) {
-                    ZStack {
-                        HStack(spacing: 0) {
-                            Rectangle()
-                                .fill(idx == 0 ? Color.clear : (idx <= current ? tint : dim))
-                                .frame(height: 1.5)
-                            Rectangle()
-                                .fill(isLast ? Color.clear : (idx < current ? tint : dim))
-                                .frame(height: 1.5)
-                        }
-                        ZStack {
-                            Circle()
-                                .fill(isDone ? tint : (isActive ? tint.opacity(0.22) : dim))
-                                .frame(width: 9, height: 9)
-                            if isActive {
-                                Circle()
-                                    .stroke(tint, lineWidth: 1.5)
-                                    .frame(width: 9, height: 9)
-                            }
-                            if isDone {
-                                Image(systemName: "checkmark")
-                                    .font(.system(size: 5, weight: .black))
-                                    .foregroundColor(.white)
-                            }
-                        }
-                    }
-                    .frame(height: 10)
-                    Text(name)
-                        .font(.system(size: 8.5, weight: (isDone || isActive) ? .semibold : .medium))
-                        .foregroundColor(isActive ? tint : (isDone ? .primary : .secondary))
-                        .lineLimit(1)
-                }
-                .frame(maxWidth: .infinity)
-            }
-        }
-        .animation(.spring(response: 0.4, dampingFraction: 0.8), value: status)
-    }
-}
-
-/// Gradient progress bar that animates between content states.
-@available(iOS 16.1, *)
-struct LAProgressBar: View {
-    let progress: Double
-    let gradient: LinearGradient
-    let track: Color
-
-    var body: some View {
-        GeometryReader { geo in
-            ZStack(alignment: .leading) {
-                Capsule().fill(track)
-                Capsule()
-                    .fill(gradient)
-                    .frame(width: max(geo.size.width * min(max(progress, 0), 1), 6))
-                    .animation(.spring(response: 0.6, dampingFraction: 0.8), value: progress)
-            }
-        }
-    }
-}
-
-/// Live countdown to the current stage's ETA. `Text(timerInterval:)` ticks on its
-/// own inside the Live Activity, so the number stays fresh between pushes. Falls
-/// back to the static estimate when no usable ETA date is available.
-@available(iOS 16.1, *)
-struct LACountdownLabel: View {
-    let context: ActivityViewContext<ReelProcessingActivityAttributes>
-    let color: Color
-
-    var body: some View {
-        HStack(spacing: 4) {
-            Image(systemName: "clock")
-                .font(.system(size: 10, weight: .semibold))
-            if let end = LAPalette.countdownEnd(for: context) {
-                Text(timerInterval: Date()...end, countsDown: true, showsHours: false)
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
-                    .monospacedDigit()
-                    .multilineTextAlignment(.trailing)
-                    .frame(maxWidth: 44, alignment: .trailing)
-                Text("left")
-                    .font(.system(size: 11, weight: .medium))
-            } else if let est = context.state.estimatedSecondsRemaining, est > 0 {
-                Text(est > 60 ? "~\(est / 60)m left" : "~\(est)s left")
-                    .font(.system(size: 11, weight: .medium, design: .rounded))
-                    .monospacedDigit()
-            } else {
-                Text("Almost done")
-                    .font(.system(size: 11, weight: .medium))
-            }
-        }
-        .foregroundColor(color)
-        .lineLimit(1)
-    }
-}
-
-/// Verdict pill coloured by outcome (green / red / amber; gold for Pro).
-@available(iOS 16.1, *)
-struct LAVerdictChip: View {
-    let verdict: String
-    let isPro: Bool
-
-    var body: some View {
-        let color = isPro ? Color.brandGold : VerdictStyle.color(for: verdict)
-        HStack(spacing: 4) {
-            Image(systemName: VerdictStyle.icon(for: verdict))
-                .font(.system(size: 10, weight: .bold))
-            Text(verdict)
-                .font(.system(size: 12, weight: .bold))
-                .lineLimit(1)
-        }
-        .foregroundColor(.white)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
-        .background(color)
-        .clipShape(Capsule())
-    }
-}
-
-@available(iOS 16.1, *)
-struct LACircularRing: View {
-    let progress: Double
-    let color: Color
-    var textColor: Color = .white
-    var body: some View {
-        ZStack {
-            Circle().stroke(color.opacity(0.18), lineWidth: 3)
-            Circle()
-                .trim(from: 0, to: max(min(progress, 1), 0.02))
-                .stroke(color, style: StrokeStyle(lineWidth: 3, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-                .animation(.spring(response: 0.6, dampingFraction: 0.8), value: progress)
-            Text("\(Int(progress * 100))%")
-                .font(.system(size: 11, weight: .bold, design: .rounded))
-                .monospacedDigit()
-                .foregroundColor(textColor)
-                .contentTransition(.numericText())
-        }
+        .padding(.horizontal, 4)
+        .padding(.top, 4)
+        .padding(.bottom, 2)
     }
 }
 
