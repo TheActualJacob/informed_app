@@ -90,6 +90,11 @@ struct FactDetailView: View {
                         .fixedSize(horizontal: false, vertical: true)
 
                     LinkPreviewView(item: item)
+
+                    // Long videos are cut to their opening minutes on the backend
+                    if item.wasTruncated {
+                        truncationNotice
+                    }
                 }
 
                 Divider()
@@ -204,6 +209,38 @@ struct FactDetailView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Truncation Notice
+
+    /// Shown when the backend only analysed the opening minutes of a long video.
+    private var truncationNotice: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "scissors")
+                .font(.system(size: 16))
+                .foregroundColor(.orange)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Only the first \(item.analyzedDurationLabel) were fact-checked")
+                    .font(.caption)
+                    .fontWeight(.bold)
+                    .foregroundColor(.primary)
+                Text("Informed is built for short-form content, so the rest of this \(item.mediaDurationLabel) video was not reviewed.")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 10)
+        .padding(.horizontal, 14)
+        .background(Color.orange.opacity(0.07))
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.CornerRadius.md)
+                .stroke(Color.orange.opacity(0.2), lineWidth: 1)
+        )
+        .cornerRadius(Theme.CornerRadius.md)
     }
 
     // MARK: - Swipe Hint Banner

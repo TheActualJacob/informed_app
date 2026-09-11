@@ -33,6 +33,9 @@ struct SubmissionStatusResponse: Codable {
     let claims: [StatusClaimEntry]?
     /// The backend uniqueID for the completed fact-check — used to build the shareable link.
     let uniqueID: String?
+    /// Source video length vs. the analysed portion (backend caps at 5 minutes).
+    let mediaDurationSeconds: Int?
+    let analyzedDurationSeconds: Int?
 
     enum CodingKeys: String, CodingKey {
         case submissionId              = "submission_id"
@@ -50,6 +53,7 @@ struct SubmissionStatusResponse: Codable {
         case aiProbability
         case claims
         case uniqueID
+        case mediaDurationSeconds, analyzedDurationSeconds
     }
 
     /// Converts backend status string to ProcessingStatus enum
