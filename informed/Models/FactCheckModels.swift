@@ -128,8 +128,31 @@ struct FactCheckItem: Identifiable, Equatable {
     let datePosted: String?
     let aiGenerated: String?
     let aiProbability: Double?
+    /// Full length of the source video and the portion that was actually analysed
+    /// (the backend caps analysis at 5 minutes). Both nil for non-video posts.
+    var mediaDurationSeconds: Int? = nil
+    var analyzedDurationSeconds: Int? = nil
 
     var factCheck: FactCheck { claims[0].asFactCheck }
+    /// True when the source video was longer than the portion that was fact-checked.
+    var wasTruncated: Bool {
+        guard let media = mediaDurationSeconds, let analyzed = analyzedDurationSeconds else { return false }
+        return media > analyzed + 2
+    }
+    var analyzedDurationLabel: String { FactCheckItem.durationLabel(analyzedDurationSeconds ?? 0) }
+    var mediaDurationLabel: String { FactCheckItem.durationLabel(mediaDurationSeconds ?? 0) }
+    static func durationLabel(_ seconds: Int) -> String {
+        if seconds >= 3600 {
+            let h = seconds / 3600, m = (seconds % 3600) / 60
+            let hours = h == 1 ? "1 hour" : "\(h) hours"
+            return m > 0 ? "\(hours) \(m) min" : hours
+        }
+        if seconds >= 60 {
+            let m = Int((Double(seconds) / 60).rounded())
+            return m == 1 ? "1 minute" : "\(m) minutes"
+        }
+        return "\(seconds) seconds"
+    }
     var detailedAnalysis: String { claims[0].explanation }
     /// Average of all individual claims' accuracy scores (falls back to credibilityScore for single-claim items)
     var averageCredibilityScore: Double {
@@ -224,6 +247,8 @@ struct PublicReel: Identifiable, Codable {
     let platform: String?
     let aiGenerated: String?
     let aiProbability: Double?
+    let mediaDurationSeconds: Int?
+    let analyzedDurationSeconds: Int?
 
     var claim: String               { claims[0].claim }
     var verdict: String             { claims[0].verdict }
@@ -240,6 +265,7 @@ struct PublicReel: Identifiable, Codable {
         case claimAccuracyRating = "claim_accuracy_rating"
         case checkedAt, datePosted, uploadedBy, engagement, platform
         case aiGenerated, aiProbability
+        case mediaDurationSeconds, analyzedDurationSeconds
     }
 
     init(from decoder: Decoder) throws {
@@ -255,6 +281,8 @@ struct PublicReel: Identifiable, Codable {
         platform    = try c.decodeIfPresent(String.self, forKey: .platform)
         aiGenerated = try c.decodeIfPresent(String.self, forKey: .aiGenerated)
         aiProbability = try c.decodeIfPresent(Double.self, forKey: .aiProbability)
+        mediaDurationSeconds    = try? c.decodeIfPresent(Int.self, forKey: .mediaDurationSeconds)
+        analyzedDurationSeconds = try? c.decodeIfPresent(Int.self, forKey: .analyzedDurationSeconds)
         if let ds = try? c.decodeIfPresent(String.self, forKey: .datePosted) { datePosted = ds }
         else if let di = try? c.decodeIfPresent(Int.self, forKey: .datePosted) { datePosted = String(di) }
         else { datePosted = nil }
@@ -287,6 +315,8 @@ struct PublicReel: Identifiable, Codable {
         try c.encodeIfPresent(platform, forKey: .platform)
         try c.encodeIfPresent(aiGenerated, forKey: .aiGenerated)
         try c.encodeIfPresent(aiProbability, forKey: .aiProbability)
+        try c.encodeIfPresent(mediaDurationSeconds, forKey: .mediaDurationSeconds)
+        try c.encodeIfPresent(analyzedDurationSeconds, forKey: .analyzedDurationSeconds)
     }
 
     var timeAgo: String {
@@ -323,7 +353,8 @@ struct PublicReel: Identifiable, Codable {
                       credibilityScore: averageCredibilityScore,
                       sources: sources.joined(separator: ", "),
                       verdict: verdict, claims: claims, originalLink: videoLink,
-                      datePosted: datePosted, aiGenerated: aiGenerated, aiProbability: aiProbability)
+                      datePosted: datePosted, aiGenerated: aiGenerated, aiProbability: aiProbability,
+                      mediaDurationSeconds: mediaDurationSeconds, analyzedDurationSeconds: analyzedDurationSeconds)
     }
 }
 
@@ -356,6 +387,8 @@ struct UserReel: Identifiable, Codable {
     let errorType: String?
     let aiGenerated: String?
     let aiProbability: Double?
+    let mediaDurationSeconds: Int?
+    let analyzedDurationSeconds: Int?
 
     var claim: String?               { claims.first?.claim }
     var verdict: String?             { claims.first?.verdict }
@@ -372,6 +405,7 @@ struct UserReel: Identifiable, Codable {
         case engagement, errorMessage, platform
         case errorType = "error_type"
         case aiGenerated, aiProbability
+        case mediaDurationSeconds, analyzedDurationSeconds
     }
 
     init(from decoder: Decoder) throws {
@@ -388,6 +422,8 @@ struct UserReel: Identifiable, Codable {
         errorType    = try c.decodeIfPresent(String.self, forKey: .errorType)
         aiGenerated  = try c.decodeIfPresent(String.self, forKey: .aiGenerated)
         aiProbability = try c.decodeIfPresent(Double.self, forKey: .aiProbability)
+        mediaDurationSeconds    = try? c.decodeIfPresent(Int.self, forKey: .mediaDurationSeconds)
+        analyzedDurationSeconds = try? c.decodeIfPresent(Int.self, forKey: .analyzedDurationSeconds)
         if let arr = try? c.decodeIfPresent([ClaimEntry].self, forKey: .claims), !arr.isEmpty {
             claims = arr
         } else if let cl  = try? c.decodeIfPresent(String.self,   forKey: .claim),
@@ -415,6 +451,8 @@ struct UserReel: Identifiable, Codable {
         try c.encodeIfPresent(errorType, forKey: .errorType)
         try c.encodeIfPresent(aiGenerated, forKey: .aiGenerated)
         try c.encodeIfPresent(aiProbability, forKey: .aiProbability)
+        try c.encodeIfPresent(mediaDurationSeconds, forKey: .mediaDurationSeconds)
+        try c.encodeIfPresent(analyzedDurationSeconds, forKey: .analyzedDurationSeconds)
     }
 
     var timeAgo: String {

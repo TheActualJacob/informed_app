@@ -74,7 +74,9 @@ struct SharedFactCheckSheet: View {
                 platform: userReel.platform,
                 aiGenerated: userReel.aiGenerated,
                 aiProbability: userReel.aiProbability,
-                reelID: userReel.id
+                reelID: userReel.id,
+                mediaDurationSeconds: userReel.mediaDurationSeconds,
+                analyzedDurationSeconds: userReel.analyzedDurationSeconds
             )
             let item = storedData.toFactCheckItem(originalLink: userReel.link)
             PersistenceService.shared.saveFactCheck(item)

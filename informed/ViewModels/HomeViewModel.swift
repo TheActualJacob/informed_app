@@ -458,7 +458,9 @@ class HomeViewModel: ObservableObject {
                             verdict: primaryClaim.verdict, claims: embeddedClaims,
                             originalLink: link, datePosted: factCheckData.date,
                             aiGenerated: factCheckData.aiGenerated,
-                            aiProbability: factCheckData.aiProbability
+                            aiProbability: factCheckData.aiProbability,
+                            mediaDurationSeconds: factCheckData.mediaDurationSeconds,
+                            analyzedDurationSeconds: factCheckData.analyzedDurationSeconds
                         )
                         self.processingLink = nil; self.processingThumbnailURL = nil
                         // No Live Activity was started for this duplicate — navigate directly.
@@ -538,7 +540,9 @@ class HomeViewModel: ObservableObject {
                 sources: primaryClaim.sources.joined(separator: ", "),
                 verdict: primaryClaim.verdict, claims: resolvedClaims,
                 originalLink: link, datePosted: factCheckData.date,
-                aiGenerated: factCheckData.aiGenerated, aiProbability: factCheckData.aiProbability
+                aiGenerated: factCheckData.aiGenerated, aiProbability: factCheckData.aiProbability,
+                mediaDurationSeconds: factCheckData.mediaDurationSeconds,
+                analyzedDurationSeconds: factCheckData.analyzedDurationSeconds
             )
             PersistenceService.shared.saveFactCheck(newItem)
 
@@ -546,7 +550,9 @@ class HomeViewModel: ObservableObject {
                 title: factCheckData.title ?? "", summary: primaryClaim.summary,
                 thumbnailURL: factCheckData.thumbnailUrl, claims: resolvedClaims,
                 datePosted: factCheckData.date, platform: factCheckData.platform,
-                aiGenerated: factCheckData.aiGenerated, aiProbability: factCheckData.aiProbability
+                aiGenerated: factCheckData.aiGenerated, aiProbability: factCheckData.aiProbability,
+                mediaDurationSeconds: factCheckData.mediaDurationSeconds,
+                analyzedDurationSeconds: factCheckData.analyzedDurationSeconds
             )
             let completedReel = SharedReel(
                 id: submissionId, url: link, submittedAt: Date(),

@@ -109,6 +109,9 @@ struct StoredFactCheckData: Codable {
     let platform: String?
     let aiGenerated: String?
     let aiProbability: Double?
+    /// Source video length vs. the analysed portion (backend caps at 5 minutes).
+    let mediaDurationSeconds: Int?
+    let analyzedDurationSeconds: Int?
 
     // Primary-claim shortcuts (backward compat)
     var claim: String               { claims.first?.claim ?? "" }
@@ -123,7 +126,8 @@ struct StoredFactCheckData: Codable {
          explanation: String, sources: [String],
          datePosted: String?, platform: String?,
          aiGenerated: String? = nil, aiProbability: Double? = nil,
-         reelID: String? = nil) {
+         reelID: String? = nil,
+         mediaDurationSeconds: Int? = nil, analyzedDurationSeconds: Int? = nil) {
         self.reelID = reelID
         self.title = title; self.summary = summary; self.thumbnailURL = thumbnailURL
         self.claims = [ClaimEntry(claim: claim, verdict: verdict,
@@ -131,13 +135,16 @@ struct StoredFactCheckData: Codable {
                                   explanation: explanation, summary: summary, sources: sources)]
         self.datePosted = datePosted; self.platform = platform
         self.aiGenerated = aiGenerated; self.aiProbability = aiProbability
+        self.mediaDurationSeconds = mediaDurationSeconds
+        self.analyzedDurationSeconds = analyzedDurationSeconds
     }
 
     // Multi-claim init
     init(title: String, summary: String, thumbnailURL: String?,
          claims: [ClaimEntry], datePosted: String?, platform: String?,
          aiGenerated: String? = nil, aiProbability: Double? = nil,
-         reelID: String? = nil) {
+         reelID: String? = nil,
+         mediaDurationSeconds: Int? = nil, analyzedDurationSeconds: Int? = nil) {
         self.reelID = reelID
         self.title = title; self.summary = summary; self.thumbnailURL = thumbnailURL
         self.claims = claims.isEmpty
@@ -146,6 +153,8 @@ struct StoredFactCheckData: Codable {
             : claims
         self.datePosted = datePosted; self.platform = platform
         self.aiGenerated = aiGenerated; self.aiProbability = aiProbability
+        self.mediaDurationSeconds = mediaDurationSeconds
+        self.analyzedDurationSeconds = analyzedDurationSeconds
     }
 
     // MARK: Custom Codable — migrates old flat JSON on disk to claims array
@@ -153,6 +162,7 @@ struct StoredFactCheckData: Codable {
     enum CodingKeys: String, CodingKey {
         case reelID, title, summary, thumbnailURL, claims, datePosted, platform
         case aiGenerated, aiProbability
+        case mediaDurationSeconds, analyzedDurationSeconds
         // Legacy flat keys written by old app versions
         case claim, verdict, explanation, sources
         case claimAccuracyRating   // was stored camelCase by old app
@@ -168,6 +178,8 @@ struct StoredFactCheckData: Codable {
         platform      = try c.decodeIfPresent(String.self, forKey: .platform)
         aiGenerated   = try c.decodeIfPresent(String.self, forKey: .aiGenerated)
         aiProbability = try c.decodeIfPresent(Double.self, forKey: .aiProbability)
+        mediaDurationSeconds    = try? c.decodeIfPresent(Int.self, forKey: .mediaDurationSeconds)
+        analyzedDurationSeconds = try? c.decodeIfPresent(Int.self, forKey: .analyzedDurationSeconds)
         // Prefer new claims array; fall back to flat fields from old stored JSON
         if let arr = try? c.decodeIfPresent([ClaimEntry].self, forKey: .claims), !arr.isEmpty {
             claims = arr
@@ -193,6 +205,8 @@ struct StoredFactCheckData: Codable {
         try c.encodeIfPresent(platform,      forKey: .platform)
         try c.encodeIfPresent(aiGenerated,   forKey: .aiGenerated)
         try c.encodeIfPresent(aiProbability, forKey: .aiProbability)
+        try c.encodeIfPresent(mediaDurationSeconds, forKey: .mediaDurationSeconds)
+        try c.encodeIfPresent(analyzedDurationSeconds, forKey: .analyzedDurationSeconds)
     }
 
     // Convert to FactCheckItem for display
@@ -208,7 +222,8 @@ struct StoredFactCheckData: Codable {
             sources: sources.joined(separator: ", "),
             verdict: verdict, claims: claims,
             originalLink: originalLink, datePosted: datePosted,
-            aiGenerated: aiGenerated, aiProbability: aiProbability
+            aiGenerated: aiGenerated, aiProbability: aiProbability,
+            mediaDurationSeconds: mediaDurationSeconds, analyzedDurationSeconds: analyzedDurationSeconds
         )
     }
 }
@@ -449,7 +464,9 @@ class SharedReelManager: ObservableObject {
                     platform: r.platform,
                     aiGenerated: r.aiGenerated,
                     aiProbability: r.aiProbability,
-                    reelID: r.id
+                    reelID: r.id,
+                    mediaDurationSeconds: r.mediaDurationSeconds,
+                    analyzedDurationSeconds: r.analyzedDurationSeconds
                 )
             } else if status == .completed,
                let claim = r.claim, let verdict = r.verdict,
@@ -460,7 +477,9 @@ class SharedReelManager: ObservableObject {
                     explanation: r.explanation ?? "", sources: r.sources ?? [],
                     datePosted: nil, platform: r.platform,
                     aiGenerated: r.aiGenerated, aiProbability: r.aiProbability,
-                    reelID: r.id
+                    reelID: r.id,
+                    mediaDurationSeconds: r.mediaDurationSeconds,
+                    analyzedDurationSeconds: r.analyzedDurationSeconds
                 )
             }
             return SharedReel(
@@ -632,7 +651,9 @@ class SharedReelManager: ObservableObject {
                 datePosted: legacy.date,
                 platform: legacy.platform,
                 aiGenerated: legacy.aiGenerated,
-                aiProbability: legacy.aiProbability
+                aiProbability: legacy.aiProbability,
+                mediaDurationSeconds: legacy.mediaDurationSeconds,
+                analyzedDurationSeconds: legacy.analyzedDurationSeconds
             )
             updateReelStatus(id: clientSid, status: .completed,
                              resultId: legacy.title, factCheckData: storedData)
@@ -770,7 +791,9 @@ class SharedReelManager: ObservableObject {
                             datePosted: nil,
                             platform: statusResponse.platform,
                             aiGenerated: statusResponse.aiGenerated,
-                            aiProbability: statusResponse.aiProbability
+                            aiProbability: statusResponse.aiProbability,
+                            mediaDurationSeconds: statusResponse.mediaDurationSeconds,
+                            analyzedDurationSeconds: statusResponse.analyzedDurationSeconds
                         )
                         await MainActor.run {
                             self.updateReelStatus(
@@ -986,7 +1009,9 @@ class SharedReelManager: ObservableObject {
                                 platform: statusResponse.platform,
                                 aiGenerated: statusResponse.aiGenerated,
                                 aiProbability: statusResponse.aiProbability,
-                                reelID: statusResponse.uniqueID
+                                reelID: statusResponse.uniqueID,
+                                mediaDurationSeconds: statusResponse.mediaDurationSeconds,
+                                analyzedDurationSeconds: statusResponse.analyzedDurationSeconds
                             )
                             await MainActor.run {
                                 self.updateReelStatus(
@@ -1047,7 +1072,9 @@ class SharedReelManager: ObservableObject {
                                     platform: statusResponse.platform,
                                     aiGenerated: statusResponse.aiGenerated,
                                     aiProbability: statusResponse.aiProbability,
-                                    reelID: statusResponse.uniqueID
+                                    reelID: statusResponse.uniqueID,
+                                    mediaDurationSeconds: statusResponse.mediaDurationSeconds,
+                                    analyzedDurationSeconds: statusResponse.analyzedDurationSeconds
                                 )
                                 NotificationCenter.default.post(
                                     name: NSNotification.Name("ShowFactCheckDetail"),
@@ -1328,6 +1355,8 @@ class SharedReelManager: ObservableObject {
                 let aiProbability = factCheckData["aiProbability"] as? Double
                 let backendReelID = factCheckData["unique_id"] as? String
                     ?? factCheckData["uniqueID"] as? String
+                let mediaDurationSeconds = factCheckData["mediaDurationSeconds"] as? Int
+                let analyzedDurationSeconds = factCheckData["analyzedDurationSeconds"] as? Int
 
                 storedData = StoredFactCheckData(
                     title: title,
@@ -1342,7 +1371,9 @@ class SharedReelManager: ObservableObject {
                     platform: platform,
                     aiGenerated: aiGenerated,
                     aiProbability: aiProbability,
-                    reelID: backendReelID
+                    reelID: backendReelID,
+                    mediaDurationSeconds: mediaDurationSeconds,
+                    analyzedDurationSeconds: analyzedDurationSeconds
                 )
             } else {
                 print("⚠️ Missing some fact-check fields, creating without stored data")
@@ -1571,7 +1602,9 @@ class SharedReelManager: ObservableObject {
                             platform: userReel.platform,
                             aiGenerated: userReel.aiGenerated,
                             aiProbability: userReel.aiProbability,
-                            reelID: userReel.id
+                            reelID: userReel.id,
+                            mediaDurationSeconds: userReel.mediaDurationSeconds,
+                            analyzedDurationSeconds: userReel.analyzedDurationSeconds
                         )
                     } else if status == .completed,
                        let claim = userReel.claim,
@@ -1591,7 +1624,9 @@ class SharedReelManager: ObservableObject {
                             platform: userReel.platform,
                             aiGenerated: userReel.aiGenerated,
                             aiProbability: userReel.aiProbability,
-                            reelID: userReel.id
+                            reelID: userReel.id,
+                            mediaDurationSeconds: userReel.mediaDurationSeconds,
+                            analyzedDurationSeconds: userReel.analyzedDurationSeconds
                         )
                     }
                     

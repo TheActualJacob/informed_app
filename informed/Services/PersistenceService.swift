@@ -132,7 +132,9 @@ class PersistenceService {
                     originalLink: item.originalLink,
                     datePosted: item.datePosted,
                     aiGenerated: item.aiGenerated,
-                    aiProbability: item.aiProbability
+                    aiProbability: item.aiProbability,
+                    mediaDurationSeconds: item.mediaDurationSeconds,
+                    analyzedDurationSeconds: item.analyzedDurationSeconds
                 )
             }
             
@@ -224,6 +226,8 @@ struct FactCheckCodable: Codable {
     let datePosted: String?
     let aiGenerated: String?
     let aiProbability: Double?
+    let mediaDurationSeconds: Int?
+    let analyzedDurationSeconds: Int?
 
     init(from item: FactCheckItem) {
         self.reelID = item.reelID
@@ -242,6 +246,8 @@ struct FactCheckCodable: Codable {
         self.datePosted = item.datePosted
         self.aiGenerated = item.aiGenerated
         self.aiProbability = item.aiProbability
+        self.mediaDurationSeconds = item.mediaDurationSeconds
+        self.analyzedDurationSeconds = item.analyzedDurationSeconds
     }
 
     func toFactCheckItem() -> FactCheckItem {
@@ -267,7 +273,8 @@ struct FactCheckCodable: Codable {
             credibilityScore: credibilityScore, sources: sources,
             verdict: verdict, claims: resolvedClaims,
             originalLink: originalLink, datePosted: datePosted,
-            aiGenerated: aiGenerated, aiProbability: aiProbability
+            aiGenerated: aiGenerated, aiProbability: aiProbability,
+            mediaDurationSeconds: mediaDurationSeconds, analyzedDurationSeconds: analyzedDurationSeconds
         )
     }
 }

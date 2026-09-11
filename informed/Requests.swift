@@ -121,6 +121,8 @@ struct LegacyFactCheckData: Codable {
     let errorType: String?
     let aiGenerated: String?
     let aiProbability: Double?
+    let mediaDurationSeconds: Int?
+    let analyzedDurationSeconds: Int?
     let claims: [ClaimEntry]?
     // Flat legacy fields
     let claim: String?
@@ -137,6 +139,7 @@ struct LegacyFactCheckData: Codable {
         case thumbnailUrl   = "thumbnail_url"
         case errorType      = "error_type"
         case aiGenerated, aiProbability
+        case mediaDurationSeconds, analyzedDurationSeconds
     }
 
     var resolvedClaims: [ClaimEntry] {
@@ -186,6 +189,9 @@ struct FactCheckData: Codable {
     let message: String?
     /// The backend uniqueID for the completed fact-check — used to build the shareable link.
     let uniqueID: String?
+    /// Source video length vs. the analysed portion (backend caps at 5 minutes).
+    let mediaDurationSeconds: Int?
+    let analyzedDurationSeconds: Int?
 
     enum CodingKeys: String, CodingKey {
         case title, description, date, videoLink, platform, claims
@@ -199,6 +205,7 @@ struct FactCheckData: Codable {
         case progressPercentage   = "progress_percentage"
         case message
         case uniqueID
+        case mediaDurationSeconds, analyzedDurationSeconds
     }
 
     var resolvedClaims: [ClaimEntry] {
