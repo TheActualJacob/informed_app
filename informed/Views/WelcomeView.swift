@@ -177,7 +177,9 @@ struct WelcomeView: View {
                                         colors: [Color.brandBlue.opacity(0.25), Color.brandTeal.opacity(0.18)],
                                         startPoint: .topLeading, endPoint: .bottomTrailing),
                             border: Color.brandBlue.opacity(0.5),
-                            badge: "$4.99 / mo"
+                            // Live store price once the offering loads; $8.99 is the
+                            // configured monthly price and only shows before/without a fetch.
+                            badge: "\(subscriptionManager.monthlyPriceString ?? "$8.99") / mo"
                         )
                     }
                     .padding(.horizontal, 20)
@@ -256,6 +258,12 @@ struct WelcomeView: View {
                 }
         }
         .onAppear { runEntrance() }
+        .task {
+            // Load the offering so the +Pro badge shows the real store price.
+            if subscriptionManager.currentOffering == nil {
+                await subscriptionManager.fetchOffering()
+            }
+        }
     }
 
     // MARK: - Helpers

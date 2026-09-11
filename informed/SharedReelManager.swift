@@ -1154,7 +1154,7 @@ class SharedReelManager: ObservableObject {
                                 if isTerminal {
                                     let userMessage: String
                                     if errMsg.contains("limit_reached") {
-                                        userMessage = "Daily limit reached"
+                                        userMessage = "Fact-check limit reached"
                                     } else if errMsg.contains("invalid_url") || errMsg.contains("unsupported") || errMsg.contains("Unsupported") {
                                         userMessage = "Unsupported URL format"
                                     } else {

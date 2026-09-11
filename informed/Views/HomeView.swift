@@ -216,8 +216,8 @@ struct HomeView: View {
                         subscriptionManager.showPaywall = true
                     } label: {
                         HStack(spacing: 6) {
-                            let checksLeft = max(0, subscriptionManager.usage.dailyLimit - subscriptionManager.usage.dailyUsed)
-                            Text("\(checksLeft) checks left today")
+                            let checksLeft = subscriptionManager.usage.governingRemaining
+                            Text("\(checksLeft) \(checksLeft == 1 ? "check" : "checks") left \(subscriptionManager.usage.governingPeriodLabel)")
                                 .font(.system(size: 12, weight: .bold, design: .rounded))
                                 .foregroundColor(.primary.opacity(0.8))
                             

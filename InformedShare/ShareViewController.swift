@@ -427,10 +427,11 @@ class ShareViewController: UIViewController {
                         let errorType = json["error_type"] as? String ?? ""
                         
                         if errorKey == "limit_reached" {
-                            let limitType = json["type"] as? String ?? "daily"
+                            let limitType = json["type"] as? String ?? "weekly"
                             print("⚠️ [ShareExtension] limit_reached (\(limitType)) — failing island for \(submissionId.prefix(8))")
                             if #available(iOS 16.1, *) {
-                                self.failLiveActivity(submissionId: submissionId, message: "Daily limit reached")
+                                self.failLiveActivity(submissionId: submissionId,
+                                                      message: limitType == "weekly" ? "Weekly limit reached" : "Daily limit reached")
                             }
                             // Remove from pending so the main app doesn't start polling a 404 forever.
                             if let defaults = UserDefaults(suiteName: "group.rob") {

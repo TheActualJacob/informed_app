@@ -14,9 +14,9 @@ import RevenueCat
 struct UsageStatus: Codable {
     let tier: String               // "free" | "pro"
     let dailyUsed: Int
-    let dailyLimit: Int
+    let dailyLimit: Int?           // nil = no daily cap (free tier)
     let weeklyUsed: Int
-    let weeklyLimit: Int?          // nil for pro (no weekly cap)
+    let weeklyLimit: Int?          // nil = no weekly cap (pro tier)
     let subscriptionExpiresAt: String?
 
     enum CodingKeys: String, CodingKey {
@@ -29,11 +29,34 @@ struct UsageStatus: Codable {
     }
 
     var isPro: Bool { tier == "pro" }
-    var dailyRemaining: Int { max(0, dailyLimit - dailyUsed) }
+    var dailyRemaining: Int? {
+        guard let dl = dailyLimit else { return nil }
+        return max(0, dl - dailyUsed)
+    }
     var weeklyRemaining: Int? {
         guard let wl = weeklyLimit else { return nil }
         return max(0, wl - weeklyUsed)
     }
+
+    // MARK: Governing window
+    //
+    // Free accounts are capped per ISO week (no daily cap); Pro accounts per day
+    // (no weekly cap). Every counter and paywall string should describe the window
+    // that actually governs the current tier, so the UI reads from these helpers
+    // instead of assuming "today".
+
+    /// True when the weekly cap is the one that limits this account.
+    var isGovernedWeekly: Bool { weeklyLimit != nil && dailyLimit == nil }
+    var governingLimit: Int? { isGovernedWeekly ? weeklyLimit : (dailyLimit ?? weeklyLimit) }
+    var governingUsed: Int { isGovernedWeekly ? weeklyUsed : (dailyLimit != nil ? dailyUsed : weeklyUsed) }
+    var governingRemaining: Int {
+        guard let limit = governingLimit else { return Int.max }
+        return max(0, limit - governingUsed)
+    }
+    /// "this week" or "today"
+    var governingPeriodLabel: String { isGovernedWeekly ? "this week" : "today" }
+    /// "weekly" or "daily" — the `limitType` the paywall expects.
+    var governingLimitType: String { isGovernedWeekly ? "weekly" : "daily" }
 }
 
 // MARK: - SubscriptionManager
@@ -61,9 +84,16 @@ final class SubscriptionManager: ObservableObject {
         }
     }
     @Published var usage: UsageStatus = UsageStatus(
-        tier: "free", dailyUsed: 0, dailyLimit: 2,
-        weeklyUsed: 0, weeklyLimit: nil, subscriptionExpiresAt: nil
+        tier: "free", dailyUsed: 0, dailyLimit: nil,
+        weeklyUsed: 0, weeklyLimit: 2, subscriptionExpiresAt: nil
     )
+
+    /// Live monthly price from the store (e.g. "$8.99"), once the offering has loaded.
+    var monthlyPriceString: String? {
+        currentOffering?.availablePackages.first(where: {
+            $0.packageType == .monthly || $0.storeProduct.productIdentifier == Self.monthlyProductID
+        })?.storeProduct.localizedPriceString
+    }
     @Published var currentOffering: Offering? = nil
     @Published var isLoadingOffering: Bool = false
     @Published var isPurchasing: Bool = false
@@ -71,7 +101,7 @@ final class SubscriptionManager: ObservableObject {
 
     // Paywall trigger
     @Published var showPaywall: Bool = false
-    @Published var paywallLimitType: String = "daily"  // "daily" | "weekly"
+    @Published var paywallLimitType: String = "weekly"  // "daily" | "weekly"
 
     private init() {}
 

@@ -71,7 +71,7 @@ struct AccountView: View {
                                             startPoint: .leading, endPoint: .trailing
                                         )
                                     )
-                                    Text("\(subscriptionManager.usage.dailyRemaining) checks left today · Upgrade for 15/day")
+                                    Text("\(subscriptionManager.usage.governingRemaining) checks left \(subscriptionManager.usage.governingPeriodLabel) · Upgrade for 15/day")
                                         .font(.caption)
                                         .foregroundColor(.secondary)
                                 }
