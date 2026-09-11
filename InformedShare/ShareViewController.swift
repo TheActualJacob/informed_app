@@ -284,38 +284,43 @@ class ShareViewController: UIViewController {
         request.timeoutInterval = 300 // 5 minutes
         
         let liveActivityToken = sharedDefaults.string(forKey: "live_activity_push_to_start_token")
-        
+
         let submissionId = UUID().uuidString
+
+        // Save pending submission immediately
+        savePendingSubmission(submissionId: submissionId, url: url, sharedDefaults: sharedDefaults)
+
+        // 🚀 START LIVE ACTIVITY RIGHT NOW — before the request goes out, so we can
+        // tell the backend whether an island already exists. If it does, the backend
+        // must NOT push-to-start a second one (that produced a duplicate island plus
+        // an extra "Fact-check started" alert on iOS 17.2+).
+        var liveActivityStarted = false
+        if #available(iOS 16.1, *) {
+            liveActivityStarted = startLiveActivity(submissionId: submissionId, url: url)
+        }
+
         var body: [String: Any] = [
             "link": url,
             "user_id": userId,
             "device_token": deviceToken,
             "submission_id": submissionId,
-            "source": "share_extension"
+            "source": "share_extension",
+            "live_activity_started": liveActivityStarted
         ]
-        
+
         // Include the push-to-start token if available!
         if let laToken = liveActivityToken {
             body["push_to_start_token"] = laToken
-            print("🔑 Including Push-To-Start Token in request: \(laToken.prefix(8))...")
+            print("🔑 Including Push-To-Start Token in request: \(laToken.prefix(8))... (local island started: \(liveActivityStarted))")
         } else {
             print("⚠️ No push-to-start token in App Group — Dynamic Island will appear when app is foregrounded")
         }
-        
+
         do {
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
         } catch {
             print("❌ Error encoding request: \(error)")
             return
-        }
-        
-        // Save pending submission immediately
-        savePendingSubmission(submissionId: submissionId, url: url, sharedDefaults: sharedDefaults)
-        
-        // 🚀 START LIVE ACTIVITY RIGHT NOW (requires paid developer account)
-        // This shows the Dynamic Island immediately, before the main app is opened.
-        if #available(iOS 16.1, *) {
-            startLiveActivity(submissionId: submissionId, url: url)
         }
         
         // Set a flag to trigger the main app to check immediately
@@ -633,13 +638,15 @@ class ShareViewController: UIViewController {
         }
     }
 
-    private func startLiveActivity(submissionId: String, url: String) {
+    /// Returns `true` when an island was created (with or without a push token).
+    @discardableResult
+    private func startLiveActivity(submissionId: String, url: String) -> Bool {
         print("🚀 [ShareExtension] Starting Live Activity for: \(submissionId)")
-        
+
         let authInfo = ActivityAuthorizationInfo()
         guard authInfo.areActivitiesEnabled else {
             print("⚠️ [ShareExtension] Live Activities not enabled – skipping")
-            return
+            return false
         }
         
         // End any existing activity for the same submission to avoid duplicates.
@@ -662,7 +669,8 @@ class ShareViewController: UIViewController {
             title: nil,
             verdict: nil,
             thumbnailURL: nil,
-            estimatedSecondsRemaining: 90
+            estimatedSecondsRemaining: 90,
+            etaDate: Date().addingTimeInterval(90)
         )
         
         // Attempt 1: pushType: .token so we get a push token for server-side updates.
@@ -690,11 +698,11 @@ class ShareViewController: UIViewController {
                 print("   ℹ️ Dynamic Island visible — push updates will activate when user opens app")
             } catch {
                 print("❌ [ShareExtension] Could not start Live Activity at all: \(error.localizedDescription)")
-                return
+                return false
             }
         }
 
-        guard let activity else { return }
+        guard let activity else { return false }
 
         // Fast path: read the synchronous pushToken property immediately after creation.
         // On some iOS versions the token is already populated on the Activity object the
@@ -726,6 +734,7 @@ class ShareViewController: UIViewController {
                 await sendActivityPushTokenToBackend(tokenString, submissionId: submissionId)
             }
         }
+        return true
     }
     
     /// Sends the per-activity APNs push token to the backend directly from the Share Extension.
@@ -757,6 +766,11 @@ class ShareViewController: UIViewController {
             let (_, response) = try await URLSession.shared.data(for: request)
             if let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) {
                 print("✅ [ShareExtension] Activity push token registered with backend for \(submissionId.prefix(8))")
+                // Record the ack in the App Group so the main app knows the backend now
+                // owns the completion alert for this submission (and won't alert twice).
+                if #available(iOS 16.1, *) {
+                    ReelProcessingActivityManager.markActivityTokenRegistered(submissionId)
+                }
             } else {
                 print("⚠️ [ShareExtension] Backend rejected activity push token")
             }

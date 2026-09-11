@@ -92,7 +92,11 @@ struct HomeView: View {
                         Spacer()
                         ProcessingBanner(
                             link: link,
-                            thumbnailURL: viewModel.processingLink != nil ? viewModel.processingThumbnailURL : nil
+                            thumbnailURL: viewModel.processingLink != nil ? viewModel.processingThumbnailURL : nil,
+                            progress: reelManager.activeProcessingProgress,
+                            onTap: {
+                                NotificationCenter.default.post(name: NSNotification.Name("NavigateToMyReels"), object: nil)
+                            }
                         )
                         .padding(.horizontal, Theme.Spacing.xl)
                         .padding(.bottom, Theme.Spacing.xl)

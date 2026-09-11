@@ -66,7 +66,7 @@ struct SharedReelsView: View {
                         .transition(.opacity)
                 }
             }
-            .navigationTitle("Shared Reels")
+            .navigationTitle("My Reels")
             .navigationBarTitleDisplayMode(.large)
             .navigationDestination(isPresented: $showDeepLink) {
                 if let item = deepLinkItem {
@@ -181,7 +181,7 @@ struct SharedReelsView: View {
                 .fontWeight(.bold)
                 .foregroundColor(.primary)
             
-            Text("Share Instagram Reels or TikTok videos\nto this app to start fact-checking them")
+            Text("Share a Reel, TikTok, Short, X post or Thread\nto informed to start fact-checking it")
                 .font(.body)
                 .foregroundColor(.gray)
                 .multilineTextAlignment(.center)
@@ -209,9 +209,16 @@ struct SharedReelsView: View {
 
 struct ReelStatusCard: View {
     let reel: SharedReel
-    
+
+    @EnvironmentObject var reelManager: SharedReelManager
     @Environment(\.colorScheme) var colorScheme
     @State private var showDetail = false
+
+    /// Live progress for this reel, when it is the one currently being polled.
+    private var liveProgress: ProcessingProgressSnapshot? {
+        guard let p = reelManager.activeProcessingProgress, p.submissionId == reel.id else { return nil }
+        return p
+    }
     
     var body: some View {
         ZStack {
@@ -346,41 +353,108 @@ struct ReelStatusCard: View {
                 
             } else {
                 // Show status-based card for non-completed reels
+                let live = liveProgress
+                let stageStatus: ProcessingStatus = live?.status ?? .submitting
+                let accent: Color = reel.status == .failed ? .brandRed : stageStatus.color
                 VStack(alignment: .leading, spacing: 12) {
                     // Header with status
-                    HStack {
-                        Image(systemName: reel.status.icon)
-                            .font(.title3)
-                            .foregroundColor(reel.status.color)
-                        
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(reel.status.rawValue)
-                                .font(.headline)
-                                .foregroundColor(reel.status.color)
-                            
-                            Text(reel.timeAgo)
-                                .font(.caption)
-                                .foregroundColor(.gray)
+                    HStack(spacing: 12) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(accent.opacity(0.12))
+                                .frame(width: 40, height: 40)
+                            Image(systemName: reel.status == .failed ? reel.status.icon : stageStatus.icon)
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundColor(accent)
+                                .contentTransition(.symbolEffect(.replace))
                         }
-                        
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(reel.status == .failed ? "Failed" : (live != nil ? stageStatus.shortLabel : reel.status.rawValue))
+                                .font(.headline)
+                                .foregroundColor(accent)
+                                .contentTransition(.opacity)
+
+                            Text(live?.message.isEmpty == false ? live!.message : "\(platformInfo(for: reel.detectedPlatform).name) · \(reel.timeAgo)")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .lineLimit(1)
+                                .contentTransition(.opacity)
+                        }
+
                         Spacer()
-                        
-                        if reel.status == .processing {
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: .brandBlue))
+
+                        if reel.status == .processing || reel.status == .pending {
+                            if let live {
+                                ZStack {
+                                    Circle().stroke(accent.opacity(0.18), lineWidth: 3)
+                                    Circle()
+                                        .trim(from: 0, to: max(live.progress, 0.04))
+                                        .stroke(accent, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                                        .rotationEffect(.degrees(-90))
+                                    Text("\(Int(live.progress * 100))%")
+                                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                                        .monospacedDigit()
+                                        .contentTransition(.numericText())
+                                }
+                                .frame(width: 36, height: 36)
+                            } else {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: accent))
+                            }
                         }
                     }
-                    
+
+                    // Live progress bar while processing
+                    if reel.status == .processing || reel.status == .pending {
+                        GeometryReader { geo in
+                            ZStack(alignment: .leading) {
+                                Capsule().fill(Color.primary.opacity(0.08))
+                                Capsule()
+                                    .fill(LinearGradient(colors: [stageStatus.color, stageStatus.secondaryColor],
+                                                         startPoint: .leading, endPoint: .trailing))
+                                    .frame(width: max(geo.size.width * (live?.progress ?? 0.08), 8))
+                            }
+                        }
+                        .frame(height: 5)
+                        .animation(.spring(response: 0.5, dampingFraction: 0.85), value: live?.progress ?? 0)
+
+                        HStack(spacing: 6) {
+                            ForEach(Array(ProcessingStatus.pipelineStages.enumerated()), id: \.offset) { idx, name in
+                                let reached = idx <= stageStatus.stageIndex
+                                Text(name)
+                                    .font(.system(size: 10, weight: reached ? .semibold : .medium))
+                                    .foregroundColor(reached ? accent : .secondary.opacity(0.7))
+                                if idx < ProcessingStatus.pipelineStages.count - 1 {
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 7, weight: .bold))
+                                        .foregroundColor(.secondary.opacity(0.4))
+                                }
+                            }
+                            Spacer()
+                            if let eta = live?.etaDate, eta > Date().addingTimeInterval(1), eta < Date().addingTimeInterval(15 * 60) {
+                                HStack(spacing: 3) {
+                                    Image(systemName: "clock").font(.system(size: 9, weight: .semibold))
+                                    Text(timerInterval: Date()...eta, countsDown: true, showsHours: false)
+                                        .monospacedDigit()
+                                        .frame(maxWidth: 40, alignment: .trailing)
+                                }
+                                .font(.system(size: 10, weight: .medium, design: .rounded))
+                                .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+
                     Divider()
-                    
+
                     if reel.status != .completed {
                         // Show URL for non-completed reels
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("Instagram URL")
+                            Text("\(platformInfo(for: reel.detectedPlatform).name) link")
                                 .font(.caption)
                                 .fontWeight(.semibold)
-                                .foregroundColor(.gray)
-                            
+                                .foregroundColor(.secondary)
+
                             Text(reel.displayURL)
                                 .font(.footnote)
                                 .foregroundColor(.primary)

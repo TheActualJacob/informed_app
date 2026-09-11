@@ -121,6 +121,12 @@ struct informedApp: App {
                             // submission from being re-started by checkAndStartPendingLiveActivities.
                             Task {
                                 if #available(iOS 16.1, *) {
+                                    // If Live Activities are off on this device, stop the backend
+                                    // from targeting an island that can't render.
+                                    await ReelProcessingActivityManager.shared.syncLiveActivityAvailability()
+                                    // Collapse duplicate islands (push-to-start + local) before
+                                    // anything below inspects or completes them.
+                                    await ReelProcessingActivityManager.shared.dedupeAllActivities()
                                     await dismissAllCompletedLiveActivities()
                                     // Show completed Dynamic Island badges for any fact-checks
                                     // that finished while the app was in the background.
@@ -262,7 +268,7 @@ struct informedApp: App {
         //    with .immediate once the user has actually seen their results.
         let activeProcessingIds = Set(pendingReels.map { $0.id }).union(appGroupPendingIds)
         for activity in Activity<ReelProcessingActivityAttributes>.activities
-        where activity.activityState == .active {
+        where ReelProcessingActivityManager.isLive(activity) {
             let sid = activity.attributes.submissionId
             let activityStatus = activity.content.state.status
             // Skip completed/failed states — these are valid result notifications.

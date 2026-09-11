@@ -28,6 +28,17 @@ extension StatusClaimEntry {
     }
 }
 
+/// A point-in-time view of a running fact-check, published by `SharedReelManager`
+/// while its polling loop is active. Consumed by `ProcessingBanner` and `ReelStatusCard`.
+struct ProcessingProgressSnapshot: Equatable {
+    let submissionId: String
+    let url: String
+    let status: ProcessingStatus
+    let progress: Double
+    let message: String
+    let etaDate: Date
+}
+
 enum FactCheckStatus: String, Codable {
     case pending = "Pending"
     case processing = "Processing"
@@ -229,6 +240,12 @@ class SharedReelManager: ObservableObject {
     /// URL of the share-extension submission currently being processed.
     /// Drives the ProcessingBanner in HomeView when a fact check was started outside the app.
     @Published var activeProcessingURL: String? = nil
+
+    /// Live stage / progress / ETA of the submission currently being polled. Mirrors
+    /// what the Dynamic Island shows so the in-app banner and the My Reels card can
+    /// render the same information on phones that have no island (or while the
+    /// user is inside the app, where the island isn't visible anyway).
+    @Published var activeProcessingProgress: ProcessingProgressSnapshot? = nil
 
     private var currentUserId: String?
     private var lastActivityCheckTime: Date? // For debouncing Live Activity checks
@@ -676,8 +693,10 @@ class SharedReelManager: ObservableObject {
     ///  - Push-to-start activities with no per-activity push token
     @available(iOS 16.1, *)
     func reconcileActiveActivitiesWithBackend() async {
+        // Include `.stale` — an island whose staleDate passed while the app was
+        // suspended is exactly the one most likely to need catching up.
         let activities = Activity<ReelProcessingActivityAttributes>.activities.filter {
-            $0.activityState == .active
+            ReelProcessingActivityManager.isLive($0)
         }
         
         guard !activities.isEmpty else { return }
@@ -711,10 +730,12 @@ class SharedReelManager: ObservableObject {
             //    that the main app never forwarded).
             ReelProcessingActivityManager.shared.flushAppGroupPushToken(submissionId: submissionId)
             
-            // 3. If the activity has no push token, try upgrading it now (foreground).
-            //    This replaces the pushType:nil activity with a pushType:.token one.
-            if activity.pushToken == nil {
-                print("🔄 [Reconcile] Activity \(submissionId.prefix(8)) has no push token — upgrading")
+            // 3. If the activity has had no push token for a while, try upgrading it now
+            //    (foreground). This replaces a pushType:nil activity with a pushType:.token
+            //    one. startActivity applies the age guard and does this at most once.
+            let activityAge = Date().timeIntervalSince(activity.attributes.startTime)
+            if activity.pushToken == nil && activityAge > ReelProcessingActivityManager.tokenlessUpgradeMinAge {
+                print("🔄 [Reconcile] Activity \(submissionId.prefix(8)) has no push token after \(Int(activityAge))s — upgrading")
                 await ReelProcessingActivityManager.shared.startActivity(
                     submissionId: submissionId,
                     reelURL: activity.attributes.reelURL
@@ -730,10 +751,12 @@ class SharedReelManager: ObservableObject {
                 if backendStatus == "completed" {
                     print("✅ [Reconcile] Submission \(submissionId.prefix(8)) already completed on backend — completing Live Activity")
                     ReelProcessingActivityManager.removeFromAppGroupPendingSubmissions(submissionId: submissionId)
+                    activeProcessingProgress = nil
                     await ReelProcessingActivityManager.shared.completeActivity(
                         submissionId: submissionId,
                         title: statusResponse.title ?? "Fact-Check Complete",
-                        verdict: "Tap to view results"
+                        verdict: statusResponse.primaryVerdict,
+                        source: .reconcile
                     )
                     
                     // Eagerly update the SharedReel with full fact-check data
@@ -768,10 +791,12 @@ class SharedReelManager: ObservableObject {
                     let displayMessage = ReelProcessingActivityManager.friendlyErrorMessage(rawMessage)
                     await MainActor.run {
                         updateReelStatus(id: submissionId, status: .failed, errorMessage: displayMessage)
+                        activeProcessingProgress = nil
                     }
                     await ReelProcessingActivityManager.shared.failActivity(
                         submissionId: submissionId,
-                        errorMessage: rawMessage
+                        errorMessage: rawMessage,
+                        source: .reconcile
                     )
                 } else {
                     print("🔄 [Reconcile] Submission \(submissionId.prefix(8)) still \(backendStatus) — ensuring polling is active")
@@ -901,10 +926,9 @@ class SharedReelManager: ObservableObject {
                     let processingStatus = statusResponse.toProcessingStatus()
                     
                     // Update Live Activity with real backend data including status and time estimate.
-                    // Skip this update when the status is "completed" — completeActivity() below
-                    // will set the final state with its own AlertConfiguration.  Calling
-                    // updateProgress here too would trigger a second buzz before completeActivity fires.
-                    if statusResponse.status.lowercased() != "completed" {
+                    // Skip this update when the status is terminal — completeActivity() /
+                    // failActivity() below set the final state (and own the alert decision).
+                    if !processingStatus.isTerminal {
                         await ReelProcessingActivityManager.shared.updateProgress(
                             submissionId: submissionId,
                             status: processingStatus,
@@ -912,8 +936,20 @@ class SharedReelManager: ObservableObject {
                             message: statusResponse.currentStage,
                             estimatedSecondsRemaining: statusResponse.estimatedSecondsRemaining
                         )
+                        // Mirror the same progress into the in-app banner / My Reels card so
+                        // phones without a Dynamic Island still see live stage + ETA.
+                        await MainActor.run {
+                            self.activeProcessingProgress = ProcessingProgressSnapshot(
+                                submissionId: submissionId,
+                                url: submissionURL ?? "",
+                                status: processingStatus,
+                                progress: statusResponse.normalizedProgress,
+                                message: statusResponse.currentStage,
+                                etaDate: Date().addingTimeInterval(TimeInterval(max(statusResponse.estimatedSecondsRemaining, 0)))
+                            )
+                        }
                     }
-                    
+
                     // Check if completed or failed
                     if statusResponse.status.lowercased() == "completed" {
                         print("✅ [ProgressPolling] Submission completed!")
@@ -923,11 +959,17 @@ class SharedReelManager: ObservableObject {
                         if #available(iOS 16.1, *) {
                             ReelProcessingActivityManager.removeFromAppGroupPendingSubmissions(submissionId: submissionId)
                         }
+                        await MainActor.run {
+                            if self.activeProcessingProgress?.submissionId == submissionId {
+                                self.activeProcessingProgress = nil
+                            }
+                        }
                         // Drive the Dynamic Island to its completed state immediately.
                         await ReelProcessingActivityManager.shared.completeActivity(
                             submissionId: submissionId,
                             title: statusResponse.title ?? "Fact-Check Complete",
-                            verdict: "Tap to view results"
+                            verdict: statusResponse.primaryVerdict,
+                            source: .polling
                         )
 
                         // Eagerly update the SharedReel with full fact-check data from the
@@ -1056,6 +1098,9 @@ class SharedReelManager: ObservableObject {
                             if stillPending == 0 { self.activeProcessingURL = nil }
                             self.homeViewModel?.processingLink = nil
                             self.homeViewModel?.processingThumbnailURL = nil
+                            if self.activeProcessingProgress?.submissionId == submissionId {
+                                self.activeProcessingProgress = nil
+                            }
                         }
                         // Prefer the backend's current_stage (now a user-friendly message
                         // set by friendly_error_for_live_activity on the server). Fall back
@@ -1118,6 +1163,9 @@ class SharedReelManager: ObservableObject {
                                     await MainActor.run {
                                         self.updateReelStatus(id: submissionId, status: .failed, errorMessage: userMessage)
                                         if self.activeProcessingURL == submissionURL { self.activeProcessingURL = nil }
+                                        if self.activeProcessingProgress?.submissionId == submissionId {
+                                            self.activeProcessingProgress = nil
+                                        }
                                     }
                                     if #available(iOS 16.1, *) {
                                         ReelProcessingActivityManager.removeFromAppGroupPendingSubmissions(submissionId: submissionId)
@@ -1146,10 +1194,15 @@ class SharedReelManager: ObservableObject {
                     let stillPending = (UserDefaults(suiteName: "group.rob")?
                         .array(forKey: "pending_submissions") as? [[String: Any]])?.count ?? 0
                     if stillPending == 0 { self.activeProcessingURL = nil }
+                    if self.activeProcessingProgress?.submissionId == submissionId {
+                        self.activeProcessingProgress = nil
+                    }
+                    self.updateReelStatus(id: submissionId, status: .failed, errorMessage: "Took too long — please try again")
                 }
                 await ReelProcessingActivityManager.shared.failActivity(
                     submissionId: submissionId,
-                    errorMessage: "Processing timeout"
+                    errorMessage: "Processing timeout",
+                    source: .localTimeout
                 )
             }
         }
@@ -1323,11 +1376,12 @@ class SharedReelManager: ObservableObject {
             if #available(iOS 16.1, *) {
                 Task {
                     let title = factCheckData["title"] as? String ?? "Fact-Check Complete"
-                    let verdict = factCheckData["verdict"] as? String ?? "View Results"
+                    let verdict = factCheckData["verdict"] as? String
                     await ReelProcessingActivityManager.shared.completeActivity(
                         submissionId: id,
                         title: title,
-                        verdict: verdict
+                        verdict: verdict,
+                        source: .appGroupSync
                     )
                 }
             }

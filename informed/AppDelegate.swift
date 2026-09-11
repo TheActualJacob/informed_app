@@ -32,6 +32,11 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             ReelProcessingActivityManager.shared.onActivityPushToken = { token, submissionId in
                 await NotificationManager.shared.sendActivityPushTokenToBackend(token, submissionId: submissionId)
             }
+            // When Live Activities are unavailable, make the backend forget the stale
+            // push-to-start token so its regular-notification fallback kicks in.
+            ReelProcessingActivityManager.shared.onLiveActivitiesUnavailable = {
+                await NotificationManager.shared.clearPushToStartTokenOnBackend()
+            }
             // Inject the background-state check so startActivity can guard against
             // ActivityKit Error 7 without referencing UIApplication.shared directly
             // (which is unavailable in Share/Widget extension targets).
@@ -195,17 +200,34 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             }
         }
         
-        // Handle other notifications
-        Task { @MainActor in
-            NotificationManager.shared.handleNotification(userInfo: userInfo)
-        }
-        
-        // Show notification banner even when app is in foreground (but not for start_processing)
-        if let action = userInfo["action"] as? String, action == "start_processing" {
+        let action = userInfo["action"] as? String
+
+        if action == "start_processing" {
+            Task { @MainActor in NotificationManager.shared.handleNotification(userInfo: userInfo) }
             completionHandler([]) // Silent - Live Activity will show instead
-        } else {
-            completionHandler([.banner, .sound, .badge])
+            return
         }
+
+        // Completion pushes: the polling loop may already have alerted through the
+        // Dynamic Island a moment ago. Present the banner only if this submission has
+        // not been alerted yet — otherwise the user hears two sounds for one result.
+        if action == "fact_check_completed", let submissionId = userInfo["submission_id"] as? String {
+            Task { @MainActor in
+                let alreadyNotified = ReelProcessingActivityManager.shared.hasNotified(submissionId)
+                NotificationManager.shared.handleNotification(userInfo: userInfo)
+                if alreadyNotified {
+                    print("🔕 [APNs] Suppressing duplicate foreground banner for \(submissionId.prefix(8))")
+                    completionHandler([])
+                } else {
+                    completionHandler([.banner, .sound, .badge])
+                }
+            }
+            return
+        }
+
+        // Everything else (stories, legacy fact_check_id pushes): show as normal.
+        Task { @MainActor in NotificationManager.shared.handleNotification(userInfo: userInfo) }
+        completionHandler([.banner, .sound, .badge])
     }
     
     // Called when user taps on notification
@@ -333,21 +355,24 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
                     await SharedReelManager.shared.checkAndStartPendingLiveActivities()
                 }
             } else if let action = userInfo["action"] as? String, action == "fact_check_completed",
-                      let submissionId = userInfo["submission_id"] as? String,
-                      let title = userInfo["title"] as? String,
-                      let verdict = userInfo["verdict"] as? String {
+                      let submissionId = userInfo["submission_id"] as? String {
                 // ── Regular push fallback for Live Activity completion ──
                 // The backend sends this when no per-activity push token was available.
-                // Update the existing Live Activity to the completed state so the
-                // Dynamic Island shows the result even when the app was suspended.
+                // iOS has already displayed the banner for this push, so update the
+                // island silently (source: .remotePush) — never a second alert.
+                let title = (userInfo["title"] as? String) ?? "Fact-Check Complete"
+                let verdict = userInfo["verdict"] as? String
                 print("✅ [APNs] Background completion push for \(submissionId.prefix(8)) — updating Live Activity")
                 if #available(iOS 16.1, *) {
                     await ReelProcessingActivityManager.shared.completeActivity(
                         submissionId: submissionId,
                         title: title,
-                        verdict: verdict
+                        verdict: verdict,
+                        source: .remotePush
                     )
                 }
+                // Pull the finished result into My Reels while we're awake.
+                await SharedReelManager.shared.syncHistoryFromBackend()
                 // On devices without Live Activities (iPad, older iPhones, disabled),
                 // completeActivity already schedules a local notification fallback.
                 // Also flush any pending App Group push tokens — the main app is awake
@@ -394,18 +419,12 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             }
             
             // 2. Monitor all active Live Activities (e.g. ones started by Share Extension
-            //    before the main app launched this session)
+            //    before the main app launched this session). Collapse duplicates first so
+            //    a push-to-start island and a locally-started island for the same
+            //    submission don't both get driven (and alerted) independently.
+            await ReelProcessingActivityManager.shared.dedupeAllActivities()
             for activity in Activity<ReelProcessingActivityAttributes>.activities {
                 let submissionId = activity.attributes.submissionId
-                
-                Task {
-                    for await activityState in activity.activityStateUpdates {
-                        if activityState == .dismissed {
-                            print("🔄 Live Activity dismissed: \(submissionId)")
-                        }
-                    }
-                }
-                
                 // Register this activity's push token with the backend.
                 ReelProcessingActivityManager.shared.observePushToken(
                     for: activity,
@@ -415,6 +434,19 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
                 // covers the case where the main app was launched fresh after the Share
                 // Extension ran and the token was never forwarded.
                 ReelProcessingActivityManager.shared.flushAppGroupPushToken(submissionId: submissionId)
+            }
+
+            // 3. Watch for activities created AFTER launch by push-to-start. Without this
+            //    the per-activity token of a push-started island is never forwarded, so
+            //    the backend can't update it and it sits at "Submitting 10%" until the
+            //    foreground reconcile sweeps it — which was one source of the duplicate
+            //    completion alerts.
+            Task {
+                for await activity in Activity<ReelProcessingActivityAttributes>.activityUpdates {
+                    let submissionId = activity.attributes.submissionId
+                    print("🆕 [ActivityKit] New activity observed for \(submissionId.prefix(8)) (id=\(activity.id.prefix(6)))")
+                    await ReelProcessingActivityManager.shared.dedupeActivities(for: submissionId)
+                }
             }
         }
     }
