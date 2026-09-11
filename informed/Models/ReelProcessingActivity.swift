@@ -213,19 +213,23 @@ enum ProcessingStatus: String, Codable, Hashable {
 
     var isTerminal: Bool { self == .completed || self == .failed }
 
-    // MARK: - Pipeline stepper
+    // MARK: - Pipeline stages
 
-    /// Human labels for the four pipeline steps drawn as a stepper in the
-    /// expanded island / lock-screen banner.
-    static let pipelineStages: [String] = ["Fetch", "Analyze", "Verify", "Done"]
+    /// Labels for the three pipeline stages shown under the segmented stage bar
+    /// (island, lock screen, in-app banner, My Reels card).
+    static let pipelineStages: [String] = ["Fetch", "Analyze", "Verify"]
 
-    /// Index into `pipelineStages` that this status corresponds to.
+    /// Slice of overall progress (0…1) that each stage spans. Matches the
+    /// backend's checkpoints (analyzing = 30 %, fact-checking = 80 % / 92 %).
+    static let stageProgressRanges: [ClosedRange<Double>] = [0.0...0.30, 0.30...0.80, 0.80...1.0]
+
+    /// Index into `pipelineStages` for this status; `pipelineStages.count` once terminal.
     var stageIndex: Int {
         switch self {
         case .submitting, .downloading:  return 0
         case .processing, .analyzing:    return 1
         case .factChecking:              return 2
-        case .completed, .failed:        return 3
+        case .completed, .failed:        return ProcessingStatus.pipelineStages.count
         }
     }
 
@@ -272,6 +276,68 @@ enum VerdictStyle {
         if v.contains("misleading") || v.contains("mixed") || v.contains("context") || v.contains("partial") { return "exclamationmark.triangle.fill" }
         if v.contains("true") || v.contains("correct") || v.contains("accurate") { return "checkmark.circle.fill" }
         return "questionmark.circle.fill"
+    }
+}
+
+// MARK: - Segmented Stage Bar (shared by island, lock screen, and in-app views)
+
+/// Wallet-style progress: one rounded segment per pipeline stage, filled in
+/// order, with plain labels underneath. Static per content update (the island
+/// re-renders on each push); motion comes from the countdown text next to it.
+struct SegmentedStageBar: View {
+    let status: ProcessingStatus
+    let progress: Double
+    let tint: Color
+    var track: Color = Color.primary.opacity(0.12)
+    var height: CGFloat = 5
+    var showLabels: Bool = true
+    var labelColor: Color = .secondary
+    var activeLabelColor: Color = .primary
+    var labelSize: CGFloat = 10
+
+    private func fill(_ idx: Int) -> Double {
+        if status == .completed { return 1 }
+        let range = ProcessingStatus.stageProgressRanges[idx]
+        let span = max(range.upperBound - range.lowerBound, 0.001)
+        let fraction = min(max((progress - range.lowerBound) / span, 0), 1)
+        // The stage we're in always reads as "underway": never empty, never full.
+        if idx == status.stageIndex && !status.isTerminal {
+            return min(max(fraction, 0.14), 0.9)
+        }
+        return fraction
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 3) {
+                ForEach(0..<ProcessingStatus.pipelineStages.count, id: \.self) { idx in
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(track)
+                            Capsule().fill(tint)
+                                .frame(width: max(geo.size.width * fill(idx), fill(idx) > 0 ? height : 0))
+                        }
+                    }
+                    .frame(height: height)
+                }
+            }
+            .animation(.easeOut(duration: 0.5), value: progress)
+            .animation(.easeOut(duration: 0.3), value: status)
+
+            if showLabels {
+                HStack(spacing: 3) {
+                    ForEach(Array(ProcessingStatus.pipelineStages.enumerated()), id: \.offset) { idx, name in
+                        let isActive = idx == status.stageIndex && !status.isTerminal
+                        let isDone = status == .completed || idx < status.stageIndex
+                        Text(name)
+                            .font(.system(size: labelSize, weight: isActive ? .semibold : .regular))
+                            .foregroundColor(isActive ? activeLabelColor : (isDone ? labelColor : labelColor.opacity(0.6)))
+                            .lineLimit(1)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+            }
+        }
     }
 }
 
