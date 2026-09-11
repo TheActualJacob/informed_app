@@ -763,12 +763,15 @@ class ShareViewController: UIViewController {
         
         do {
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
-            let (_, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await URLSession.shared.data(for: request)
             if let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) {
                 print("✅ [ShareExtension] Activity push token registered with backend for \(submissionId.prefix(8))")
                 // Record the ack in the App Group so the main app knows the backend now
                 // owns the completion alert for this submission (and won't alert twice).
-                if #available(iOS 16.1, *) {
+                // Only when the backend explicitly claims ownership — an older backend
+                // sends silent completion pushes, and then the app must alert itself.
+                let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+                if (json?["alert_owner"] as? String) == "backend", #available(iOS 16.1, *) {
                     ReelProcessingActivityManager.markActivityTokenRegistered(submissionId)
                 }
             } else {

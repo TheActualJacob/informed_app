@@ -231,11 +231,16 @@ class NotificationManager: NSObject, ObservableObject {
 
         do {
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
-            let (_, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await URLSession.shared.data(for: request)
             if let httpResponse = response as? HTTPURLResponse,
                (200...299).contains(httpResponse.statusCode) {
-                print("✅ Activity push token registered for \(submissionId.prefix(8))")
-                return true
+                // Only a backend that implements the single-owner alert protocol says
+                // so explicitly. Against an older backend (silent completion pushes)
+                // we must keep alerting locally, so treat that as "not registered".
+                let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+                let backendOwnsAlert = (json?["alert_owner"] as? String) == "backend"
+                print("✅ Activity push token registered for \(submissionId.prefix(8)) (alert owner: \(backendOwnsAlert ? "backend" : "app"))")
+                return backendOwnsAlert
             } else {
                 print("⚠️ Failed to register activity push token for \(submissionId.prefix(8))")
                 return false
