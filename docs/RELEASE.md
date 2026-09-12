@@ -123,6 +123,29 @@ scripts/asc_ads.py report --days 7 --granularity DAILY
 scripts/asc_ads.py raw GET /campaigns/ID         # any endpoint (adds X-AP-Context: orgId=…)
 ```
 
+### Campaign structure (set up 2026-09-12)
+
+One campaign, `informed fact checker` (id `2144655036`, Maximize Conversions,
+target CPA $5, $30/day, US/CA/GB). Max Conversions requires exactly one automated
+Search Match ad group per campaign, so intent is split by ad group:
+
+| Ad group | Match | Purpose |
+|---|---|---|
+| `Automated` (Apple-created) | Search Match | discovery; carries every exact keyword below as an EXACT negative so known queries route to the exact groups |
+| `Exact - Category` | exact | fact-check / misinformation / verification / AI-detection terms |
+| `Exact - Competitor` | exact | Snopes, Ground News, AllSides, NewsGuard, Verifi, … |
+| `Exact - Brand` | exact | informed, informed app, informed fact checker, … |
+| `Broad - Core` | broad | core terms for phrasings the exact list misses; same exact negatives as Automated |
+
+Campaign-level BROAD negatives cut wrong-intent traffic (parody, prank, maker,
+generator, meme, template, quiz, trivia, game, faker). Bids are Apple-managed
+(keywords carry no bid under Max Conversions).
+
+`scripts/asc_ads_structure.py` holds the keyword lists and is idempotent: edit the
+lists, run it for a dry run, add `--apply` to push only what is missing. Weekly
+review: `asc_ads.py searchterms --campaign 2144655036 --days 7` — promote converting
+Search Match / broad queries into `EXACT_CATEGORY`, add junk as negatives.
+
 Auth is OAuth 2 client-credentials: the script signs an ES256 JWT (`sub` = client
 id, `iss` = team id, `kid` = key id, `aud` = `https://appleid.apple.com`, up to
 180 days) and swaps it for a 1-hour bearer token at
