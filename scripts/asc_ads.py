@@ -7,6 +7,8 @@
   scripts/asc_ads.py keywords --campaign ID [--adgroup ID]
   scripts/asc_ads.py report [--days 30] [--granularity DAILY|TOTAL] [--campaign ID]
                                                       # spend / impressions / taps / installs
+  scripts/asc_ads.py keywordreport --campaign ID [--days 30]   # per-keyword performance
+  scripts/asc_ads.py searchterms --campaign ID [--days 30]     # what people actually searched (Search Match + broad)
   scripts/asc_ads.py raw GET /campaigns?limit=5        # any endpoint, prints JSON
 
 Auth is OAuth 2 client-credentials: a JWT signed with the private key whose
@@ -153,6 +155,19 @@ def report(org_id, days, granularity, campaign=None):
     return api("POST", path, org_id, data=json.dumps(body))["data"]["reportingDataResponse"]
 
 
+def keyword_level_report(org_id, campaign, days, kind="keywords"):
+    """kind = 'keywords' (targeting keywords) or 'searchterms' (actual queries)."""
+    end = dt.date.today()
+    start = end - dt.timedelta(days=days - 1)
+    body = {
+        "startTime": start.isoformat(), "endTime": end.isoformat(), "timeZone": "ORTZ",
+        "selector": {"orderBy": [{"field": "impressions", "sortOrder": "DESCENDING"}],
+                     "pagination": {"offset": 0, "limit": 1000}},
+        "returnRowTotals": True, "returnGrandTotals": True, "returnRecordsWithNoMetrics": kind == "keywords",
+    }
+    return api("POST", f"/reports/campaigns/{campaign}/{kind}", org_id, data=json.dumps(body))["data"]["reportingDataResponse"]
+
+
 def fmt_totals(t):
     """One-line summary of a metrics object (row total, grand total or one day)."""
     if not t or "impressions" not in t:
@@ -174,6 +189,8 @@ def main():
     p = sp.add_parser("keywords"); p.add_argument("--org"); p.add_argument("--campaign", required=True); p.add_argument("--adgroup")
     p = sp.add_parser("report"); p.add_argument("--org"); p.add_argument("--days", type=int, default=30)
     p.add_argument("--granularity", default="TOTAL", choices=["TOTAL", "DAILY", "WEEKLY", "MONTHLY"]); p.add_argument("--campaign")
+    for name in ("keywordreport", "searchterms"):
+        p = sp.add_parser(name); p.add_argument("--org"); p.add_argument("--campaign", required=True); p.add_argument("--days", type=int, default=30)
     p = sp.add_parser("raw"); p.add_argument("--org"); p.add_argument("method"); p.add_argument("path"); p.add_argument("--body")
     a = ap.parse_args()
 
@@ -216,6 +233,18 @@ def main():
                 for g in row.get("granularity", []):
                     print(f"  {g['date']}: {fmt_totals(g)}")
         print("GRAND TOTAL:", fmt_totals(r.get("grandTotals", {}).get("total")))
+    elif a.cmd in ("keywordreport", "searchterms"):
+        kind = "keywords" if a.cmd == "keywordreport" else "searchterms"
+        r = keyword_level_report(org, a.campaign, a.days, kind)
+        rows = r.get("row", [])
+        print(f"# {a.cmd} for campaign {a.campaign}, last {a.days} days — {len(rows)} rows")
+        for row in rows:
+            m = row["metadata"]; t = row.get("total") or {}
+            term = m.get("searchTermText") or m.get("keyword")
+            print(f"{term!r:40} [{m.get('adGroupName')}/{m.get('matchType') or m.get('searchTermSource')}] "
+                  f"impr={t.get('impressions')} taps={t.get('taps')} installs={t.get('totalInstalls')} "
+                  f"spend={(t.get('localSpend') or {}).get('amount')} cpt={(t.get('avgCPT') or {}).get('amount')}")
+        print("GRAND TOTAL:", fmt_totals((r.get("grandTotals") or {}).get("total")))
     elif a.cmd == "raw":
         print(json.dumps(api(a.method.upper(), a.path, org, data=a.body), indent=2))
 
