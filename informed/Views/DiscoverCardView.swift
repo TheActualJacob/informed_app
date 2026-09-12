@@ -74,17 +74,7 @@ struct DiscoverCardView: View {
     }
 
     private func presentShareSheet() {
-        guard let url = URL(string: Config.Endpoints.shareBase + reel.id) else { return }
-        let av = UIActivityViewController(activityItems: [url], applicationActivities: nil)
-        guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-              let root  = scene.windows.first?.rootViewController else { return }
-        if let popover = av.popoverPresentationController {
-            popover.sourceView = root.view
-            popover.sourceRect = CGRect(x: root.view.bounds.midX, y: root.view.bounds.midY,
-                                        width: 0, height: 0)
-            popover.permittedArrowDirections = []
-        }
-        root.present(av, animated: true)
+        ShareService.shareFactCheck(reelID: reel.id, fallbackLink: reel.videoLink, title: reel.title)
     }
 }
 

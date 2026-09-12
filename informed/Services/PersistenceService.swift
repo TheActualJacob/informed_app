@@ -10,7 +10,11 @@ import Combine
 
 class PersistenceService {
     static let shared = PersistenceService()
-    
+
+    /// Posted after History, Saved or the Shared counter changes so the Account stats
+    /// can refresh without polling.
+    static let statsDidChange = Notification.Name("PersistenceService.statsDidChange")
+
     private let defaults = UserDefaults.standard
     private let appGroupDefaults = UserDefaults(suiteName: Config.appGroupName)
     
@@ -22,47 +26,64 @@ class PersistenceService {
         static let sharedCount = "shared_count"
         static let lastSyncDate = "last_sync_date"
     }
-    
-    // MARK: - Fact Check History
-    
-    func saveFactCheck(_ item: FactCheckItem) {
-        var history = getFactCheckHistory()
 
-        // Remove any existing entry for the same reel so re-views move to top
-        history.removeAll { existing in
-            if let rid = item.reelID, !rid.isEmpty,
-               let existingRid = existing.reelID, !existingRid.isEmpty {
-                return existingRid == rid
-            }
-            if let link = item.originalLink, !link.isEmpty {
-                return existing.originalLink == link
-            }
-            return false
-        }
+    private static let historyLimit = 100
 
-        history.insert(item, at: 0)
-        
-        // Keep only last 100 items
-        if history.count > 100 {
-            history = Array(history.prefix(100))
+    // MARK: - Per-account scoping
+
+    /// History, Saved and Shared belong to the signed-in account, not the device, so two
+    /// people sharing a phone never see each other's stats. Data written before this
+    /// existed (un-suffixed keys) is moved to the first account that reads it.
+    private func scopedKey(_ base: String) -> String {
+        guard let userId = UserManager.shared.currentUserId, !userId.isEmpty else { return base }
+        let scoped = "\(base)_\(userId)"
+        if defaults.object(forKey: scoped) == nil, let legacy = defaults.object(forKey: base) {
+            defaults.set(legacy, forKey: scoped)
+            defaults.removeObject(forKey: base)
         }
-        
-        // Encode and save
-        if let encoded = try? JSONEncoder().encode(history.map { FactCheckCodable(from: $0) }) {
-            defaults.set(encoded, forKey: Keys.factCheckHistory)
-        }
+        return scoped
     }
-    
-    func getFactCheckHistory() -> [FactCheckItem] {
-        guard let data = defaults.data(forKey: Keys.factCheckHistory),
+
+    private func notifyStatsChanged() {
+        NotificationCenter.default.post(name: PersistenceService.statsDidChange, object: nil)
+    }
+
+    private func encode(_ items: [FactCheckItem]) -> Data? {
+        try? JSONEncoder().encode(items.map { FactCheckCodable(from: $0) })
+    }
+
+    private func decode(_ key: String) -> [FactCheckItem] {
+        guard let data = defaults.data(forKey: key),
               let decoded = try? JSONDecoder().decode([FactCheckCodable].self, from: data) else {
             return []
         }
         return decoded.map { $0.toFactCheckItem() }
     }
     
+    // MARK: - Fact Check History
+
+    /// Records a viewed or completed fact check. Re-viewing an item moves it to the top.
+    func saveFactCheck(_ item: FactCheckItem) {
+        var history = getFactCheckHistory()
+        let key = item.stableKey
+        history.removeAll { $0.stableKey == key }
+        history.insert(item, at: 0)
+        if history.count > PersistenceService.historyLimit {
+            history = Array(history.prefix(PersistenceService.historyLimit))
+        }
+        if let encoded = encode(history) {
+            defaults.set(encoded, forKey: scopedKey(Keys.factCheckHistory))
+            notifyStatsChanged()
+        }
+    }
+    
+    func getFactCheckHistory() -> [FactCheckItem] {
+        decode(scopedKey(Keys.factCheckHistory))
+    }
+    
     func clearHistory() {
-        defaults.removeObject(forKey: Keys.factCheckHistory)
+        defaults.removeObject(forKey: scopedKey(Keys.factCheckHistory))
+        notifyStatsChanged()
     }
     
     // MARK: - Stale Thumbnail Resolution
@@ -139,8 +160,8 @@ class PersistenceService {
             }
             
             if changed {
-                if let encoded = try? JSONEncoder().encode(patched.map { FactCheckCodable(from: $0) }) {
-                    defaults.set(encoded, forKey: Keys.factCheckHistory)
+                if let encoded = encode(patched) {
+                    defaults.set(encoded, forKey: scopedKey(Keys.factCheckHistory))
                     print("✅ Patched stale thumbnails in local history")
                 }
             }
@@ -150,48 +171,59 @@ class PersistenceService {
     }
     
     // MARK: - Saved Fact Checks
-    
+
+    // `FactCheckItem.id` is a fresh UUID on every decode, so Saved lookups go through
+    // `stableKey` (backend id, else source link) — never the in-memory id.
+
     func saveFactCheckForLater(_ item: FactCheckItem) {
         var saved = getSavedFactChecks()
-        if !saved.contains(where: { $0.id == item.id }) {
-            saved.append(item)
-            
-            if let encoded = try? JSONEncoder().encode(saved.map { FactCheckCodable(from: $0) }) {
-                defaults.set(encoded, forKey: Keys.savedFactChecks)
-            }
+        guard !saved.contains(where: { $0.stableKey == item.stableKey }) else { return }
+        saved.insert(item, at: 0)   // newest bookmark first
+        if let encoded = encode(saved) {
+            defaults.set(encoded, forKey: scopedKey(Keys.savedFactChecks))
+            notifyStatsChanged()
         }
     }
     
     func unsaveFactCheck(_ item: FactCheckItem) {
         var saved = getSavedFactChecks()
-        saved.removeAll { $0.id == item.id }
-        
-        if let encoded = try? JSONEncoder().encode(saved.map { FactCheckCodable(from: $0) }) {
-            defaults.set(encoded, forKey: Keys.savedFactChecks)
+        saved.removeAll { $0.stableKey == item.stableKey }
+        if let encoded = encode(saved) {
+            defaults.set(encoded, forKey: scopedKey(Keys.savedFactChecks))
+            notifyStatsChanged()
         }
+    }
+
+    /// Flips the bookmark and returns the new state.
+    @discardableResult
+    func toggleSaved(_ item: FactCheckItem) -> Bool {
+        if isFactCheckSaved(item) {
+            unsaveFactCheck(item)
+            return false
+        }
+        saveFactCheckForLater(item)
+        return true
     }
     
     func getSavedFactChecks() -> [FactCheckItem] {
-        guard let data = defaults.data(forKey: Keys.savedFactChecks),
-              let decoded = try? JSONDecoder().decode([FactCheckCodable].self, from: data) else {
-            return []
-        }
-        return decoded.map { $0.toFactCheckItem() }
+        decode(scopedKey(Keys.savedFactChecks))
     }
     
     func isFactCheckSaved(_ item: FactCheckItem) -> Bool {
-        return getSavedFactChecks().contains { $0.id == item.id }
+        getSavedFactChecks().contains { $0.stableKey == item.stableKey }
     }
     
     // MARK: - Shared Count
     
     func incrementSharedCount() {
         let current = getSharedCount()
-        defaults.set(current + 1, forKey: Keys.sharedCount)
+        defaults.set(current + 1, forKey: scopedKey(Keys.sharedCount))
+        syncToAppGroup()
+        notifyStatsChanged()
     }
     
     func getSharedCount() -> Int {
-        return defaults.integer(forKey: Keys.sharedCount)
+        defaults.integer(forKey: scopedKey(Keys.sharedCount))
     }
     
     // MARK: - Sync Methods

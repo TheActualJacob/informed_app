@@ -34,185 +34,201 @@ struct informedApp: App {
     @State private var showErrorAlert = false
     @State private var alertMessage = ""
     @State private var checkTimer: Timer?
-    @State private var showNotificationPrimer = false
     
     @Environment(\.scenePhase) private var scenePhase
     
     var body: some Scene {
         WindowGroup {
-            if userManager.isAuthenticated {
-                ContentView()
-                    .environmentObject(userManager)
-                    .environmentObject(notificationManager)
-                    .environmentObject(reelManager)
-                    .environmentObject(homeViewModel)
-                    .environmentObject(feedViewModel)
-                    .environmentObject(discoverViewModel)
-                    .environmentObject(subscriptionManager)
-                    .fullScreenCover(isPresented: $userManager.isNewUser) {
-                        WelcomeView {
-                            userManager.markWelcomeSeen()
-                        }
+            Group {
+                if userManager.isAuthenticated {
+                    ContentView()
+                        .environmentObject(userManager)
+                        .environmentObject(notificationManager)
+                        .environmentObject(reelManager)
+                        .environmentObject(homeViewModel)
+                        .environmentObject(feedViewModel)
+                        .environmentObject(discoverViewModel)
                         .environmentObject(subscriptionManager)
-                    }
-                    .fullScreenCover(isPresented: $userManager.needsTutorial) {
-                        HowItWorksCarouselView(onComplete: {
-                            userManager.markTutorialSeen()
-                        }, allowSkip: false)
-                    }
-                    .sheet(isPresented: $showNotificationPrimer) {
-                        NotificationPermissionSheet()
-                    }
-                    .onOpenURL { url in
-                        handleIncomingURL(url)
-                    }
-                    .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
-                        // Universal Link handler: informed-app.com/share/{id}
-                        // Fires when iOS opens the app from a shared link
-                        // instead of loading it in Safari (requires associated-domains entitlement)
-                        guard let url = activity.webpageURL,
-                              url.host == "informed-app.com",
-                              url.pathComponents.count >= 3,
-                              url.pathComponents[1] == "share" else { return }
-                        let uniqueId = url.pathComponents[2]
-                        // Store directly on reelManager so cold-launch links are never dropped.
-                        // If ContentView's onAppear hasn't registered its NotificationCenter
-                        // observer yet (cold launch race), the @Published property's onChange
-                        // on ContentView picks it up once the view mounts.
-                        reelManager.pendingSharedLinkId = uniqueId
-                    }
-                    .onAppear {
-                        // Check for pending shared URLs from Share Extension
-                        checkForPendingSharedURL()
-                        
-                        // Set up observer for notification-triggered checks
-                        NotificationCenter.default.addObserver(
-                            forName: NSNotification.Name("CheckForPendingSharedURLs"),
-                            object: nil,
-                            queue: .main
-                        ) { _ in
-                            print("🔔 Received notification to check for pending shared URLs")
-                            checkForPendingSharedURL()
-                        }
-                        
-                        // Also observe for UNUserNotification being delivered
-                        NotificationCenter.default.addObserver(
-                            forName: NSNotification.Name("StartProcessingNotificationReceived"),
-                            object: nil,
-                            queue: .main
-                        ) { _ in
-                            print("🔔 Received start processing notification!")
-                            checkForPendingSharedURL()
-                        }
-                    }
-                    .onChange(of: scenePhase) { oldPhase, newPhase in
-                        // CRITICAL: This is the fallback mechanism for free Apple Developer accounts
-                        // When extensionContext?.open() fails in the Share Extension (no paid account),
-                        // this observer detects when the user manually returns to the app and
-                        // triggers checkForPendingSharedURL() to start the Dynamic Island.
-                        
-                        // Check for shared URLs whenever app becomes active
-                        if newPhase == .active {
-                            print("🔄 App became active - checking for pending shared URLs")
-                            print("   (This works even with free Apple Developer account)")
-                            
-                            // Dismiss completed Live Activities FIRST, then check for new ones.
-                            // Running these in sequence (not parallel) prevents a completed
-                            // submission from being re-started by checkAndStartPendingLiveActivities.
-                            Task {
-                                if #available(iOS 16.1, *) {
-                                    // If Live Activities are off on this device, stop the backend
-                                    // from targeting an island that can't render.
-                                    await ReelProcessingActivityManager.shared.syncLiveActivityAvailability()
-                                    // Collapse duplicate islands (push-to-start + local) before
-                                    // anything below inspects or completes them.
-                                    await ReelProcessingActivityManager.shared.dedupeAllActivities()
-                                    await dismissAllCompletedLiveActivities()
-                                    // Show completed Dynamic Island badges for any fact-checks
-                                    // that finished while the app was in the background.
-                                    await ReelProcessingActivityManager.shared.drainPendingCompletedActivities()
-                                    // Show error Dynamic Island badges for any fact-checks that
-                                    // failed (limit_reached, timeout, etc.) in background.
-                                    await ReelProcessingActivityManager.shared.drainPendingFailedActivities()
-                                    // CRITICAL: Check any in-progress Live Activities against the
-                                    // backend. If a fact-check completed while the app was
-                                    // suspended (background polling frozen by iOS), this catches
-                                    // it up — driving the Dynamic Island to its completed state.
-                                    // Also flushes any pending activity push tokens.
-                                    await reelManager.reconcileActiveActivitiesWithBackend()
-                                }
-                                // If the Share Extension hit the daily/weekly limit, show the
-                                // upgrade paywall now that the user has foregrounded the app.
-                                if let defaults = UserDefaults(suiteName: "group.rob"),
-                                   let limitType = defaults.string(forKey: "pending_limit_reached_type") {
-                                    defaults.removeObject(forKey: "pending_limit_reached_type")
-                                    defaults.synchronize()
-                                    print("💳 [App] Draining pending_limit_reached_type=\(limitType) — showing paywall")
-                                    await MainActor.run { subscriptionManager.handleLimitReached(type: limitType) }
-                                }
-                                // Only check for new pending submissions after cleanup is done
-                                checkForPendingSharedURL()
-                                startPeriodicChecking()
+                        .fullScreenCover(isPresented: $userManager.isNewUser) {
+                            WelcomeView {
+                                userManager.markWelcomeSeen()
                             }
-                        } else if newPhase == .background {
-                            print("📱 App went to background - continuing checks for Share Extension")
-                            // DON'T stop checking - keep running to detect Share Extension submissions
-                            // The timer will continue running in background for a short time
-                        } else if newPhase == .inactive {
-                            print("📱 App became inactive")
-                            // Don't stop checking during inactive state either
+                            .environmentObject(subscriptionManager)
                         }
-                    }
-                    .task {
-                        // Identify the logged-in user in RevenueCat and sync
-                        // subscription state. identify() awaits the RC logIn so
-                        // syncCustomerInfo() runs on the correct subscriber.
-                        if let userId = userManager.currentUserId {
-                            await subscriptionManager.identify(userId: userId)
-                        } else {
-                            // Eagerly sync even for anonymous sessions so isPro
-                            // is correct before the user gets to any paywalls.
-                            await subscriptionManager.syncCustomerInfo()
+                        .fullScreenCover(isPresented: $userManager.needsTutorial) {
+                            HowItWorksCarouselView(onComplete: {
+                                userManager.markTutorialSeen()
+                            }, allowSkip: false)
                         }
+                        .sheet(isPresented: $notificationManager.showPermissionPrimer) {
+                            NotificationPermissionSheet()
+                        }
+                        // The tutorial / welcome covers are presented first for new users;
+                        // the primer waits for them so it is never dropped behind a cover.
+                        .onChange(of: userManager.needsTutorial) { _, _ in
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { showNotificationPrimerIfNeeded() }
+                        }
+                        .onChange(of: userManager.isNewUser) { _, _ in
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { showNotificationPrimerIfNeeded() }
+                        }
+                        .onAppear {
+                            // Check for pending shared URLs from Share Extension
+                            checkForPendingSharedURL()
+                        
+                            // Set up observer for notification-triggered checks
+                            NotificationCenter.default.addObserver(
+                                forName: NSNotification.Name("CheckForPendingSharedURLs"),
+                                object: nil,
+                                queue: .main
+                            ) { _ in
+                                print("🔔 Received notification to check for pending shared URLs")
+                                checkForPendingSharedURL()
+                            }
+                        
+                            // Also observe for UNUserNotification being delivered
+                            NotificationCenter.default.addObserver(
+                                forName: NSNotification.Name("StartProcessingNotificationReceived"),
+                                object: nil,
+                                queue: .main
+                            ) { _ in
+                                print("🔔 Received start processing notification!")
+                                checkForPendingSharedURL()
+                            }
+                        }
+                        .onChange(of: scenePhase) { oldPhase, newPhase in
+                            // CRITICAL: This is the fallback mechanism for free Apple Developer accounts
+                            // When extensionContext?.open() fails in the Share Extension (no paid account),
+                            // this observer detects when the user manually returns to the app and
+                            // triggers checkForPendingSharedURL() to start the Dynamic Island.
+                        
+                            // Check for shared URLs whenever app becomes active
+                            if newPhase == .active {
+                                print("🔄 App became active - checking for pending shared URLs")
+                                print("   (This works even with free Apple Developer account)")
+                            
+                                // Dismiss completed Live Activities FIRST, then check for new ones.
+                                // Running these in sequence (not parallel) prevents a completed
+                                // submission from being re-started by checkAndStartPendingLiveActivities.
+                                Task {
+                                    if #available(iOS 16.1, *) {
+                                        // If Live Activities are off on this device, stop the backend
+                                        // from targeting an island that can't render.
+                                        await ReelProcessingActivityManager.shared.syncLiveActivityAvailability()
+                                        // Collapse duplicate islands (push-to-start + local) before
+                                        // anything below inspects or completes them.
+                                        await ReelProcessingActivityManager.shared.dedupeAllActivities()
+                                        await dismissAllCompletedLiveActivities()
+                                        // Show completed Dynamic Island badges for any fact-checks
+                                        // that finished while the app was in the background.
+                                        await ReelProcessingActivityManager.shared.drainPendingCompletedActivities()
+                                        // Show error Dynamic Island badges for any fact-checks that
+                                        // failed (limit_reached, timeout, etc.) in background.
+                                        await ReelProcessingActivityManager.shared.drainPendingFailedActivities()
+                                        // CRITICAL: Check any in-progress Live Activities against the
+                                        // backend. If a fact-check completed while the app was
+                                        // suspended (background polling frozen by iOS), this catches
+                                        // it up — driving the Dynamic Island to its completed state.
+                                        // Also flushes any pending activity push tokens.
+                                        await reelManager.reconcileActiveActivitiesWithBackend()
+                                    }
+                                    // If the Share Extension hit the daily/weekly limit, show the
+                                    // upgrade paywall now that the user has foregrounded the app.
+                                    if let defaults = UserDefaults(suiteName: "group.rob"),
+                                       let limitType = defaults.string(forKey: "pending_limit_reached_type") {
+                                        defaults.removeObject(forKey: "pending_limit_reached_type")
+                                        defaults.synchronize()
+                                        print("💳 [App] Draining pending_limit_reached_type=\(limitType) — showing paywall")
+                                        await MainActor.run { subscriptionManager.handleLimitReached(type: limitType) }
+                                    }
+                                    // Only check for new pending submissions after cleanup is done
+                                    checkForPendingSharedURL()
+                                    startPeriodicChecking()
+                                }
+                            } else if newPhase == .background {
+                                print("📱 App went to background - continuing checks for Share Extension")
+                                // DON'T stop checking - keep running to detect Share Extension submissions
+                                // The timer will continue running in background for a short time
+                            } else if newPhase == .inactive {
+                                print("📱 App became inactive")
+                                // Don't stop checking during inactive state either
+                            }
+                        }
+                        .task {
+                            // Identify the logged-in user in RevenueCat and sync
+                            // subscription state. identify() awaits the RC logIn so
+                            // syncCustomerInfo() runs on the correct subscriber.
+                            if let userId = userManager.currentUserId {
+                                await subscriptionManager.identify(userId: userId)
+                            } else {
+                                // Eagerly sync even for anonymous sessions so isPro
+                                // is correct before the user gets to any paywalls.
+                                await subscriptionManager.syncCustomerInfo()
+                            }
 
-                        // Request notification permissions — check actual system status first
-                        // so we don't show the primer to someone who already granted/denied
-                        await notificationManager.checkAuthorizationStatus()
-                        if notificationManager.authorizationStatus == .notDetermined {
-                            showNotificationPrimer = true
+                            // Request notification permissions — check actual system status first
+                            // so we don't show the primer to someone who already granted/denied
+                            await notificationManager.checkAuthorizationStatus()
+                            showNotificationPrimerIfNeeded()
+                            // Background-preload both feeds in parallel so data is warm
+                            // before the user even taps a tab.
+                            if let userId = userManager.currentUserId,
+                               let sessionId = userManager.currentSessionId {
+                                homeViewModel.userId = userId
+                                homeViewModel.sessionId = sessionId
+                                SharedReelManager.shared.homeViewModel = homeViewModel
+                            }
+                            await withTaskGroup(of: Void.self) { group in
+                                group.addTask { await homeViewModel.loadInitialData() }
+                                group.addTask { await feedViewModel.loadFeedIfNeeded() }
+                                group.addTask { await discoverViewModel.loadFeedIfNeeded() }
+                                group.addTask { await subscriptionManager.refreshUsage() }
+                            }
                         }
-                        // Background-preload both feeds in parallel so data is warm
-                        // before the user even taps a tab.
-                        if let userId = userManager.currentUserId,
-                           let sessionId = userManager.currentSessionId {
-                            homeViewModel.userId = userId
-                            homeViewModel.sessionId = sessionId
-                            SharedReelManager.shared.homeViewModel = homeViewModel
+                        .alert("Success", isPresented: $showSuccessAlert) {
+                            Button("OK", role: .cancel) {}
+                        } message: {
+                            Text(alertMessage)
                         }
-                        await withTaskGroup(of: Void.self) { group in
-                            group.addTask { await homeViewModel.loadInitialData() }
-                            group.addTask { await feedViewModel.loadFeedIfNeeded() }
-                            group.addTask { await discoverViewModel.loadFeedIfNeeded() }
-                            group.addTask { await subscriptionManager.refreshUsage() }
+                        .alert("Error", isPresented: $showErrorAlert) {
+                            Button("OK", role: .cancel) {}
+                        } message: {
+                            Text(alertMessage)
                         }
-                    }
-                    .alert("Success", isPresented: $showSuccessAlert) {
-                        Button("OK", role: .cancel) {}
-                    } message: {
-                        Text(alertMessage)
-                    }
-                    .alert("Error", isPresented: $showErrorAlert) {
-                        Button("OK", role: .cancel) {}
-                    } message: {
-                        Text(alertMessage)
-                    }
-            } else {
-                AuthenticationView()
-                    .environmentObject(userManager)
+                } else {
+                    AuthenticationView()
+                        .environmentObject(userManager)
+                }
+            }
+            // Link handling lives on the wrapper, not on ContentView, so a shared
+            // link that arrives while the sign-in screen is up is kept on
+            // reelManager.pendingSharedLinkId and opened once the user is in.
+            .onOpenURL { url in
+                handleIncomingURL(url)
+            }
+            .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
+                // Universal Link: https://informed-app.com/share/{id}
+                guard let url = activity.webpageURL else { return }
+                handleIncomingURL(url)
+            }
+            .task {
+                await claimDeferredShareLinkIfNeeded()
             }
         }
     }
     
+    // MARK: - Notification primer
+
+    /// Shows the notification primer once per launch, and only when nothing else
+    /// (tutorial, welcome/pro screen) is covering the tab view.
+    private func showNotificationPrimerIfNeeded() {
+        guard notificationManager.authorizationStatus == .notDetermined,
+              !notificationManager.showPermissionPrimer,
+              !notificationManager.permissionPrimerOnScreen,
+              !userManager.needsTutorial,
+              !userManager.isNewUser else { return }
+        notificationManager.showPermissionPrimer = true
+    }
+
     // MARK: - Live Activity Dismissal
 
     @available(iOS 16.1, *)
@@ -422,13 +438,32 @@ struct informedApp: App {
             return
         }
         
+        if url.host == "open" {
+            // Share page "Open in Informed" / Smart App Banner:
+            // factcheckapp://open?id=<fact-check uniqueID>
+            if let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+               let uniqueId = components.queryItems?.first(where: { $0.name == "id" })?.value,
+               !uniqueId.isEmpty {
+                print("🔗 Shared fact check via URL scheme: \(uniqueId)")
+                reelManager.pendingSharedLinkId = uniqueId
+            }
+            return
+        }
+
         if url.host == "detail" {
             // Deep-link from Live Activity tap: factcheckapp://detail?id=<submissionId>
             if let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
                let submissionId = components.queryItems?.first(where: { $0.name == "id" })?.value {
-                print("🔗 Live Activity deep-link: opening fact check for submission \(submissionId)")
-                Task { @MainActor in
-                    openFactCheck(submissionId: submissionId)
+                if isOwnSubmission(submissionId) {
+                    print("🔗 Live Activity deep-link: opening fact check for submission \(submissionId)")
+                    Task { @MainActor in
+                        openFactCheck(submissionId: submissionId)
+                    }
+                } else {
+                    // Older share pages used this route for other people's fact checks.
+                    // Anything that isn't one of this user's own submissions is a shared link.
+                    print("🔗 detail?id is not a local submission — treating as shared fact check \(submissionId)")
+                    reelManager.pendingSharedLinkId = submissionId
                 }
             }
             
@@ -436,6 +471,43 @@ struct informedApp: App {
         }
 
         print("⚠️ Unknown URL host: \(url.host ?? "nil")")
+    }
+
+    /// True when `submissionId` belongs to this device: a local My Reels entry, a live
+    /// Dynamic Island activity, or a Share Extension submission still in flight.
+    @MainActor
+    private func isOwnSubmission(_ submissionId: String) -> Bool {
+        if reelManager.reels.contains(where: { $0.id == submissionId }) { return true }
+        if Activity<ReelProcessingActivityAttributes>.activities
+            .contains(where: { $0.attributes.submissionId == submissionId }) {
+            return true
+        }
+        if let defaults = UserDefaults(suiteName: "group.rob"),
+           let subs = defaults.array(forKey: "pending_submissions") as? [[String: Any]],
+           subs.contains(where: { ($0["id"] as? String) == submissionId }) {
+            return true
+        }
+        return false
+    }
+
+    // MARK: - Deferred share link (first launch after an App Store install)
+
+    /// If the user tapped a shared fact check on the web before installing, the backend
+    /// can match this device to that visit and hand back the fact-check id. Runs once per
+    /// install. A link that already arrived via Universal Link / URL scheme wins.
+    private func claimDeferredShareLinkIfNeeded() async {
+        let checkedKey = "deferred_share_link_checked"
+        guard !UserDefaults.standard.bool(forKey: checkedKey) else { return }
+        UserDefaults.standard.set(true, forKey: checkedKey)
+
+        // Give a launch-time Universal Link a moment to land first.
+        try? await Task.sleep(nanoseconds: 400_000_000)
+        guard reelManager.pendingSharedLinkId == nil else { return }
+
+        if let uniqueId = await NetworkService.shared.claimDeferredShareLink() {
+            print("🔗 Deferred share link matched after install: \(uniqueId)")
+            reelManager.pendingSharedLinkId = uniqueId
+        }
     }
 
     // MARK: - Open Fact Check Deep Link

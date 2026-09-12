@@ -18,6 +18,12 @@ class NotificationManager: NSObject, ObservableObject {
     @Published var deviceToken: String?
     @Published var notificationPermissionGranted: Bool = false
     @Published var authorizationStatus: UNAuthorizationStatus = .notDetermined
+    /// Binding for the first-launch notification primer sheet.
+    @Published var showPermissionPrimer: Bool = false
+    /// True only while the primer is really visible (set from its onAppear/onDisappear).
+    /// SwiftUI can drop a sheet requested under a full-screen cover, so other
+    /// presentations (e.g. a shared fact check) gate on this, not on the binding alone.
+    @Published var permissionPrimerOnScreen: Bool = false
     
     private let deviceTokenKey = "stored_device_token"
     private let pendingPushToStartTokenKey = "pending_push_to_start_token"

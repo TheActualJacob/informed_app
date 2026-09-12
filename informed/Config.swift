@@ -77,6 +77,9 @@ struct Config {
         // Append "/<uniqueID>" to build the full URL
         static let factCheckById = Config.endpoint("/api/fact-check")
 
+        // First-launch check: did this device tap a shared link before installing?
+        static let deferredLinkClaim = Config.endpoint("/api/deferred-link/claim")
+
         // Account management
         static let deleteAccount = Config.endpoint("/api/delete-account")
         static let reportContent = Config.endpoint("/api/report-content")

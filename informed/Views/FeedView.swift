@@ -733,20 +733,7 @@ struct PublicReelDetailView: View {
                             .foregroundColor(.secondary)
                     }
                     Button(action: {
-                        HapticManager.lightImpact()
-                        let shareURL = URL(string: Config.Endpoints.shareBase + reel.id)
-                            ?? URL(string: reel.videoLink)
-                        let items: [Any] = shareURL != nil ? [shareURL!] : [reel.title]
-                        let activityVC = UIActivityViewController(activityItems: items, applicationActivities: nil)
-                        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-                           let rootVC = windowScene.windows.first?.rootViewController {
-                            if let popover = activityVC.popoverPresentationController {
-                                popover.sourceView = rootVC.view
-                                popover.sourceRect = CGRect(x: rootVC.view.bounds.midX, y: rootVC.view.bounds.midY, width: 0, height: 0)
-                                popover.permittedArrowDirections = []
-                            }
-                            rootVC.present(activityVC, animated: true)
-                        }
+                        ShareService.shareFactCheck(reelID: reel.id, fallbackLink: reel.videoLink, title: reel.title)
                     }) {
                         Image(systemName: "square.and.arrow.up")
                             .font(.system(size: 15, weight: .semibold))

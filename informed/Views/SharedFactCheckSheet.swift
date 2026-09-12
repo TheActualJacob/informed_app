@@ -51,15 +51,8 @@ struct SharedFactCheckSheet: View {
 
     private func loadFactCheck() async {
         // Fast path: check the user's own synced reels first (avoids network round-trip)
-        if let reel = reelManager.reels.first(where: { $0.id == uniqueId && $0.factCheckData != nil }),
-           let data = reel.factCheckData {
-            let item = data.toFactCheckItem(originalLink: reel.url)
-            PersistenceService.shared.saveFactCheck(item)
-            await MainActor.run {
-                withAnimation(.easeInOut(duration: 0.3)) {
-                    factCheckItem = item
-                }
-            }
+        if let item = ownReelItem() {
+            show(item)
             return
         }
 
@@ -79,16 +72,43 @@ struct SharedFactCheckSheet: View {
                 analyzedDurationSeconds: userReel.analyzedDurationSeconds
             )
             let item = storedData.toFactCheckItem(originalLink: userReel.link)
-            PersistenceService.shared.saveFactCheck(item)
-            await MainActor.run {
-                withAnimation(.easeInOut(duration: 0.3)) {
-                    factCheckItem = item
-                }
-            }
-        } else {
-            await MainActor.run {
-                withAnimation { loadFailed = true }
-            }
+            show(item)
+            return
+        }
+
+        // Last resort: older share pages handed the app a submission id rather than the
+        // backend uniqueID. Refresh My Reels once and look again before giving up.
+        await reelManager.syncHistoryFromBackend()
+        if let item = ownReelItem() {
+            show(item)
+            return
+        }
+
+        withAnimation { loadFailed = true }
+    }
+
+    /// Matches `uniqueId` against the user's own completed reels by id or backend reel id.
+    private func ownReelItem() -> FactCheckItem? {
+        guard let reel = reelManager.reels.first(where: {
+            $0.factCheckData != nil && ($0.id == uniqueId || $0.factCheckData?.reelID == uniqueId)
+        }), let data = reel.factCheckData else { return nil }
+        return data.toFactCheckItem(originalLink: reel.url)
+    }
+
+    /// Reveals the fact check (FactDetailView records it in History on appear) and logs
+    /// a `view` interaction so share → open conversions are visible on the backend.
+    private func show(_ item: FactCheckItem) {
+        withAnimation(.easeInOut(duration: 0.3)) {
+            factCheckItem = item
+        }
+        let reelID = item.reelID ?? uniqueId
+        guard let userId = UserManager.shared.currentUserId,
+              let sessionId = UserManager.shared.currentSessionId else { return }
+        Task {
+            try? await NetworkService.shared.trackInteraction(
+                userId: userId, sessionId: sessionId,
+                factCheckId: reelID, interactionType: "view"
+            )
         }
     }
 

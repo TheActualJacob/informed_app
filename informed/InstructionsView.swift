@@ -99,6 +99,15 @@ struct NotificationPermissionSheet: View {
     @State private var isRequesting = false
 
     var body: some View {
+        content
+            .onAppear { notificationManager.permissionPrimerOnScreen = true }
+            .onDisappear {
+                notificationManager.permissionPrimerOnScreen = false
+                notificationManager.showPermissionPrimer = false
+            }
+    }
+
+    private var content: some View {
         ZStack {
             Color(red: 0.04, green: 0.06, blue: 0.12)
                 .ignoresSafeArea()

@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import UIKit
 
 // MARK: - Network Errors
 
@@ -467,6 +468,52 @@ class NetworkService {
             throw netErr
         } catch {
             throw NetworkError.unknown(error)
+        }
+    }
+
+    // MARK: - Deferred share link
+
+    /// Asks the backend whether this device opened a shared fact check on the web before
+    /// installing the app. The backend matches on hashed IP, iOS version, screen size,
+    /// language and timezone — the same signals the share page recorded. Returns the
+    /// fact-check uniqueID on a match, nil otherwise. Never throws: a miss is normal.
+    func claimDeferredShareLink() async -> String? {
+        guard let url = URL(string: Config.Endpoints.deferredLinkClaim) else { return nil }
+
+        var body: [String: Any] = [
+            "os_version": UIDevice.current.systemVersion,
+            "language":   Locale.preferredLanguages.first ?? "",
+            "timezone":   TimeZone.current.identifier,
+            "device_id":  DeviceManager.deviceId
+        ]
+        // Screen size in points, orientation-independent — the same numbers Safari
+        // reports as screen.width/height on the share page.
+        if let screen = (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.screen {
+            let bounds = screen.bounds.size
+            let shortSide = Int(min(bounds.width, bounds.height).rounded())
+            let longSide  = Int(max(bounds.width, bounds.height).rounded())
+            body["screen"] = "\(shortSide)x\(longSide)"
+            body["scale"]  = Double(screen.scale)
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 10
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
+                  let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  json["matched"] as? Bool == true,
+                  let uniqueId = json["uniqueID"] as? String, !uniqueId.isEmpty else {
+                return nil
+            }
+            return uniqueId
+        } catch {
+            print("⚠️ [DeferredLink] claim failed: \(error)")
+            return nil
         }
     }
 
