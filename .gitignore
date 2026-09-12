@@ -2,3 +2,6 @@
 # App Store Connect private keys — never commit
 *.p8
 AuthKey_*
+__pycache__/
+*.pyc
+.venv/
