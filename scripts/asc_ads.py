@@ -188,10 +188,13 @@ def main():
             print(json.dumps({"id": c["id"], "name": c["name"], "status": c["status"], "serving": c.get("servingStatus"),
                               "display": c.get("displayStatus"), "dailyBudget": c.get("dailyBudgetAmount"),
                               "budget": c.get("budgetAmount"), "countries": c.get("countriesOrRegions"),
+                              "bidding": c.get("biddingStrategy"), "targetCpa": c.get("targetCpa"),
                               "adamId": c.get("adamId"), "type": c.get("adChannelType")}))
     elif a.cmd == "adgroups":
         for g in paged(f"/campaigns/{a.campaign}/adgroups", org):
             print(json.dumps({"id": g["id"], "name": g["name"], "status": g["status"], "serving": g.get("servingStatus"),
+                              "bidding": g.get("biddingStrategy"),
+                              # defaultBid only applies to manual bidding; it reads 0 under MAX_CONVERSIONS
                               "defaultBid": g.get("defaultBidAmount"), "cpaGoal": g.get("cpaGoal"),
                               "automatedKeywords": g.get("automatedKeywordsOptIn")}))
     elif a.cmd == "keywords":
