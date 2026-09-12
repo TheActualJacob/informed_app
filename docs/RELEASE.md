@@ -99,6 +99,38 @@ Rules learned the hard way:
   price for every other territory (174 of them) on the same start date.
 * History: $4.99 / $49.99 originally; $8.99 / $89.99 scheduled from 2026-09-13.
 
+## Apple Ads (Search Ads) campaigns
+
+Apple Ads is a separate product with its own API and credentials; the App Store
+Connect key does **not** work for it. The Apple Ads account is
+`jacobrryan1@gmail.com` (org "jacobs account", org id `24089240`, USD,
+America/New_York).
+
+| What | Value |
+|---|---|
+| Client ID / Team ID | `SEARCHADS.fea65518-9e3c-416c-b38e-26ce191ba620` |
+| Key ID | `5fad5c0b-ccbf-46d4-9bac-3be549c62e43` |
+| Private key | `~/Documents/Personal/apple-ads/private-key.pem` (EC P-256; its public half is uploaded in Apple Ads → Account Settings → API). **Never commit it.** |
+| Credentials file | `~/Documents/Personal/apple-ads/credentials.json` (the three ids + key path; read by `scripts/asc_ads.py`) |
+
+```bash
+scripts/asc_ads.py orgs                          # sanity check: auth + org id
+scripts/asc_ads.py campaigns                     # status, budget, countries
+scripts/asc_ads.py adgroups --campaign ID
+scripts/asc_ads.py keywords --campaign ID
+scripts/asc_ads.py report --days 30              # spend / impressions / taps / installs per campaign
+scripts/asc_ads.py report --days 7 --granularity DAILY
+scripts/asc_ads.py raw GET /campaigns/ID         # any endpoint (adds X-AP-Context: orgId=…)
+```
+
+Auth is OAuth 2 client-credentials: the script signs an ES256 JWT (`sub` = client
+id, `iss` = team id, `kid` = key id, `aud` = `https://appleid.apple.com`, up to
+180 days) and swaps it for a 1-hour bearer token at
+`https://appleid.apple.com/auth/oauth2/token` (`scope=searchadsorg`), cached in
+`~/Documents/Personal/apple-ads/.access-token.json`. API base
+`https://api.searchads.apple.com/api/v5`. Report requests omit `granularity` for
+per-row totals; daily rows with no metrics come back as `{"date": …}` only.
+
 ## Other ASC operations via the API
 
 `scripts/asc_testflight.py status` lists recent builds (processing state,
