@@ -25,7 +25,12 @@ KEY_PATH="${ASC_KEY_PATH:-$HOME/Documents/Personal/AuthKey_${KEY_ID}.p8}"
 
 VERSION=$(grep -m1 'MARKETING_VERSION = ' informed.xcodeproj/project.pbxproj | sed -E 's/.*= ([0-9.]+);/\1/')
 OUT="${RELEASE_OUT:-$HOME/Library/Developer/Xcode/Archives/informed-cli}"
-mkdir -p "$OUT"
+# DerivedData must live OUTSIDE ~/Library/Developer/Xcode/Archives: at the end of an
+# archive, xcodebuild recursively scans that whole folder for .xcarchive bundles and
+# follows symlinks, and the RevenueCat SwiftPM checkout contains a symlink cycle —
+# with DerivedData inside Archives the 1.1.6 archive spun at 100% CPU forever.
+DERIVED="${RELEASE_DERIVED_DATA:-$HOME/Library/Developer/Xcode/DerivedData/informed-cli}"
+mkdir -p "$OUT" "$DERIVED"
 ARCHIVE="$OUT/informed-$VERSION.xcarchive"
 echo "### version $VERSION → $ARCHIVE"
 
@@ -33,7 +38,7 @@ if [ $SKIP_ARCHIVE -eq 0 ]; then
   rm -rf "$ARCHIVE"
   xcodebuild -project informed.xcodeproj -scheme informed -configuration Release \
     -destination 'generic/platform=iOS' -archivePath "$ARCHIVE" \
-    -derivedDataPath "$OUT/DerivedData" -allowProvisioningUpdates archive > "$OUT/archive-$VERSION.log" 2>&1 \
+    -derivedDataPath "$DERIVED" -allowProvisioningUpdates archive > "$OUT/archive-$VERSION.log" 2>&1 \
     || { echo "ARCHIVE FAILED — see $OUT/archive-$VERSION.log"; grep -E "error:" "$OUT/archive-$VERSION.log" | sort -u | head; exit 1; }
   echo "archive ok"
   plutil -p "$ARCHIVE/Products/Applications/informed.app/Info.plist" | grep -E 'CFBundleShortVersionString|CFBundleVersion"'
