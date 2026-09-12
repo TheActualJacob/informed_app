@@ -181,7 +181,7 @@ struct DailyStoryPlayerView: View {
             Spacer()
 
             // Share — links directly to the Informed App Store page
-            let appStoreURL = URL(string: "https://apps.apple.com/app/informed/id6738921897")!
+            let appStoreURL = URL(string: "https://apps.apple.com/us/app/informed-ai-fact-checker/id6759923252")!
             ShareLink(item: appStoreURL, message: Text("Check out this briefing on Informed: \(story.headline)")) {
                 Image(systemName: "square.and.arrow.up")
                     .font(.system(size: 14, weight: .semibold))

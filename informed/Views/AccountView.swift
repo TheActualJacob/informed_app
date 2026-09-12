@@ -272,6 +272,12 @@ struct AccountView: View {
 
             Divider().padding(.leading, 60)
 
+            NavigationLink(destination: SavedView()) {
+                MenuRow(icon: "bookmark.fill", title: "Saved", color: .brandBlue)
+            }
+
+            Divider().padding(.leading, 60)
+
             NavigationLink(destination: SubscriptionView().environmentObject(subscriptionManager)) {
                 MenuRow(
                     icon: subscriptionManager.isPro ? "star.circle.fill" : "star.circle",

@@ -7,9 +7,12 @@ struct ContentView: View {
     @EnvironmentObject var userManager: UserManager
     @EnvironmentObject var reelManager: SharedReelManager
     @EnvironmentObject var subscriptionManager: SubscriptionManager
+    @EnvironmentObject var notificationManager: NotificationManager
     @State private var selectedTab: Int = 0
     @State private var sharedLinkUniqueId: String = ""
     @State private var showSharedLinkSheet: Bool = false
+    @State private var sharedLinkSheetOnScreen: Bool = false
+    @State private var sharedLinkPresentAttempts: Int = 0
     @State private var pendingStoryId: String? = nil
 
     init() {
@@ -63,18 +66,35 @@ struct ContentView: View {
         .sheet(isPresented: $showSharedLinkSheet) {
             SharedFactCheckSheet(uniqueId: sharedLinkUniqueId)
                 .environmentObject(reelManager)
+                .onAppear { sharedLinkSheetOnScreen = true }
+                .onDisappear { sharedLinkSheetOnScreen = false }
         }
-        // Handles universal links set directly on reelManager — works for both
-        // cold launches (before onAppear registers the NotificationCenter observer)
-        // and foreground launches.
-        .onChange(of: reelManager.pendingSharedLinkId) { _, uniqueId in
-            guard let uniqueId else { return }
-            reelManager.pendingSharedLinkId = nil
-            sharedLinkUniqueId = uniqueId
-            // Delay sheet slightly to avoid racing with any ongoing view transitions
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                showSharedLinkSheet = true
-            }
+        // Shared fact-check links (Universal Link, factcheckapp://open, or a deferred
+        // match after install) queue on reelManager.pendingSharedLinkId and are presented
+        // here once nothing else covers the screen — the tutorial, the welcome/pro
+        // screen, the notification primer or the paywall. SwiftUI silently drops a sheet
+        // requested while another presentation is up, so every gate is re-checked.
+        .onChange(of: reelManager.pendingSharedLinkId) { _, _ in
+            presentPendingSharedLinkIfReady()
+        }
+        .onChange(of: userManager.needsTutorial) { _, _ in
+            presentPendingSharedLinkIfReady(delay: 0.6)
+        }
+        .onChange(of: userManager.isNewUser) { _, _ in
+            presentPendingSharedLinkIfReady(delay: 0.6)
+        }
+        .onChange(of: notificationManager.showPermissionPrimer) { _, _ in
+            presentPendingSharedLinkIfReady(delay: 0.6)
+        }
+        .onChange(of: notificationManager.permissionPrimerOnScreen) { _, _ in
+            presentPendingSharedLinkIfReady(delay: 0.6)
+        }
+        .onChange(of: subscriptionManager.showPaywall) { _, _ in
+            presentPendingSharedLinkIfReady(delay: 0.6)
+        }
+        .onChange(of: showSharedLinkSheet) { _, showing in
+            // A second link may have queued while the sheet was open — show it next.
+            if !showing { presentPendingSharedLinkIfReady(delay: 0.6) }
         }
         .onChange(of: selectedTab) { oldValue, newValue in
             if newValue == 2 {
@@ -85,17 +105,10 @@ struct ContentView: View {
             }
         }
         .onAppear {
-            // Drain any universal link that arrived before this view was mounted.
-            // onChange only fires on changes AFTER the observer subscribes, so cold-
-            // launch links set on reelManager before ContentView was in the hierarchy
-            // are consumed here instead.
-            if let uniqueId = reelManager.pendingSharedLinkId {
-                reelManager.pendingSharedLinkId = nil
-                sharedLinkUniqueId = uniqueId
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    showSharedLinkSheet = true
-                }
-            }
+            // Drain any shared link that arrived before this view was mounted (cold
+            // launch, or while the sign-in screen was showing). onChange only fires for
+            // changes made after the observer subscribes.
+            presentPendingSharedLinkIfReady(delay: 0.3)
 
             // Navigate to My Reels (from notifications / Live Activity taps)
             NotificationCenter.default.addObserver(
@@ -137,6 +150,49 @@ struct ContentView: View {
                 DispatchQueue.main.async {
                     selectedTab = 1
                     pendingStoryId = storyId
+                }
+            }
+        }
+    }
+
+    // MARK: - Shared link presentation
+
+    /// Nothing else may be presented over the tab view when the shared-link sheet opens.
+    private var canPresentSharedLink: Bool {
+        !userManager.needsTutorial
+            && !userManager.isNewUser
+            && !notificationManager.showPermissionPrimer
+            && !notificationManager.permissionPrimerOnScreen
+            && !subscriptionManager.showPaywall
+            && !showSharedLinkSheet
+    }
+
+    /// Consumes `reelManager.pendingSharedLinkId` and shows the sheet, but only once every
+    /// gate is clear. The delay lets a dismissing cover/sheet finish animating first; the
+    /// gates are re-checked after it so a cover that opened meanwhile keeps the link queued.
+    /// If SwiftUI drops the sheet anyway (another presentation won the race), the link is
+    /// re-queued and retried a few times instead of being lost.
+    private func presentPendingSharedLinkIfReady(delay: TimeInterval = 0.15) {
+        guard reelManager.pendingSharedLinkId != nil, canPresentSharedLink else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            guard let uniqueId = reelManager.pendingSharedLinkId, canPresentSharedLink else { return }
+            reelManager.pendingSharedLinkId = nil
+            sharedLinkUniqueId = uniqueId
+            sharedLinkPresentAttempts += 1
+            showSharedLinkSheet = true
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                guard showSharedLinkSheet, !sharedLinkSheetOnScreen else {
+                    sharedLinkPresentAttempts = 0
+                    return
+                }
+                // Requested but never appeared. Reset the binding and try again later.
+                showSharedLinkSheet = false
+                if sharedLinkPresentAttempts < 3 {
+                    reelManager.pendingSharedLinkId = uniqueId
+                } else {
+                    print("⚠️ Gave up presenting shared fact check \(uniqueId) after repeated drops")
+                    sharedLinkPresentAttempts = 0
                 }
             }
         }

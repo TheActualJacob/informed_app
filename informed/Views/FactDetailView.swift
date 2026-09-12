@@ -13,6 +13,7 @@ struct FactDetailView: View {
     let item: FactCheckItem
     @Environment(\.presentationMode) var presentationMode
     @State private var showComments = false
+    @State private var isSaved = false
 
     private var hasRealThumbnail: Bool {
         guard let url = item.thumbnailURL else { return false }
@@ -149,32 +150,23 @@ struct FactDetailView: View {
         .toolbar {
             ToolbarItem(placement: .principal) { Text("") }
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button(action: {
-                    HapticManager.lightImpact()
-                    let shareURL: URL? = {
-                        if let rid = item.reelID {
-                            return URL(string: Config.Endpoints.shareBase + rid)
-                        }
-                        return item.originalLink.flatMap { URL(string: $0) }
-                    }()
-                    let items: [Any] = shareURL != nil ? [shareURL!] : [item.title]
-                    let activityVC = UIActivityViewController(activityItems: items, applicationActivities: nil)
-                    if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-                       let rootVC = windowScene.windows.first?.rootViewController {
-                        if let popover = activityVC.popoverPresentationController {
-                            popover.sourceView = rootVC.view
-                            popover.sourceRect = CGRect(x: rootVC.view.bounds.midX, y: rootVC.view.bounds.midY, width: 0, height: 0)
-                            popover.permittedArrowDirections = []
-                        }
-                        rootVC.present(activityVC, animated: true)
+                HStack(spacing: 10) {
+                    Button {
+                        HapticManager.lightImpact()
+                        isSaved = PersistenceService.shared.toggleSaved(item)
+                    } label: {
+                        toolbarIcon(isSaved ? "bookmark.fill" : "bookmark")
                     }
-                }) {
-                    Image(systemName: "square.and.arrow.up")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(.white)
-                        .frame(width: 34, height: 34)
-                        .background(.ultraThinMaterial)
-                        .clipShape(Circle())
+                    .accessibilityLabel(isSaved ? "Remove from Saved" : "Save")
+
+                    Button {
+                        ShareService.shareFactCheck(reelID: item.reelID,
+                                                    fallbackLink: item.originalLink,
+                                                    title: item.title)
+                    } label: {
+                        toolbarIcon("square.and.arrow.up")
+                    }
+                    .accessibilityLabel("Share")
                 }
             }
         }
@@ -192,6 +184,11 @@ struct FactDetailView: View {
                 }
         )
         .onAppear {
+            // Every fact check the user opens goes into History (own results, shared
+            // links, Discover items alike); the bookmark reflects the Saved list.
+            PersistenceService.shared.saveFactCheck(item)
+            isSaved = PersistenceService.shared.isFactCheckSaved(item)
+
             // Dismiss any completed Live Activities now that the user is
             // actually viewing their result. This is the only correct place
             // to dismiss — earlier hooks (tab switch, My Reels onAppear) all
@@ -209,6 +206,17 @@ struct FactDetailView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Toolbar
+
+    private func toolbarIcon(_ systemName: String) -> some View {
+        Image(systemName: systemName)
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundColor(.white)
+            .frame(width: 34, height: 34)
+            .background(.ultraThinMaterial)
+            .clipShape(Circle())
     }
 
     // MARK: - Truncation Notice

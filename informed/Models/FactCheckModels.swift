@@ -112,6 +112,13 @@ struct FactCheck: Codable {
 struct FactCheckItem: Identifiable, Equatable {
     static func == (lhs: FactCheckItem, rhs: FactCheckItem) -> Bool { lhs.id == rhs.id }
     let id = UUID()
+    /// Identity that survives persistence: `id` is regenerated on every decode, so
+    /// History/Saved de-duplication keys on the backend id, then the source link.
+    var stableKey: String {
+        if let rid = reelID, !rid.isEmpty { return "id:" + rid }
+        if let link = originalLink, !link.isEmpty { return "link:" + link }
+        return "title:" + title
+    }
     /// The backend uniqueID for this fact check — used to build the shareable web preview URL.
     let reelID: String?
     let sourceName: String

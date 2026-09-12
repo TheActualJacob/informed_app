@@ -1392,6 +1392,12 @@ class SharedReelManager: ObservableObject {
                 errorMessage: nil,
                 factCheckData: storedData
             )
+
+            // A fact check run from the Share Extension belongs in History exactly like
+            // one started inside the app (HomeViewModel does the same on completion).
+            if let storedData {
+                PersistenceService.shared.saveFactCheck(storedData.toFactCheckItem(originalLink: url))
+            }
             
             if let existingIndex = reels.firstIndex(where: { $0.id == id }) {
                 reels[existingIndex] = sharedReel
