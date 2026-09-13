@@ -23,7 +23,6 @@ class ShareViewController: UIViewController {
         view.backgroundColor = .clear
         
         // Create SwiftUI view
-        let isProUser = UserDefaults(suiteName: "group.rob")?.bool(forKey: "is_pro_user") ?? false
         let shareView = ShareView(
             onShare: { [weak self] in
                 self?.handleShare()
@@ -31,7 +30,7 @@ class ShareViewController: UIViewController {
             onCancel: { [weak self] in
                 self?.handleCancel()
             },
-            currentTier: isProUser ? "pro" : "free"
+            currentTier: Self.storedTier()
         )
         
         // Embed SwiftUI view
@@ -45,17 +44,34 @@ class ShareViewController: UIViewController {
         hostingController = hosting
     }
     
+    /// "free" | "trial" | "pro", written to the App Group by the main app's
+    /// SubscriptionManager. Older app builds only wrote the is_pro_user flag.
+    static func storedTier() -> String {
+        let defaults = UserDefaults(suiteName: "group.rob")
+        if let tier = defaults?.string(forKey: "subscription_tier") { return tier }
+        return (defaults?.bool(forKey: "is_pro_user") ?? false) ? "pro" : "free"
+    }
+
+    /// Short Dynamic Island failure text for a 429 `type`.
+    static func limitMessage(_ type: String) -> String {
+        switch type {
+        case "daily":  return "Daily limit reached"
+        case "trial":  return "Trial checks used up"
+        case "weekly": return "Weekly limit reached"
+        default:       return "Free trial required"
+        }
+    }
+
     private func handleShare() {
         print("📤 Share Extension: User tapped Share")
         
         // Show processing state
         if let hosting = hostingController {
-            let isProUser = UserDefaults(suiteName: "group.rob")?.bool(forKey: "is_pro_user") ?? false
             let processingView = ShareView(
                 onShare: {},
                 onCancel: {},
                 isProcessing: true,
-                currentTier: isProUser ? "pro" : "free"
+                currentTier: Self.storedTier()
             )
             hosting.rootView = processingView
         }
@@ -133,22 +149,30 @@ class ShareViewController: UIViewController {
                 return
             }
 
-            let dailyUsed  = json["daily_used"]  as? Int ?? 0
-            let dailyLimit = json["daily_limit"] as? Int ?? Int.max
-            let weeklyUsed = json["weekly_used"] as? Int ?? 0
-            let weeklyLimit = json["weekly_limit"] as? Int  // nil for pro
             let tier = json["tier"] as? String ?? "free"
+            sharedDefaults.set(tier, forKey: "subscription_tier")
+            let limitReached: Bool
+            let limitType: String
+            if let reached = json["limit_reached"] as? Bool {
+                // Current backend: it says which window governs the tier
+                // ("none" = no allowance without a trial, "trial", "daily").
+                limitReached = reached
+                limitType = json["limit_type"] as? String ?? (tier == "pro" ? "daily" : "none")
+                print("📊 [ShareExt] Usage: \(json["used"] ?? 0)/\(json["limit"] ?? "∞") (\(limitType)), tier=\(tier)")
+            } else {
+                // Older backend: derive it from the daily / weekly pair.
+                let dailyUsed   = json["daily_used"]   as? Int ?? 0
+                let dailyLimit  = json["daily_limit"]  as? Int ?? Int.max
+                let weeklyUsed  = json["weekly_used"]  as? Int ?? 0
+                let weeklyLimit = json["weekly_limit"] as? Int  // nil for pro
+                let dailyExceeded  = dailyUsed >= dailyLimit
+                let weeklyExceeded = weeklyLimit.map { weeklyUsed >= $0 } ?? false
+                limitReached = dailyExceeded || weeklyExceeded
+                limitType = dailyExceeded ? "daily" : "weekly"
+                print("📊 [ShareExt] Usage: daily \(dailyUsed)/\(dailyLimit), weekly \(weeklyUsed)/\(weeklyLimit ?? -1), tier=\(tier)")
+            }
 
-            print("📊 [ShareExt] Usage: daily \(dailyUsed)/\(dailyLimit), weekly \(weeklyUsed)/\(weeklyLimit ?? -1), tier=\(tier)")
-
-            let dailyExceeded = dailyUsed >= dailyLimit
-            let weeklyExceeded: Bool = {
-                guard let wl = weeklyLimit else { return false }
-                return weeklyUsed >= wl
-            }()
-
-            if dailyExceeded || weeklyExceeded {
-                let limitType = dailyExceeded ? "daily" : "weekly"
+            if limitReached {
                 print("🚫 [ShareExt] Limit reached (\(limitType)) — showing notification in share sheet")
                 // Signal main app to show paywall on next foreground
                 sharedDefaults.set(limitType, forKey: "pending_limit_reached_type")
@@ -427,11 +451,11 @@ class ShareViewController: UIViewController {
                         let errorType = json["error_type"] as? String ?? ""
                         
                         if errorKey == "limit_reached" {
-                            let limitType = json["type"] as? String ?? "weekly"
+                            let limitType = json["type"] as? String ?? "none"
                             print("⚠️ [ShareExtension] limit_reached (\(limitType)) — failing island for \(submissionId.prefix(8))")
                             if #available(iOS 16.1, *) {
                                 self.failLiveActivity(submissionId: submissionId,
-                                                      message: limitType == "weekly" ? "Weekly limit reached" : "Daily limit reached")
+                                                      message: Self.limitMessage(limitType))
                             }
                             // Remove from pending so the main app doesn't start polling a 404 forever.
                             if let defaults = UserDefaults(suiteName: "group.rob") {
@@ -793,7 +817,26 @@ struct ShareView: View {
     var limitReachedType: String? = nil   // "daily" or "weekly" when at limit
     var currentTier: String = "free"
     
-    private var isPro: Bool { currentTier == "pro" }
+    /// Pro styling applies to paid Pro and to the free trial alike.
+    private var isPro: Bool { currentTier == "pro" || currentTier == "trial" }
+
+    private func limitTitle(_ type: String) -> String {
+        switch type {
+        case "daily":  return "Daily Limit Reached"
+        case "trial":  return "Trial Checks Used Up"
+        case "weekly": return "Weekly Limit Reached"
+        default:       return "Start Your Free Trial"
+        }
+    }
+
+    private func limitBody(_ type: String) -> String {
+        switch type {
+        case "daily":  return "You've used all your fact-checks for today. Check back tomorrow!"
+        case "trial":  return "You've used all 7 fact-checks in your free trial. Pro gives you 15 a day once the trial ends."
+        case "weekly": return "You've used all your fact-checks for this week. Check back next week!"
+        default:       return "Fact-checking needs a subscription. Open Informed to start your free 7-day trial: 7 checks free, then 15 a day with Pro."
+        }
+    }
     
     @State private var scale: CGFloat = 0.95  // Start closer to full size
     @State private var opacity: Double = 0
@@ -832,13 +875,11 @@ struct ShareView: View {
                             }
                             
                             VStack(spacing: 8) {
-                                Text(limitType == "daily" ? "Daily Limit Reached" : "Weekly Limit Reached")
+                                Text(limitTitle(limitType))
                                     .font(.system(size: 22, weight: .bold))
                                     .foregroundColor(.white)
                                 
-                                Text(currentTier == "pro"
-                                     ? "You've used all your fact-checks for \(limitType == "daily" ? "today" : "this week"). Check back \(limitType == "daily" ? "tomorrow" : "next week")!"
-                                     : "You've used all your free fact-checks for \(limitType == "daily" ? "today" : "this week"). Upgrade to Pro for more!")
+                                Text(limitBody(limitType))
                                     .font(.system(size: 15))
                                     .foregroundColor(.white.opacity(0.8))
                                     .multilineTextAlignment(.center)
@@ -846,11 +887,11 @@ struct ShareView: View {
                             }
                             
                             VStack(spacing: 12) {
-                                if currentTier != "pro" {
+                                if limitType == "none" || limitType == "weekly" {
                                     Button(action: onCancel) {
                                         HStack {
-                                            Image(systemName: "star.fill")
-                                            Text("Upgrade to Pro")
+                                            Image(systemName: "sparkles")
+                                            Text("Start Free Trial in Informed")
                                                 .fontWeight(.semibold)
                                         }
                                         .frame(maxWidth: .infinity)

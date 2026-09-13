@@ -13,7 +13,7 @@ Everything needed to ship a build and manage the app in App Store Connect
 | ASC API key id | `32P8X6989C` |
 | ASC API issuer id | `9a14060e-f8f2-4beb-9b5e-951ad8dda6e2` |
 | Private key (`.p8`) | `~/Documents/Personal/AuthKey_32P8X6989C.p8` on Jacob's Mac (also in iCloud Drive → Documents/Personal). **Never commit it** — `*.p8` is gitignored. Apple only lets you download it once; if lost, create a new key in ASC → Users and Access → Integrations → App Store Connect API. |
-| Subscriptions | `informed_pro_monthly` (ASC id `6759974633`), `informed_pro_annual` (ASC id `6759974821`); RevenueCat entitlement `Informed Pro` |
+| Subscriptions | `informed_pro_monthly` (ASC id `6759974633`), `informed_pro_annual` (ASC id `6759974821`); RevenueCat entitlement `Informed Pro`; both have a 7-day free-trial introductory offer (see below) |
 | TestFlight | internal group **Marketing** has *automatic distribution*: every processed build is in beta immediately. The API refuses to assign builds to it manually — that's expected. No external group exists. |
 
 The key id / issuer id are not secrets by themselves (they're useless without
@@ -98,6 +98,30 @@ Rules learned the hard way:
   follows up with `GET /subscriptionPricePoints/{usa}/equalizations` and posts a
   price for every other territory (174 of them) on the same start date.
 * History: $4.99 / $49.99 originally; $8.99 / $89.99 scheduled from 2026-09-13.
+
+## Free trial (introductory offer)
+
+Both Pro subscriptions carry a **7-day free trial** (`FREE_TRIAL`, `1 × ONE_WEEK`)
+in every territory, created 2026-09-13 with `scripts/asc_offers.py`. Apple
+applies it automatically at purchase, once per Apple ID per subscription group;
+RevenueCat needs no configuration. The app reads
+`StoreProduct.introductoryDiscount` (+ `checkTrialOrIntroDiscountEligibility`)
+to show "7 days free, then $X", and the backend gives a `trial` account 7 fact
+checks for the whole week (`informedBackend/subscription_tiers.py`), after
+which the subscription auto-renews as Pro (15/day). A free account has no
+allowance at all — the trial is the only way in.
+
+```bash
+scripts/asc_offers.py list                              # offers per subscription + territory count
+scripts/asc_offers.py create --duration ONE_WEEK        # dry run: which territories still lack one
+scripts/asc_offers.py create --duration ONE_WEEK --apply
+scripts/asc_offers.py delete --id OFFER_ID --apply      # remove one territory's offer
+```
+
+`create` is idempotent (skips territories that already have an offer). The API
+creates offers per territory (`POST /subscriptionIntroductoryOffers` with a
+`territory` relationship); there are 175 territories, so a full run is ~350
+requests. Introductory offers need no review and go live immediately.
 
 ## Apple Ads (Search Ads) campaigns
 

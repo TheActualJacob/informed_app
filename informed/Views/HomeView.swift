@@ -194,7 +194,7 @@ struct HomeView: View {
 
             // Hero section with centered search bar
             VStack(spacing: 24) {
-                if subscriptionManager.isPro {
+                if subscriptionManager.isPro && !subscriptionManager.isTrial {
                     HStack(spacing: 6) {
                         Image(systemName: "crown.fill")
                             .font(.system(size: 11, weight: .black))
@@ -216,13 +216,16 @@ struct HomeView: View {
                         subscriptionManager.showPaywall = true
                     } label: {
                         HStack(spacing: 6) {
-                            let checksLeft = subscriptionManager.usage.governingRemaining
-                            Text("\(checksLeft) \(checksLeft == 1 ? "check" : "checks") left \(subscriptionManager.usage.governingPeriodLabel)")
+                            let usage = subscriptionManager.usage
+                            let checksLeft = usage.governingRemaining
+                            Text(usage.isTrial
+                                 ? "\(checksLeft) trial \(checksLeft == 1 ? "check" : "checks") left"
+                                 : "\(UsageStatus.trialAllowance) fact checks free for \(UsageStatus.trialDays) days")
                                 .font(.system(size: 12, weight: .bold, design: .rounded))
                                 .foregroundColor(.primary.opacity(0.8))
                             
                             HStack(spacing: 2) {
-                                Text("UPGRADE")
+                                Text(subscriptionManager.isTrial ? "TRIAL" : "START")
                                     .font(.system(size: 10, weight: .black, design: .rounded))
                                     .tracking(0.5)
                                 Image(systemName: "arrow.right")

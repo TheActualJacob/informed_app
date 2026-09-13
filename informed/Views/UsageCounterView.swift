@@ -2,7 +2,9 @@
 //  UsageCounterView.swift
 //  informed
 //
-//  Pill badge showing daily usage. Tapping opens the paywall for free users.
+//  Pill badge showing the fact-check allowance: "15/day" on Pro, "n / 7 trial"
+//  during the free trial, and a "Start free trial" prompt otherwise. Tapping
+//  opens the paywall unless the account is on a paid plan.
 //
 
 import SwiftUI
@@ -11,27 +13,37 @@ struct UsageCounterView: View {
     @EnvironmentObject var subscriptionManager: SubscriptionManager
     @State private var showPaywall = false
 
+    private var usage: UsageStatus { subscriptionManager.usage }
+    private var isPaidPro: Bool { subscriptionManager.isPro && !subscriptionManager.isTrial }
+
     var body: some View {
         Button(action: handleTap) {
             HStack(spacing: 5) {
-                if subscriptionManager.isPro {
+                if isPaidPro {
                     Image(systemName: "plus.circle.fill")
                         .font(.caption2.weight(.bold))
                         .foregroundColor(proGold)
-                    Text("15/day")
+                    Text("\(UsageStatus.proDailyLimit)/day")
                         .font(.caption2.weight(.semibold))
                         .foregroundColor(proGold)
-                } else {
+                } else if subscriptionManager.isTrial {
                     Image(systemName: "checkmark.seal")
                         .font(.caption2)
                         .foregroundColor(counterColor)
-                    Text("\(subscriptionManager.usage.governingUsed) / \(subscriptionManager.usage.governingLimit ?? 0)")
+                    Text("\(usage.governingUsed) / \(usage.governingLimit ?? UsageStatus.trialAllowance)")
                         .font(.caption2.weight(.semibold))
                         .foregroundColor(counterColor)
                         .contentTransition(.numericText())
-                    Text(subscriptionManager.usage.governingPeriodLabel)
+                    Text("trial")
                         .font(.caption2)
                         .foregroundColor(.secondary)
+                } else {
+                    Image(systemName: "sparkles")
+                        .font(.caption2)
+                        .foregroundColor(.brandBlue)
+                    Text("Start free trial")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundColor(.brandBlue)
                 }
             }
             .padding(.horizontal, 10)
@@ -45,7 +57,7 @@ struct UsageCounterView: View {
         }
         .buttonStyle(.plain)
         .sheet(isPresented: $showPaywall) {
-            PaywallView(limitType: subscriptionManager.usage.governingLimitType)
+            PaywallView(limitType: usage.governingLimitType)
                 .environmentObject(subscriptionManager)
         }
         .task {
@@ -57,7 +69,7 @@ struct UsageCounterView: View {
 
     private var proGold: Color { Color(red: 1.0, green: 0.78, blue: 0.25) }
 
-    private var remaining: Int { subscriptionManager.usage.governingRemaining }
+    private var remaining: Int { usage.governingRemaining }
 
     private var counterColor: Color {
         if remaining == 0 { return .brandRed }
@@ -66,19 +78,15 @@ struct UsageCounterView: View {
     }
 
     private var pillBackground: Color {
-        subscriptionManager.isPro
-            ? proGold.opacity(0.12)
-            : Color.secondary.opacity(0.08)
+        isPaidPro ? proGold.opacity(0.12) : Color.secondary.opacity(0.08)
     }
 
     private var borderColor: Color {
-        subscriptionManager.isPro
-            ? proGold.opacity(0.4)
-            : Color.secondary.opacity(0.2)
+        isPaidPro ? proGold.opacity(0.4) : Color.secondary.opacity(0.2)
     }
 
     private func handleTap() {
-        if !subscriptionManager.isPro {
+        if !isPaidPro {
             showPaywall = true
             Task { await subscriptionManager.fetchOffering() }
         }

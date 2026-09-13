@@ -45,8 +45,12 @@ enum NetworkError: LocalizedError {
         case .requestCancelled:
             return nil
         case .limitReached(let type, let limit, _):
-            let period = type == "weekly" ? "this week" : "today"
-            return "You've reached your \(limit) fact-check limit \(period). Upgrade to +informed Pro for more."
+            switch type {
+            case "daily":  return "You've used all \(limit) fact checks for today. Your allowance resets tomorrow."
+            case "trial":  return "You've used all \(limit) fact checks in your free trial. Pro gives you 15 a day once the trial ends."
+            case "weekly": return "You've reached your \(limit) fact-check limit this week."
+            default:       return "Start your free 7-day trial to fact-check."
+            }
         case .emailNotVerified:
             return "You must verify your email to post comments."
         case .unknown(let error):
@@ -107,12 +111,12 @@ class NetworkService {
             if httpResponse.statusCode == 429 {
                 if let limitBody = try? JSONDecoder().decode(LimitReachedResponse.self, from: data) {
                     throw NetworkError.limitReached(
-                        type:  limitBody.type  ?? "daily",
-                        limit: limitBody.limit ?? 2,
+                        type:  limitBody.type  ?? "none",
+                        limit: limitBody.limit ?? 0,
                         tier:  limitBody.tier  ?? "free"
                     )
                 }
-                throw NetworkError.limitReached(type: "daily", limit: 2, tier: "free")
+                throw NetworkError.limitReached(type: "none", limit: 0, tier: "free")
             }
 
             // Check for API-level error response first (error field present)

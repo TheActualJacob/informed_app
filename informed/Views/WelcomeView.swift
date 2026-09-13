@@ -2,7 +2,7 @@
 //  WelcomeView.swift
 //  informed
 //
-//  Post-signup onboarding: mission statement + free/pro tier explainer.
+//  Post-signup onboarding: mission statement + free-trial / Pro explainer.
 //
 
 import SwiftUI
@@ -149,18 +149,18 @@ struct WelcomeView: View {
                     // ── Tier comparison ──────────────────────────────────────
                     HStack(spacing: 12) {
                         tierCard(
-                            title: "Free",
+                            title: "Free Trial",
                             icon: "sparkle",
                             iconColor: .white.opacity(0.8),
                             features: [
-                                ("checkmark.circle.fill", .brandGreen,  "5 checks / day"),
-                                ("checkmark.circle.fill", .brandGreen,  "10 checks / week"),
+                                ("checkmark.circle.fill", .brandGreen,  "\(UsageStatus.trialAllowance) fact checks free"),
                                 ("checkmark.circle.fill", .brandGreen,  "Full AI analysis"),
                                 ("checkmark.circle.fill", .brandGreen,  "All platforms"),
+                                ("checkmark.circle.fill", .brandGreen,  "Cancel anytime"),
                             ],
                             background: Color.white.opacity(0.06),
                             border: Color.white.opacity(0.1),
-                            badge: nil
+                            badge: "\(UsageStatus.trialDays) days free"
                         )
 
                         tierCard(
@@ -189,16 +189,10 @@ struct WelcomeView: View {
 
                     // ── CTA buttons ──────────────────────────────────────────
                     VStack(spacing: 12) {
-                        // Upgrade button (secondary)
-                        Button {
-                            Task { await subscriptionManager.fetchOffering() }
-                            showPaywall = true
-                        } label: {
+                        // Skip the trial for now (secondary)
+                        Button(action: onContinue) {
                             HStack(spacing: 8) {
-                                Text("✦")
-                                    .font(.system(size: 14, weight: .heavy))
-                                    .foregroundColor(proGold)
-                                Text("Upgrade to +informed Pro")
+                                Text("Explore the app first")
                                     .font(.system(size: 16, weight: .bold))
                                     .foregroundColor(.white)
                             }
@@ -220,9 +214,12 @@ struct WelcomeView: View {
                             )
                         }
 
-                        // Continue free button (primary action)
-                        Button(action: onContinue) {
-                            Text("Start with Free")
+                        // Start the free trial (primary action)
+                        Button {
+                            Task { await subscriptionManager.fetchOffering() }
+                            showPaywall = true
+                        } label: {
+                            Text("Start \(UsageStatus.trialDays)-Day Free Trial")
                                 .font(.system(size: 17, weight: .semibold))
                                 .foregroundColor(Color(red: 0.04, green: 0.08, blue: 0.18))
                                 .frame(maxWidth: .infinity)
@@ -239,7 +236,7 @@ struct WelcomeView: View {
                     .opacity(appearedPhase >= 5 ? 1 : 0)
                     .offset(y: appearedPhase >= 5 ? 0 : 18)
 
-                    Text("You can always upgrade later from your Account tab.")
+                    Text("\(UsageStatus.trialAllowance) fact checks free for \(UsageStatus.trialDays) days, then \(UsageStatus.proDailyLimit) a day with Pro. Start any time from the Home tab.")
                         .font(.caption)
                         .foregroundColor(.white.opacity(0.35))
                         .multilineTextAlignment(.center)
@@ -251,7 +248,7 @@ struct WelcomeView: View {
             }
         }
         .sheet(isPresented: $showPaywall) {
-            PaywallView(limitType: "daily")
+            PaywallView(limitType: "none")
                 .environmentObject(subscriptionManager)
                 .onDisappear {
                     if subscriptionManager.isPro { onContinue() }
