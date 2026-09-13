@@ -60,6 +60,34 @@ is working), the `.p8` at the path above, and Python 3 with `pyjwt`,
 Run one build step at a time: archive + upload + a simulator running together
 have pushed this Mac into memory pressure and got the upload killed mid-way.
 
+## Submit an App Store version
+
+After the TestFlight build is `VALID`:
+
+```bash
+scripts/asc_submit.py status                  # versions + builds + open review submissions
+scripts/asc_submit.py submit --version 1.1.7  # attach build 1.1.7 to version 1.1.7 and submit for review
+scripts/asc_submit.py cancel                  # withdraw the open submission
+```
+
+Creating the version itself (once per release, before `submit`):
+`POST /appStoreVersions` with `{platform: IOS, versionString, releaseType: AFTER_APPROVAL}`
+and the `app` relationship. ASC copies the listing (description, keywords,
+screenshots) from the previous version, so only `whatsNew` on the en-US
+`appStoreVersionLocalization` needs a `PATCH`. 1.1.7 was created this way on
+2026-09-13. `releaseType: AFTER_APPROVAL` releases automatically once approved;
+use `MANUAL` if the backend must be switched first (see the free-trial rollout
+below).
+
+### Free-trial rollout order (Sept 2026)
+
+1. App 1.1.7 (trial UI) ships first, against the old backend: free accounts
+   still get 2 checks/week and a trial is treated as Pro (15/day).
+2. Once 1.1.7 is approved and live, merge backend PR #24
+   (`feat/free-trial-tier`) — Railway deploys it and the allowance switches to
+   free = 0 / trial = 7 / pro = 15 a day. Users still on 1.1.6 lose the free
+   checks at that moment and see "0 / 0 this week" until they update.
+
 ## Type-check without a simulator
 
 If no simulator runtime is installed, every target can still be type-checked
