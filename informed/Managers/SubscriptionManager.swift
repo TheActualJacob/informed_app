@@ -211,6 +211,8 @@ final class SubscriptionManager: ObservableObject {
             print("[SubscriptionManager] logIn error: \(error)")
         }
         await syncCustomerInfo()
+        // Prefetch the offering + trial eligibility so the paywall opens populated.
+        await fetchOffering()
     }
 
     func logout() {
@@ -235,6 +237,14 @@ final class SubscriptionManager: ObservableObject {
         if !ids.isEmpty {
             let result = await Purchases.shared.checkTrialOrIntroDiscountEligibility(productIdentifiers: ids)
             introEligibility = result.mapValues { $0.status }
+        }
+        for package in currentOffering?.availablePackages ?? [] {
+            let product = package.storeProduct
+            let intro = product.introductoryDiscount.map {
+                "\($0.paymentMode == .freeTrial ? "free trial" : "intro price") \(Self.trialLengthLabel($0))"
+            } ?? "none"
+            let status = introEligibility[product.productIdentifier].map { "\($0)" } ?? "unknown"
+            print("[SubscriptionManager] \(product.productIdentifier): \(product.localizedPriceString), intro offer: \(intro), eligibility: \(status)")
         }
     }
 
