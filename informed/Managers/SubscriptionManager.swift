@@ -189,6 +189,11 @@ final class SubscriptionManager: ObservableObject {
     @Published var showPaywall: Bool = false
     @Published var paywallLimitType: String = "none"  // "none" | "trial" | "daily"
 
+    /// Set once per launch after the backend has been told about an entitlement
+    /// it didn't know of (see refreshUsage), so a genuinely free account can't
+    /// loop on the sync.
+    private var reconciledWithStore = false
+
     private init() {}
 
     // MARK: - Configure
@@ -354,6 +359,18 @@ final class SubscriptionManager: ObservableObject {
         do {
             let (data, _) = try await URLSession.shared.data(for: URLRequest(url: url))
             let decoded = try JSONDecoder().decode(UsageStatus.self, from: data)
+            // The backend learns about trial conversions and renewals from the
+            // RevenueCat webhook. If it still says free while the store says the
+            // entitlement is active (a trial that just rolled into Pro, a late
+            // webhook), push one sync so the allowance matches the subscription.
+            if !decoded.hasEntitlement, !reconciledWithStore,
+               let info = try? await Purchases.shared.customerInfo(),
+               info.entitlements[Self.entitlementID]?.isActive == true {
+                reconciledWithStore = true
+                print("[SubscriptionManager] backend says free but the entitlement is active — syncing")
+                await syncWithBackend()   // refreshes usage again on its way out
+                return
+            }
             usage   = decoded
             isPro   = decoded.hasEntitlement
             isTrial = decoded.isTrial
