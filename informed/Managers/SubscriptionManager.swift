@@ -2,7 +2,12 @@
 //  SubscriptionManager.swift
 //  informed
 //
-//  Manages RevenueCat subscription state and daily/weekly usage limits.
+//  Manages RevenueCat subscription state and the fact-check allowance.
+//
+//  Tiers (mirrors informedBackend/subscription_tiers.py):
+//    free  – no allowance; the 7-day free trial is the only way to fact-check
+//    trial – 7 fact checks for the whole trial, then auto-renews as Pro
+//    pro   – 15 fact checks per day, no weekly cap
 //
 
 import Foundation
@@ -12,23 +17,56 @@ import RevenueCat
 // MARK: - Usage Status
 
 struct UsageStatus: Codable {
-    let tier: String               // "free" | "pro"
+    let tier: String               // "free" | "trial" | "pro"
     let dailyUsed: Int
-    let dailyLimit: Int?           // nil = no daily cap (free tier)
-    let weeklyUsed: Int
-    let weeklyLimit: Int?          // nil = no weekly cap (pro tier)
+    let dailyLimit: Int?           // 15 for pro, nil otherwise
+    let weeklyUsed: Int            // legacy: mirrors the governing window for non-pro tiers
+    let weeklyLimit: Int?
+    let trialUsed: Int?
+    let trialLimit: Int?
+    let trialEndsAt: String?
+    let limitType: String?         // "none" | "trial" | "daily"
+    let used: Int?
+    let limit: Int?
+    let remaining: Int?
+    let limitReached: Bool?
     let subscriptionExpiresAt: String?
+    let subscriptionStartedAt: String?
 
     enum CodingKeys: String, CodingKey {
         case tier
-        case dailyUsed          = "daily_used"
-        case dailyLimit         = "daily_limit"
-        case weeklyUsed         = "weekly_used"
-        case weeklyLimit        = "weekly_limit"
+        case dailyUsed             = "daily_used"
+        case dailyLimit            = "daily_limit"
+        case weeklyUsed            = "weekly_used"
+        case weeklyLimit           = "weekly_limit"
+        case trialUsed             = "trial_used"
+        case trialLimit            = "trial_limit"
+        case trialEndsAt           = "trial_ends_at"
+        case limitType             = "limit_type"
+        case used, limit, remaining
+        case limitReached          = "limit_reached"
         case subscriptionExpiresAt = "subscription_expires_at"
+        case subscriptionStartedAt = "subscription_started_at"
     }
 
-    var isPro: Bool { tier == "pro" }
+    /// Allowances, mirrored from the backend for copy shown before the first response.
+    static let trialAllowance = 7
+    static let trialDays      = 7
+    static let proDailyLimit  = 15
+
+    /// A signed-out / not-yet-fetched account: free, no allowance.
+    static let placeholder = UsageStatus(
+        tier: "free", dailyUsed: 0, dailyLimit: nil, weeklyUsed: 0, weeklyLimit: 0,
+        trialUsed: nil, trialLimit: nil, trialEndsAt: nil, limitType: "none",
+        used: 0, limit: 0, remaining: 0, limitReached: true,
+        subscriptionExpiresAt: nil, subscriptionStartedAt: nil
+    )
+
+    var isPro: Bool   { tier == "pro" }
+    var isTrial: Bool { tier == "trial" }
+    /// Pro or trial — an active App Store entitlement.
+    var hasEntitlement: Bool { isPro || isTrial }
+
     var dailyRemaining: Int? {
         guard let dl = dailyLimit else { return nil }
         return max(0, dl - dailyUsed)
@@ -40,23 +78,65 @@ struct UsageStatus: Codable {
 
     // MARK: Governing window
     //
-    // Free accounts are capped per ISO week (no daily cap); Pro accounts per day
-    // (no weekly cap). Every counter and paywall string should describe the window
-    // that actually governs the current tier, so the UI reads from these helpers
-    // instead of assuming "today".
+    // Pro is capped per day, a trial by its 7-check allowance, and a free
+    // account has no allowance at all. Every counter and paywall string reads
+    // from these helpers so it describes the window that actually applies.
 
-    /// True when the weekly cap is the one that limits this account.
-    var isGovernedWeekly: Bool { weeklyLimit != nil && dailyLimit == nil }
-    var governingLimit: Int? { isGovernedWeekly ? weeklyLimit : (dailyLimit ?? weeklyLimit) }
-    var governingUsed: Int { isGovernedWeekly ? weeklyUsed : (dailyLimit != nil ? dailyUsed : weeklyUsed) }
+    /// "daily" (pro), "trial", or "none" (free). Older backends only send the
+    /// daily/weekly pair, so fall back to the tier.
+    var governingLimitType: String {
+        if let limitType { return limitType }
+        return isPro ? "daily" : (isTrial ? "trial" : "none")
+    }
+    /// nil = unlimited
+    var governingLimit: Int? {
+        if let limit { return limit }
+        switch governingLimitType {
+        case "daily": return dailyLimit
+        case "trial": return trialLimit ?? weeklyLimit ?? Self.trialAllowance
+        default:      return weeklyLimit ?? 0
+        }
+    }
+    var governingUsed: Int {
+        if let used { return used }
+        return governingLimitType == "daily" ? dailyUsed : weeklyUsed
+    }
     var governingRemaining: Int {
+        if let remaining { return remaining }
         guard let limit = governingLimit else { return Int.max }
         return max(0, limit - governingUsed)
     }
-    /// "this week" or "today"
-    var governingPeriodLabel: String { isGovernedWeekly ? "this week" : "today" }
-    /// "weekly" or "daily" — the `limitType` the paywall expects.
-    var governingLimitType: String { isGovernedWeekly ? "weekly" : "daily" }
+    var isLimitReached: Bool { limitReached ?? (governingRemaining == 0) }
+    /// "today" / "in your trial" / "" — the window a counter describes.
+    var governingPeriodLabel: String {
+        switch governingLimitType {
+        case "daily": return "today"
+        case "trial": return "in your trial"
+        default:      return ""
+        }
+    }
+
+    var trialEndDate: Date? { Self.parseDate(trialEndsAt ?? subscriptionExpiresAt) }
+    var expiryDate: Date? { Self.parseDate(subscriptionExpiresAt) }
+
+    /// The backend sends naive-UTC `isoformat()` strings ("2026-09-20T10:00:00[.ffffff]");
+    /// RevenueCat sends a trailing Z. Accept both.
+    static func parseDate(_ s: String?) -> Date? {
+        guard let s, !s.isEmpty else { return nil }
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = iso.date(from: s) { return d }
+        iso.formatOptions = [.withInternetDateTime]
+        if let d = iso.date(from: s) { return d }
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "UTC")
+        for fmt in ["yyyy-MM-dd'T'HH:mm:ss.SSSSSS", "yyyy-MM-dd'T'HH:mm:ss"] {
+            f.dateFormat = fmt
+            if let d = f.date(from: s) { return d }
+        }
+        return nil
+    }
 }
 
 // MARK: - SubscriptionManager
@@ -76,32 +156,43 @@ final class SubscriptionManager: ObservableObject {
 
     // MARK: - Published state
 
+    /// True while the "Informed Pro" entitlement is active — during the free
+    /// trial as well as on a paid plan. Check `isTrial` to tell them apart.
     @Published var isPro: Bool = false {
-        didSet {
-            // Keep App Group in sync so the Share Extension and Dynamic Island
-            // widget can read the pro status without a network call.
-            UserDefaults(suiteName: "group.rob")?.set(isPro, forKey: "is_pro_user")
-        }
+        didSet { storeTierInAppGroup() }
     }
-    @Published var usage: UsageStatus = UsageStatus(
-        tier: "free", dailyUsed: 0, dailyLimit: nil,
-        weeklyUsed: 0, weeklyLimit: 2, subscriptionExpiresAt: nil
-    )
+    /// True during the 7-day free trial.
+    @Published var isTrial: Bool = false {
+        didSet { storeTierInAppGroup() }
+    }
+    @Published var usage: UsageStatus = .placeholder
+
+    /// "free" | "trial" | "pro" — what the App Group and the share extension see.
+    var currentTier: String { isPro ? (isTrial ? "trial" : "pro") : "free" }
 
     /// Live monthly price from the store (e.g. "$8.99"), once the offering has loaded.
-    var monthlyPriceString: String? {
+    var monthlyPriceString: String? { monthlyPackage?.storeProduct.localizedPriceString }
+    var monthlyPackage: Package? {
         currentOffering?.availablePackages.first(where: {
             $0.packageType == .monthly || $0.storeProduct.productIdentifier == Self.monthlyProductID
-        })?.storeProduct.localizedPriceString
+        })
     }
     @Published var currentOffering: Offering? = nil
+    /// Free-trial / intro eligibility per product id, from RevenueCat (Apple
+    /// grants an introductory offer once per Apple ID per subscription group).
+    @Published var introEligibility: [String: IntroEligibilityStatus] = [:]
     @Published var isLoadingOffering: Bool = false
     @Published var isPurchasing: Bool = false
     @Published var purchaseError: String? = nil
 
     // Paywall trigger
     @Published var showPaywall: Bool = false
-    @Published var paywallLimitType: String = "weekly"  // "daily" | "weekly"
+    @Published var paywallLimitType: String = "none"  // "none" | "trial" | "daily"
+
+    /// Set once per launch after the backend has been told about an entitlement
+    /// it didn't know of (see refreshUsage), so a genuinely free account can't
+    /// loop on the sync.
+    private var reconciledWithStore = false
 
     private init() {}
 
@@ -120,11 +211,15 @@ final class SubscriptionManager: ObservableObject {
             print("[SubscriptionManager] logIn error: \(error)")
         }
         await syncCustomerInfo()
+        // Prefetch the offering + trial eligibility so the paywall opens populated.
+        await fetchOffering()
     }
 
     func logout() {
         Purchases.shared.logOut { _, _ in }
         isPro = false
+        isTrial = false
+        usage = .placeholder
     }
 
     // MARK: - Offerings
@@ -137,6 +232,51 @@ final class SubscriptionManager: ObservableObject {
             currentOffering = offerings.current
         } catch {
             print("[SubscriptionManager] fetchOffering error: \(error)")
+        }
+        let ids = currentOffering?.availablePackages.map { $0.storeProduct.productIdentifier } ?? []
+        if !ids.isEmpty {
+            let result = await Purchases.shared.checkTrialOrIntroDiscountEligibility(productIdentifiers: ids)
+            introEligibility = result.mapValues { $0.status }
+        }
+        for package in currentOffering?.availablePackages ?? [] {
+            let product = package.storeProduct
+            let intro = product.introductoryDiscount.map {
+                "\($0.paymentMode == .freeTrial ? "free trial" : "intro price") \(Self.trialLengthLabel($0))"
+            } ?? "none"
+            let status = introEligibility[product.productIdentifier].map { "\($0)" } ?? "unknown"
+            print("[SubscriptionManager] \(product.productIdentifier): \(product.localizedPriceString), intro offer: \(intro), eligibility: \(status)")
+        }
+    }
+
+    // MARK: - Free trial
+
+    /// The free-trial introductory offer on a package, if the store has one and
+    /// this Apple ID hasn't used it. `.unknown` is treated as available: StoreKit
+    /// makes the final call in the purchase sheet.
+    func trialOffer(for package: Package) -> StoreProductDiscount? {
+        guard let discount = package.storeProduct.introductoryDiscount,
+              discount.paymentMode == .freeTrial else { return nil }
+        switch introEligibility[package.storeProduct.productIdentifier] ?? .unknown {
+        case .ineligible, .noIntroOfferExists: return nil
+        default: return discount
+        }
+    }
+
+    /// True when any plan in the offering still carries a free trial for this Apple ID.
+    var trialAvailable: Bool {
+        currentOffering?.availablePackages.contains { trialOffer(for: $0) != nil } ?? false
+    }
+
+    /// "7 days", "1 month", … for an introductory offer's period.
+    static func trialLengthLabel(_ discount: StoreProductDiscount) -> String {
+        let period = discount.subscriptionPeriod
+        let n = period.value
+        switch period.unit {
+        case .day:   return "\(n) day\(n == 1 ? "" : "s")"
+        case .week:  return "\(n * 7) days"
+        case .month: return "\(n) month\(n == 1 ? "" : "s")"
+        case .year:  return "\(n) year\(n == 1 ? "" : "s")"
+        @unknown default: return "\(n)"
         }
     }
 
@@ -172,17 +312,20 @@ final class SubscriptionManager: ObservableObject {
 
     // MARK: - Sync
 
-    /// Sync CustomerInfo from RevenueCat and update isPro.
+    /// Sync CustomerInfo from RevenueCat and update isPro / isTrial.
     func syncCustomerInfo() async {
         do {
             let info = try await Purchases.shared.customerInfo()
-            isPro = info.entitlements[Self.entitlementID]?.isActive == true
+            let entitlement = info.entitlements[Self.entitlementID]
+            isPro   = entitlement?.isActive == true
+            isTrial = isPro && entitlement?.periodType == .trial
         } catch {
             print("[SubscriptionManager] syncCustomerInfo error: \(error)")
         }
     }
 
-    /// Sync subscription tier with the backend then refresh usage status.
+    /// Tell the backend to re-read the subscription from RevenueCat (it sets the
+    /// tier to free / trial / pro), then refresh usage.
     func syncWithBackend() async {
         guard let userId    = UserManager.shared.currentUserId,
               let sessionId = UserManager.shared.currentSessionId else { return }
@@ -203,11 +346,7 @@ final class SubscriptionManager: ObservableObject {
         req.httpBody = try? JSONEncoder().encode(body)
 
         do {
-            let (data, _) = try await URLSession.shared.data(for: req)
-            if let decoded = try? JSONDecoder().decode(UsageStatus.self, from: data) {
-                usage = decoded
-                isPro = decoded.isPro
-            }
+            _ = try await URLSession.shared.data(for: req)
         } catch {
             print("[SubscriptionManager] syncWithBackend error: \(error)")
         }
@@ -230,8 +369,21 @@ final class SubscriptionManager: ObservableObject {
         do {
             let (data, _) = try await URLSession.shared.data(for: URLRequest(url: url))
             let decoded = try JSONDecoder().decode(UsageStatus.self, from: data)
-            usage = decoded
-            isPro  = decoded.isPro
+            // The backend learns about trial conversions and renewals from the
+            // RevenueCat webhook. If it still says free while the store says the
+            // entitlement is active (a trial that just rolled into Pro, a late
+            // webhook), push one sync so the allowance matches the subscription.
+            if !decoded.hasEntitlement, !reconciledWithStore,
+               let info = try? await Purchases.shared.customerInfo(),
+               info.entitlements[Self.entitlementID]?.isActive == true {
+                reconciledWithStore = true
+                print("[SubscriptionManager] backend says free but the entitlement is active — syncing")
+                await syncWithBackend()   // refreshes usage again on its way out
+                return
+            }
+            usage   = decoded
+            isPro   = decoded.hasEntitlement
+            isTrial = decoded.isTrial
         } catch {
             print("[SubscriptionManager] refreshUsage error: \(error)")
         }
@@ -241,7 +393,18 @@ final class SubscriptionManager: ObservableObject {
 
     /// Called when the backend returns a 429 limit_reached response.
     func handleLimitReached(type: String) {
-        paywallLimitType = type
+        // Older builds and backends say "weekly"; the tier says what that means now.
+        paywallLimitType = (type == "weekly") ? usage.governingLimitType : type
         showPaywall = true
+    }
+
+    // MARK: - App Group
+
+    /// Keep the App Group in sync so the Share Extension and the Dynamic Island
+    /// widget can read the tier without a network call.
+    private func storeTierInAppGroup() {
+        let defaults = UserDefaults(suiteName: "group.rob")
+        defaults?.set(isPro, forKey: "is_pro_user")
+        defaults?.set(currentTier, forKey: "subscription_tier")
     }
 }

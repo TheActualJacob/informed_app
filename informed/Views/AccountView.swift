@@ -71,7 +71,7 @@ struct AccountView: View {
                                             startPoint: .leading, endPoint: .trailing
                                         )
                                     )
-                                    Text("\(subscriptionManager.usage.governingRemaining) checks left \(subscriptionManager.usage.governingPeriodLabel) · Upgrade for 15/day")
+                                    Text("Start a free \(UsageStatus.trialDays)-day trial · \(UsageStatus.trialAllowance) checks free, then \(UsageStatus.proDailyLimit)/day")
                                         .font(.caption)
                                         .foregroundColor(.secondary)
                                 }
@@ -281,7 +281,9 @@ struct AccountView: View {
             NavigationLink(destination: SubscriptionView().environmentObject(subscriptionManager)) {
                 MenuRow(
                     icon: subscriptionManager.isPro ? "star.circle.fill" : "star.circle",
-                    title: subscriptionManager.isPro ? "+informed Pro" : "Upgrade to Pro",
+                    title: subscriptionManager.isPro
+                        ? (subscriptionManager.isTrial ? "+informed Pro · Trial" : "+informed Pro")
+                        : "Start Free Trial",
                     color: subscriptionManager.isPro
                         ? Color(red: 1.0, green: 0.78, blue: 0.25)
                         : .brandBlue

@@ -2,7 +2,8 @@
 //  SubscriptionView.swift
 //  informed
 //
-//  Manage current subscription plan, view usage stats, and upgrade/downgrade.
+//  Current plan (free / trial / Pro), the allowance that governs it, and the
+//  way in: start the free trial, or manage the subscription in the App Store.
 //
 
 import SwiftUI
@@ -13,6 +14,12 @@ struct SubscriptionView: View {
     @State private var showPaywall = false
 
     private var proGold: Color { Color(red: 1.0, green: 0.78, blue: 0.25) }
+
+    private var usage: UsageStatus { subscriptionManager.usage }
+    /// Pro or trial: an active App Store entitlement.
+    private var hasEntitlement: Bool { subscriptionManager.isPro }
+    private var isTrial: Bool { subscriptionManager.isTrial }
+    private var isPaidPro: Bool { hasEntitlement && !isTrial }
 
     var body: some View {
         ScrollView {
@@ -30,10 +37,10 @@ struct SubscriptionView: View {
             .padding()
         }
         .background(Color.backgroundLight)
-        .navigationTitle(subscriptionManager.isPro ? "+informed Pro" : "Subscription")
+        .navigationTitle(hasEntitlement ? "+informed Pro" : "Subscription")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showPaywall) {
-            PaywallView(limitType: "daily")
+            PaywallView(limitType: usage.governingLimitType)
                 .environmentObject(subscriptionManager)
         }
         .task {
@@ -44,36 +51,45 @@ struct SubscriptionView: View {
 
     // MARK: - Plan status card
 
+    private var planTitle: String {
+        if isPaidPro { return "+informed Pro" }
+        if isTrial { return "+informed Pro · Trial" }
+        return "Free Plan"
+    }
+
+    private var planSubtitle: String {
+        let date = usage.expiryDate.map { $0.formatted(date: .abbreviated, time: .omitted) }
+        if isPaidPro {
+            return date.map { "Renews \($0)" } ?? "Active"
+        }
+        if isTrial {
+            return date.map { "Free trial · Pro starts \($0)" } ?? "Free trial"
+        }
+        return "No fact checks yet · start a free \(UsageStatus.trialDays)-day trial"
+    }
+
     private var planStatusCard: some View {
         VStack(spacing: 16) {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(subscriptionManager.isPro ? "+informed Pro" : "Free Plan")
+                    Text(planTitle)
                         .font(.title3.weight(.bold))
                         .foregroundStyle(
-                            subscriptionManager.isPro
+                            hasEntitlement
                                 ? LinearGradient(colors: [Color.brandBlue, Color.brandTeal],
                                                  startPoint: .leading, endPoint: .trailing)
                                 : LinearGradient(colors: [.primary, .primary],
                                                  startPoint: .leading, endPoint: .trailing)
                         )
 
-                    if subscriptionManager.isPro,
-                       let expiresStr = subscriptionManager.usage.subscriptionExpiresAt,
-                       let date = ISO8601DateFormatter().date(from: expiresStr) {
-                        Text("Renews \(date.formatted(date: .abbreviated, time: .omitted))")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    } else if !subscriptionManager.isPro {
-                        Text("5 checks/day · 10 checks/week")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
+                    Text(planSubtitle)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
 
                 Spacer()
 
-                if subscriptionManager.isPro {
+                if hasEntitlement {
                     Text("✦")
                         .font(.system(size: 28, weight: .bold))
                         .foregroundColor(proGold)
@@ -103,27 +119,33 @@ struct SubscriptionView: View {
             Text("Usage")
                 .font(.headline)
 
-            // Free accounts: capped per week, no daily cap. Pro: capped per day, no weekly cap.
-            if let dl = subscriptionManager.usage.dailyLimit {
+            if isPaidPro {
+                // Pro: capped per day, no weekly cap.
+                let dl = usage.dailyLimit ?? UsageStatus.proDailyLimit
                 usageRow(
                     label: "Today",
-                    used: subscriptionManager.usage.dailyUsed,
+                    used: usage.dailyUsed,
                     limit: dl,
-                    color: barColor(remaining: subscriptionManager.usage.dailyRemaining ?? 0, limit: dl)
+                    color: barColor(remaining: max(0, dl - usage.dailyUsed), limit: dl)
                 )
-            } else {
-                uncappedRow(label: "Today", value: "No daily cap")
-            }
-
-            if let wl = subscriptionManager.usage.weeklyLimit {
-                usageRow(
-                    label: "This week",
-                    used: subscriptionManager.usage.weeklyUsed,
-                    limit: wl,
-                    color: barColor(remaining: subscriptionManager.usage.weeklyRemaining ?? 0, limit: wl)
-                )
-            } else {
                 uncappedRow(label: "This week", value: "Unlimited")
+            } else if isTrial {
+                // Trial: one allowance for the whole 7 days.
+                let limit = usage.governingLimit ?? UsageStatus.trialAllowance
+                usageRow(
+                    label: "Free trial",
+                    used: usage.governingUsed,
+                    limit: limit,
+                    color: barColor(remaining: usage.governingRemaining, limit: limit)
+                )
+                Text("\(limit) fact checks for the whole trial, then \(UsageStatus.proDailyLimit) a day with Pro.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            } else {
+                Text("Start a free \(UsageStatus.trialDays)-day trial to get \(UsageStatus.trialAllowance) fact checks, "
+                     + "then \(UsageStatus.proDailyLimit) a day with Pro.")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
             }
         }
         .padding()
@@ -165,7 +187,7 @@ struct SubscriptionView: View {
             Spacer()
             Text(value)
                 .font(.subheadline.weight(.semibold))
-                .foregroundColor(subscriptionManager.isPro ? proGold : .secondary)
+                .foregroundColor(hasEntitlement ? proGold : .secondary)
         }
     }
 
@@ -181,11 +203,13 @@ struct SubscriptionView: View {
 
     private var actionButtons: some View {
         VStack(spacing: 12) {
-            if !subscriptionManager.isPro {
+            if !hasEntitlement {
                 Button(action: { showPaywall = true }) {
                     HStack {
                         Text("✦")
-                        Text("Upgrade to +informed Pro")
+                        Text(subscriptionManager.trialAvailable
+                             ? "Start \(UsageStatus.trialDays)-Day Free Trial"
+                             : "Upgrade to +informed Pro")
                     }
                     .font(.headline)
                     .foregroundColor(.white)
@@ -201,7 +225,7 @@ struct SubscriptionView: View {
                 }
             }
 
-            if subscriptionManager.isPro {
+            if hasEntitlement {
                 Button(action: openAppleSubscriptions) {
                     HStack {
                         Image(systemName: "gear")
