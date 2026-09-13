@@ -497,7 +497,7 @@
 				CODE_SIGN_ENTITLEMENTS = informed/informed.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1.1.6;
+				CURRENT_PROJECT_VERSION = 1.1.7;
 				DEVELOPMENT_TEAM = JQTCAT85GP;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -515,7 +515,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.1.6;
+				MARKETING_VERSION = 1.1.7;
 				PRODUCT_BUNDLE_IDENTIFIER = com.jacob.informed;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -538,7 +538,7 @@
 				CODE_SIGN_ENTITLEMENTS = informed/informed.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1.1.6;
+				CURRENT_PROJECT_VERSION = 1.1.7;
 				DEVELOPMENT_TEAM = JQTCAT85GP;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -556,7 +556,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.1.6;
+				MARKETING_VERSION = 1.1.7;
 				PRODUCT_BUNDLE_IDENTIFIER = com.jacob.informed;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -578,7 +578,7 @@
 				CODE_SIGN_ENTITLEMENTS = InformedWidgetExtension.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1.1.6;
+				CURRENT_PROJECT_VERSION = 1.1.7;
 				DEVELOPMENT_TEAM = JQTCAT85GP;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = InformedWidget/Info.plist;
@@ -590,7 +590,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.1.6;
+				MARKETING_VERSION = 1.1.7;
 				PRODUCT_BUNDLE_IDENTIFIER = com.jacob.informed.widget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -612,7 +612,7 @@
 				CODE_SIGN_ENTITLEMENTS = InformedWidgetExtension.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1.1.6;
+				CURRENT_PROJECT_VERSION = 1.1.7;
 				DEVELOPMENT_TEAM = JQTCAT85GP;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = InformedWidget/Info.plist;
@@ -624,7 +624,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.1.6;
+				MARKETING_VERSION = 1.1.7;
 				PRODUCT_BUNDLE_IDENTIFIER = com.jacob.informed.widget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -645,7 +645,7 @@
 				CODE_SIGN_ENTITLEMENTS = InformedShare/InformedShare.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1.1.6;
+				CURRENT_PROJECT_VERSION = 1.1.7;
 				DEVELOPMENT_TEAM = JQTCAT85GP;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = InformedShare/Info.plist;
@@ -658,7 +658,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.1.6;
+				MARKETING_VERSION = 1.1.7;
 				PRODUCT_BUNDLE_IDENTIFIER = com.jacob.informed.share;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -679,7 +679,7 @@
 				CODE_SIGN_ENTITLEMENTS = InformedShare/InformedShare.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1.1.6;
+				CURRENT_PROJECT_VERSION = 1.1.7;
 				DEVELOPMENT_TEAM = JQTCAT85GP;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = InformedShare/Info.plist;
@@ -692,7 +692,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.1.6;
+				MARKETING_VERSION = 1.1.7;
 				PRODUCT_BUNDLE_IDENTIFIER = com.jacob.informed.share;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
